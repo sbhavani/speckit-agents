@@ -12,9 +12,11 @@ import argparse
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -42,6 +44,7 @@ class Phase(Enum):
     DEV_SPECIFY = auto()
     DEV_PLAN = auto()
     DEV_TASKS = auto()
+    PLAN_REVIEW = auto()
     DEV_IMPLEMENT = auto()
     CREATE_PR = auto()
     DONE = auto()
@@ -209,6 +212,8 @@ class Orchestrator:
         self._phase_dev_specify()
         self._phase_dev_plan()
         self._phase_dev_tasks()
+        if not self._phase_plan_review():
+            return  # rejected
         self._phase_dev_implement()
         self._phase_create_pr()
         self._phase_done()
@@ -290,12 +295,14 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             )
             return True
 
-        lower = response.lower().strip()
-        if lower in ("reject", "no", "skip", "stop"):
+        lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
+        if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
             self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
             return False
 
-        if lower not in ("approve", "yes", "ok", "lgtm", "go"):
+        APPROVE = {"approve", "yes", "ok", "lgtm", "go",
+                   "\U0001f44d", "+1", ":+1:", ":thumbsup:"}
+        if lower not in APPROVE:
             # Treat as alternative feature description
             self.msg.send(
                 f"Using your input as the feature description: {response}",
@@ -321,7 +328,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         )
         self.state.dev_session = result.get("session_id")
 
-        self.msg.send("Specification complete.", sender="Dev Agent")
+        # Get a summary to post to the channel
+        summary = self._get_phase_summary(
+            "Summarize the specification you just created in 2-3 bullet points. "
+            "Focus on: what will be built, key behaviors, and scope boundaries. Be concise."
+        )
+        self.msg.send(f"**Specification complete.**\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
@@ -337,7 +349,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
-        self.msg.send("Technical plan complete.", sender="Dev Agent")
+        # Get a summary to post to the channel
+        summary = self._get_phase_summary(
+            "Summarize the technical plan you just created in 3-5 bullet points. "
+            "Include: key files to change, architecture approach, and any trade-offs. Be concise."
+        )
+        self.msg.send(f"**Technical plan complete.**\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
@@ -353,7 +370,106 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
-        self.msg.send("Task list generated.", sender="Dev Agent")
+        # Get the task list summary
+        summary = self._get_phase_summary(
+            "List the implementation tasks you just generated as a numbered list. "
+            "Keep each item to one line. Be concise."
+        )
+        self.msg.send(f"**Task list generated.**\n\n{summary}", sender="Dev Agent")
+
+    def _phase_plan_review(self) -> bool:
+        """Checkpoint: let the human review the plan before implementation starts.
+
+        Returns True to proceed, False to abort.
+        """
+        self.state.phase = Phase.PLAN_REVIEW
+        logger.info("Phase: PLAN_REVIEW")
+
+        # Mark position BEFORE posting the review message so we capture
+        # any human messages that arrived during earlier phases too.
+        if not self.msg.dry_run:
+            # Don't reset — keep _last_seen_ts from earlier phases so we
+            # capture messages sent during specify/plan/tasks.
+            pass
+
+        review_timeout = self.cfg.get("workflow", {}).get("plan_review_timeout", 60)
+
+        self.msg.send(
+            "**Ready for implementation.** Review the plan above.\n\n"
+            "- Ask any questions and the PM will answer\n"
+            "- Reply **reject** to stop\n"
+            f"- Auto-proceeding in {review_timeout}s if no objection",
+            sender="Orchestrator",
+        )
+
+        auto = self.cfg.get("workflow", {}).get("auto_approve", False)
+        if auto:
+            logger.info("Auto-approve enabled, proceeding to implementation")
+            self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator")
+            return True
+
+        poll_interval = 5
+        deadline = time.time() + review_timeout
+
+        while time.time() < deadline:
+            time.sleep(poll_interval)
+
+            if self.msg.dry_run:
+                response = self.msg.wait_for_response(timeout=int(deadline - time.time()))
+                if response is None:
+                    break
+                lower = response.lower().strip()
+            else:
+                new = self.msg.bridge.read_new_human_messages()
+                if not new:
+                    continue
+                # Process the first new message
+                response = new[0].get("message", "").strip()
+                if not response:
+                    continue
+                # Strip @mentions before checking keywords
+                lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
+
+            APPROVE_WORDS = {"go", "approve", "yes", "ok", "lgtm", "proceed",
+                             "\U0001f44d", "\U0001f44d\U0001f3fb", "\U0001f44d\U0001f3fc",
+                             "\U0001f44d\U0001f3fd", "\U0001f44d\U0001f3fe", "\U0001f44d\U0001f3ff",
+                             "+1", ":+1:", ":thumbsup:"}
+            REJECT_WORDS = {"reject", "no", "stop", "cancel",
+                            "\U0001f44e", "-1", ":-1:", ":thumbsdown:"}
+            if lower in APPROVE_WORDS:
+                self.msg.send("Approved — starting implementation.", sender="Orchestrator")
+                return True
+            if lower in REJECT_WORDS:
+                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                return False
+
+            # Treat as a question — route to PM
+            logger.info("Question during plan review: %s", response[:100])
+            self._answer_human_question(response)
+            self.msg.send(
+                f"Any more questions? Auto-proceeding in {int(deadline - time.time())}s, "
+                "or reply **reject** to stop.",
+                sender="Orchestrator",
+            )
+
+        # Timeout — auto-approve (yolo mode)
+        self.msg.send(
+            f"No objection after {review_timeout}s — proceeding with implementation.",
+            sender="Orchestrator",
+        )
+        return True
+
+    def _get_phase_summary(self, prompt: str) -> str:
+        """Ask the dev session for a concise summary of what was just done."""
+        result = run_claude(
+            prompt=prompt,
+            cwd=self.project_path,
+            session_id=self.state.dev_session,
+            allowed_tools=["Read", "Glob"],
+            timeout=120,
+        )
+        self.state.dev_session = result.get("session_id", self.state.dev_session)
+        return result.get("result", "(no summary available)")
 
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
@@ -520,7 +636,7 @@ Otherwise, implement all tasks to completion."""
             prompt=prompt,
             cwd=self.project_path,
             session_id=self.state.dev_session,
-            allowed_tools=["Bash(git *)", "Bash(gh *)"],
+            allowed_tools=DEV_TOOLS,
             timeout=1800,
         )
 
@@ -607,6 +723,8 @@ def main() -> None:
         orchestrator._phase_dev_specify()
         orchestrator._phase_dev_plan()
         orchestrator._phase_dev_tasks()
+        if not orchestrator._phase_plan_review():
+            return
         orchestrator._phase_dev_implement()
         orchestrator._phase_create_pr()
         orchestrator._phase_done()

@@ -32,6 +32,8 @@ workflow:
   question_timeout: 120
   # Skip human approval and auto-proceed (useful for fully autonomous mode)
   auto_approve: false
+  # Seconds to wait at plan review before auto-proceeding (yolo mode)
+  plan_review_timeout: 60
   # After PR is created, loop back to suggest the next feature
   loop: false
   # Poll for human questions during implementation (seconds between checks)
