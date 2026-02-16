@@ -28,6 +28,12 @@ uv run python orchestrator.py --dry-run
 # Loop mode (keeps suggesting features after each PR)
 uv run python orchestrator.py --loop
 
+# Skip PM, implement a specific feature
+uv run python orchestrator.py --feature "Add user authentication"
+
+# Resume after crash/interrupt
+uv run python orchestrator.py --resume
+
 # Custom config
 uv run python orchestrator.py --config config.local.yaml
 
@@ -53,3 +59,10 @@ Override locally with `config.local.yaml` (gitignored).
 ## Target Project
 
 The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (configurable in config.yaml). That project must have speckit commands in `.claude/commands/`.
+
+## Git Conventions
+
+- Use **conventional commits**: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
+- Do NOT add `Co-Authored-By` lines to commit messages
+- Keep subject line under 72 characters
+- Use imperative mood in subject ("add feature" not "added feature")

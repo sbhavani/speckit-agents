@@ -1,10 +1,12 @@
-"""Tests for orchestrator resume functionality.
+"""Tests for orchestrator resume and structured logging functionality.
 
 Run: uv run pytest tests/test_orchestrator.py -m "not integration"
 """
 
 import json
-from unittest.mock import MagicMock
+import logging
+import subprocess
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,6 +16,7 @@ from orchestrator import (
     Messenger,
     Orchestrator,
     Phase,
+    run_claude,
 )
 
 
@@ -212,3 +215,268 @@ class TestDoneClearsState:
 
         orch._run_once()
         assert not (tmp_path / ".agent-team-state.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Duration formatting
+# ---------------------------------------------------------------------------
+
+class TestFmtDuration:
+    def test_seconds_only(self):
+        assert Orchestrator._fmt_duration(0) == "0s"
+        assert Orchestrator._fmt_duration(5) == "5s"
+        assert Orchestrator._fmt_duration(59) == "59s"
+
+    def test_minutes_and_seconds(self):
+        assert Orchestrator._fmt_duration(90) == "1m 30s"
+        assert Orchestrator._fmt_duration(125) == "2m 5s"
+
+    def test_exact_minutes(self):
+        assert Orchestrator._fmt_duration(60) == "1m"
+        assert Orchestrator._fmt_duration(120) == "2m"
+        assert Orchestrator._fmt_duration(600) == "10m"
+
+    def test_rounds_fractional_seconds(self):
+        assert Orchestrator._fmt_duration(2.4) == "2s"
+        assert Orchestrator._fmt_duration(2.6) == "3s"
+
+
+# ---------------------------------------------------------------------------
+# Phase timing tracking
+# ---------------------------------------------------------------------------
+
+class TestPhaseTimings:
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {"auto_approve": True},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        return Orchestrator(config, msg)
+
+    def test_timings_recorded_for_each_phase(self, tmp_path):
+        orch = self._make_orchestrator(tmp_path)
+
+        for _, method_name, is_checkpoint in PHASE_SEQUENCE_NORMAL:
+            if is_checkpoint:
+                setattr(orch, method_name, lambda: True)
+            else:
+                setattr(orch, method_name, lambda: None)
+
+        orch._run_once()
+
+        phase_names = [name for name, _ in orch._phase_timings]
+        assert phase_names == [p.name for p, _, _ in PHASE_SEQUENCE_NORMAL]
+        # All durations should be non-negative
+        assert all(dur >= 0 for _, dur in orch._phase_timings)
+
+    def test_timings_reset_each_run(self, tmp_path):
+        orch = self._make_orchestrator(tmp_path)
+
+        for _, method_name, is_checkpoint in PHASE_SEQUENCE_NORMAL:
+            if is_checkpoint:
+                setattr(orch, method_name, lambda: True)
+            else:
+                setattr(orch, method_name, lambda: None)
+
+        orch._run_once()
+        first_count = len(orch._phase_timings)
+        orch._run_once()
+        # Should not accumulate — reset each run
+        assert len(orch._phase_timings) == first_count
+
+    def test_timings_stop_on_rejection(self, tmp_path):
+        orch = self._make_orchestrator(tmp_path)
+
+        for _, method_name, is_checkpoint in PHASE_SEQUENCE_NORMAL:
+            if method_name == "_phase_review":
+                setattr(orch, method_name, lambda: False)
+            elif is_checkpoint:
+                setattr(orch, method_name, lambda: True)
+            else:
+                setattr(orch, method_name, lambda: None)
+
+        orch._run_once()
+
+        phase_names = [name for name, _ in orch._phase_timings]
+        assert "REVIEW" in phase_names
+        assert "DEV_SPECIFY" not in phase_names
+
+
+# ---------------------------------------------------------------------------
+# Summary posting
+# ---------------------------------------------------------------------------
+
+class TestPostSummary:
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        return Orchestrator(config, msg)
+
+    @patch("orchestrator.time")
+    def test_success_summary(self, mock_time, tmp_path):
+        mock_time.time.return_value = 522.0  # 8m 42s from epoch 0
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Add tests"}
+        orch.state.phase = Phase.DONE
+        orch.state.pr_url = "https://github.com/example/repo/pull/42"
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 2.0), ("PM_SUGGEST", 90.0)]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert "**Workflow Summary**" in text
+        assert "Add tests" in text
+        assert "Complete" in text
+        assert "8m 42s" in text
+        assert "INIT" in text
+        assert "PM_SUGGEST" in text
+        assert "1m 30s" in text
+        assert "https://github.com/example/repo/pull/42" in text
+
+    @patch("orchestrator.time")
+    def test_failure_summary(self, mock_time, tmp_path):
+        mock_time.time.return_value = 372.0  # 6m 12s from epoch 0
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Add tests"}
+        orch.state.phase = Phase.DEV_IMPLEMENT
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 2.0), ("DEV_SPECIFY", 30.0)]
+
+        orch._post_summary(error="RuntimeError: claude -p failed")
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert "Failed at DEV_IMPLEMENT" in text
+        assert "6m 12s" in text
+        assert "RuntimeError: claude -p failed" in text
+        assert "--resume" in text
+
+    @patch("orchestrator.time")
+    def test_summary_with_no_timings(self, mock_time, tmp_path):
+        mock_time.time.return_value = 5.0
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Test"}
+        orch.state.phase = Phase.INIT
+        orch._run_start_time = 0.0
+        orch._phase_timings = []
+
+        orch._post_summary(error="early failure")
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert "**Workflow Summary**" in text
+
+
+# ---------------------------------------------------------------------------
+# File logging setup
+# ---------------------------------------------------------------------------
+
+class TestFileLogging:
+    def test_root_logger_has_file_and_console_handlers(self):
+        root = logging.getLogger()
+        handler_types = [type(h) for h in root.handlers]
+        assert logging.StreamHandler in handler_types
+        assert logging.FileHandler in handler_types
+
+    def test_file_handler_is_debug_level(self):
+        root = logging.getLogger()
+        file_handlers = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
+        assert len(file_handlers) >= 1
+        assert file_handlers[0].level == logging.DEBUG
+
+    def test_console_handler_is_info_level(self):
+        root = logging.getLogger()
+        console_handlers = [
+            h for h in root.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+        ]
+        assert len(console_handlers) >= 1
+        assert console_handlers[0].level == logging.INFO
+
+
+# ---------------------------------------------------------------------------
+# Retry with backoff
+# ---------------------------------------------------------------------------
+
+class TestRunClaudeRetry:
+    @patch("orchestrator.time")
+    @patch("orchestrator.subprocess.run")
+    def test_succeeds_on_first_try(self, mock_run, mock_time):
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout='{"result": "ok", "session_id": "s1"}',
+        )
+        result = run_claude("hello", "/tmp", max_retries=2)
+        assert result["result"] == "ok"
+        assert mock_run.call_count == 1
+
+    @patch("orchestrator.time")
+    @patch("orchestrator.subprocess.run")
+    def test_retries_on_nonzero_exit(self, mock_run, mock_time):
+        fail = MagicMock(returncode=1, stderr="error details")
+        success = MagicMock(
+            returncode=0, stdout='{"result": "ok"}',
+        )
+        mock_run.side_effect = [fail, success]
+
+        result = run_claude("hello", "/tmp", max_retries=2)
+        assert result["result"] == "ok"
+        assert mock_run.call_count == 2
+        mock_time.sleep.assert_called_once_with(5)
+
+    @patch("orchestrator.time")
+    @patch("orchestrator.subprocess.run")
+    def test_raises_after_exhausting_retries(self, mock_run, mock_time):
+        fail = MagicMock(returncode=1, stderr="persistent error")
+        mock_run.side_effect = [fail, fail]
+
+        with pytest.raises(RuntimeError, match="persistent error"):
+            run_claude("hello", "/tmp", max_retries=2)
+        assert mock_run.call_count == 2
+
+    @patch("orchestrator.time")
+    @patch("orchestrator.subprocess.run")
+    def test_retries_on_timeout(self, mock_run, mock_time):
+        timeout_exc = subprocess.TimeoutExpired(cmd="claude", timeout=30)
+        timeout_exc.stdout = b""
+        success = MagicMock(
+            returncode=0, stdout='{"result": "recovered"}',
+        )
+        mock_run.side_effect = [timeout_exc, success]
+
+        result = run_claude("hello", "/tmp", timeout=30, max_retries=2)
+        assert result["result"] == "recovered"
+        assert mock_run.call_count == 2
+        mock_time.sleep.assert_called_once_with(5)
+
+    @patch("orchestrator.time")
+    @patch("orchestrator.subprocess.run")
+    def test_timeout_final_attempt_salvages_output(self, mock_run, mock_time):
+        timeout_exc = subprocess.TimeoutExpired(cmd="claude", timeout=30)
+        timeout_exc.stdout = b'{"result": "partial", "session_id": "s99"}'
+        mock_run.side_effect = [timeout_exc, timeout_exc]
+
+        result = run_claude("hello", "/tmp", timeout=30, max_retries=2)
+        assert result["result"] == "partial"
+        assert result["session_id"] == "s99"
+
+    @patch("orchestrator.time")
+    @patch("orchestrator.subprocess.run")
+    def test_backoff_increases_exponentially(self, mock_run, mock_time):
+        fail = MagicMock(returncode=1, stderr="err")
+        success = MagicMock(returncode=0, stdout='{"result": "ok"}')
+        mock_run.side_effect = [fail, fail, success]
+
+        result = run_claude("hello", "/tmp", max_retries=3)
+        assert result["result"] == "ok"
+        # Backoff: attempt 1 -> sleep(5), attempt 2 -> sleep(20)
+        calls = mock_time.sleep.call_args_list
+        assert calls[0][0][0] == 5
+        assert calls[1][0][0] == 20

@@ -244,9 +244,9 @@ workflow:
 - [x] 30-minute timeouts for long-running features
 
 ### Phase 6: Hardening
-- [ ] Add `--resume` to pick up from a failed state (persist WorkflowState to disk)
-- [ ] Add structured logging (file + Mattermost summary)
-- [ ] Handle `claude -p` timeout/crash gracefully (retry with backoff)
+- [x] Add `--resume` to pick up from a failed state (persist WorkflowState to disk)
+- [x] Add structured logging (file + Mattermost summary)
+- [x] Handle `claude -p` timeout/crash gracefully (retry with backoff)
 - [ ] Handle SSH connection failures (retry, alert to Mattermost)
 - [ ] Validate config on startup (check SSH connectivity, channel exists, bot token works)
 - [ ] Rate limiting / cost tracking for Claude API calls

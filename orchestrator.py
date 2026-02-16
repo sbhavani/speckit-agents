@@ -28,12 +28,33 @@ import yaml
 
 from mattermost_bridge import MattermostBridge
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
 logger = logging.getLogger(__name__)
+
+
+def _setup_logging() -> None:
+    """Configure console (INFO) and file (DEBUG) logging handlers."""
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    # Console handler — same format as before
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S",
+    ))
+    root.addHandler(console)
+
+    # File handler — full timestamps, DEBUG level, append mode
+    log_path = Path(__file__).resolve().parent / "orchestrator.log"
+    fh = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    root.addHandler(fh)
+
+
+_setup_logging()
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +149,12 @@ def run_claude(
     allowed_tools: list[str] | None = None,
     system_prompt: str | None = None,
     timeout: int = 1800,
+    max_retries: int = 2,
 ) -> dict:
     """Run `claude -p` and return parsed JSON output.
+
+    Retries up to *max_retries* times on transient failures (non-zero exit,
+    timeout) with exponential backoff (5s, 20s, …).
 
     Returns dict with keys: result, session_id, usage, etc.
     """
@@ -146,29 +171,53 @@ def run_claude(
 
     # Clear CLAUDECODE env var so we can spawn from within a Claude Code session
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, env=env
-        )
-    except subprocess.TimeoutExpired as e:
-        logger.warning("claude -p timed out after %ds, capturing partial output", timeout)
-        partial = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
-        # Try to salvage session_id from partial output
+
+    last_error: Exception | None = None
+    for attempt in range(1, max_retries + 1):
         try:
-            parsed = json.loads(partial)
-            return parsed
-        except (json.JSONDecodeError, ValueError):
-            return {"result": partial.strip(), "session_id": session_id, "_timeout": True}
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, env=env
+            )
+        except subprocess.TimeoutExpired as e:
+            logger.warning(
+                "claude -p timed out after %ds (attempt %d/%d)",
+                timeout, attempt, max_retries,
+            )
+            if attempt < max_retries:
+                backoff = 5 * (4 ** (attempt - 1))
+                logger.info("Retrying in %ds...", backoff)
+                time.sleep(backoff)
+                last_error = e
+                continue
+            # Final attempt — salvage what we can
+            partial = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
+            try:
+                parsed = json.loads(partial)
+                return parsed
+            except (json.JSONDecodeError, ValueError):
+                return {"result": partial.strip(), "session_id": session_id, "_timeout": True}
 
-    if result.returncode != 0:
-        logger.error("claude stderr: %s", result.stderr[:500])
-        raise RuntimeError(f"claude -p failed: {result.stderr[:500]}")
+        if result.returncode != 0:
+            last_error = RuntimeError(f"claude -p failed: {result.stderr[:500]}")
+            logger.error(
+                "claude -p returned %d (attempt %d/%d): %s",
+                result.returncode, attempt, max_retries, result.stderr[:200],
+            )
+            if attempt < max_retries:
+                backoff = 5 * (4 ** (attempt - 1))
+                logger.info("Retrying in %ds...", backoff)
+                time.sleep(backoff)
+                continue
+            raise last_error
 
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        # Sometimes output is plain text even with --output-format json
-        return {"result": result.stdout.strip(), "session_id": session_id}
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            # Sometimes output is plain text even with --output-format json
+            return {"result": result.stdout.strip(), "session_id": session_id}
+
+    # Should not reach here, but satisfy type checker
+    raise last_error  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +267,8 @@ class Orchestrator:
         self._workflow_type: str = "normal"  # "normal" or "feature"
         self._resuming: bool = False
         self._started_at: str | None = None
+        self._phase_timings: list[tuple[str, float]] = []
+        self._run_start_time: float | None = None
 
     # -- State persistence -----------------------------------------------------
 
@@ -275,18 +326,12 @@ class Orchestrator:
                 self._run_once()
             except KeyboardInterrupt:
                 self._save_state()
-                self.msg.send(
-                    "Workflow interrupted. Run with `--resume` to continue.",
-                    sender="Orchestrator",
-                )
+                self._post_summary(error="Interrupted by operator")
                 break
             except Exception as e:
                 self._save_state()
                 logger.exception("Workflow error")
-                self.msg.send(
-                    f"Workflow error: {e}\nRun with `--resume` to continue.",
-                    sender="Orchestrator",
-                )
+                self._post_summary(error=str(e))
                 break
 
             if not loop:
@@ -299,6 +344,9 @@ class Orchestrator:
 
     def _run_once(self) -> None:
         """Execute the workflow using the phase sequence list."""
+        self._phase_timings = []
+        self._run_start_time = time.time()
+
         sequence = (
             PHASE_SEQUENCE_FEATURE
             if self._workflow_type == "feature"
@@ -316,11 +364,14 @@ class Orchestrator:
 
         for phase, method_name, is_checkpoint in sequence[start_idx:]:
             method = getattr(self, method_name)
+            t0 = time.time()
             if is_checkpoint:
                 if not method():
+                    self._phase_timings.append((phase.name, time.time() - t0))
                     return  # rejected
             else:
                 method()
+            self._phase_timings.append((phase.name, time.time() - t0))
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -757,10 +808,67 @@ Otherwise, implement all tasks to completion."""
         self.state.phase = Phase.DONE
         logger.info("Phase: DONE")
 
+        self._post_summary()
+
         if self.state.pr_url:
             self.msg.send(f"PR created: {self.state.pr_url}", sender="Dev Agent")
         else:
             self.msg.send("Workflow complete (no PR URL captured).", sender="Orchestrator")
+
+    # -- Summary ---------------------------------------------------------------
+
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        """Format seconds into a human-readable duration string."""
+        s = int(round(seconds))
+        if s < 60:
+            return f"{s}s"
+        m, s = divmod(s, 60)
+        return f"{m}m {s}s" if s else f"{m}m"
+
+    def _post_summary(self, error: str | None = None) -> None:
+        """Format and send a workflow summary to Mattermost."""
+        feature_name = self.state.feature.get("feature", "N/A")
+
+        total = time.time() - self._run_start_time if self._run_start_time is not None else 0
+        duration_str = self._fmt_duration(total)
+
+        if error:
+            status = f"Failed at {self.state.phase.name}"
+        else:
+            status = "Complete"
+
+        # Build timing table
+        rows = []
+        for phase_name, dur in self._phase_timings:
+            rows.append(f"| {phase_name} | {self._fmt_duration(dur)} |")
+        table = (
+            "| Phase | Duration |\n"
+            "|:------|:---------|\n"
+            + "\n".join(rows)
+        )
+
+        if error:
+            summary = (
+                f"**Workflow Summary**\n"
+                f"Feature: {feature_name}\n"
+                f"Status: {status} | Duration: {duration_str}\n\n"
+                f"{table}\n\n"
+                f"Error: {error}\n"
+                f"Run with `--resume` to continue."
+            )
+        else:
+            pr_line = f"\nPR: {self.state.pr_url}" if self.state.pr_url else ""
+            summary = (
+                f"**Workflow Summary**\n"
+                f"Feature: {feature_name}\n"
+                f"Status: {status} | Duration: {duration_str}\n\n"
+                f"{table}"
+                f"{pr_line}"
+            )
+
+        logger.info("Workflow summary:\n%s", summary)
+        self.msg.send(summary, sender="Orchestrator")
 
     # -- Helpers ---------------------------------------------------------------
 
