@@ -34,7 +34,7 @@ Both agents are powered by Claude Code CLI (`claude -p`) running in headless mod
 |                                                           |
 |   State Machine:                                          |
 |   INIT -> PM_SUGGEST -> REVIEW -> DEV_SPECIFY -> DEV_PLAN|
-|        -> DEV_TASKS -> DEV_IMPLEMENT -> CREATE_PR -> DONE |
+|   -> DEV_TASKS -> PLAN_REVIEW -> DEV_IMPLEMENT -> CREATE_PR -> DONE |
 |                                                           |
 |   +-------------+                  +--------------+       |
 |   |  PM Agent   |   questions ->   |  Dev Agent    |      |
@@ -67,10 +67,11 @@ The central script that manages the workflow state machine.
 | `INIT` | Load config, verify connectivity | -- | No |
 | `PM_SUGGEST` | PM reads PRD, suggests highest-priority unimplemented feature | PM | No |
 | `REVIEW` | Post suggestion to Mattermost, wait for approval | -- | **Yes** (approve/reject/redirect) |
-| `DEV_SPECIFY` | Dev runs `/speckit.specify` with the approved feature | Dev | No |
-| `DEV_PLAN` | Dev runs `/speckit.plan` | Dev | No |
-| `DEV_TASKS` | Dev runs `/speckit.tasks` | Dev | No |
-| `DEV_IMPLEMENT` | Dev runs `/speckit.implement`, may ask questions | Dev | On questions |
+| `DEV_SPECIFY` | Dev runs `/speckit.specify`, posts summary to channel | Dev | No |
+| `DEV_PLAN` | Dev runs `/speckit.plan`, posts summary to channel | Dev | No |
+| `DEV_TASKS` | Dev runs `/speckit.tasks`, posts task list to channel | Dev | No |
+| `PLAN_REVIEW` | 60s window to ask PM questions or reject before impl | PM | **Yes** (yolo auto-proceed) |
+| `DEV_IMPLEMENT` | Dev implements, orchestrator polls for human questions | Dev+PM | On questions |
 | `CREATE_PR` | Dev creates branch, commits, opens PR via `gh pr create` | Dev | No |
 | `DONE` | Post PR link to Mattermost | -- | No |
 
@@ -141,14 +142,18 @@ openclaw:
 mattermost:
   channel_id: bhpbt6h4xtnem8int5ccmbo4dw
   url: "http://localhost:8065"
-  bot_token: <from openclaw config>
-  bot_user_id: <bot's mattermost user id>
+  dev_bot_token: <openclaw bot token>
+  dev_bot_user_id: <openclaw bot user id>
+  pm_bot_token: <product-manager bot token>
+  pm_bot_user_id: <product-manager bot user id>
 
 workflow:
   approval_timeout: 300
   question_timeout: 120
+  plan_review_timeout: 60
   auto_approve: false
   loop: false
+  impl_poll_interval: 15
 ```
 
 ## Workflow: End-to-End Example
@@ -205,34 +210,53 @@ workflow:
 - [x] Test sending/reading messages to Mattermost (verified live)
 - [x] Fix SSH banner filtering, zsh URL quoting
 - [x] Switch to uv for dependency management
-- [x] 15 unit tests + 3 integration tests, all passing
+- [x] 17 unit tests + 3 integration tests, all passing
 
 ### Phase 2: Agent Definitions [DONE]
 - [x] Write `.claude/agents/pm-agent.md`
 - [x] Write `.claude/agents/dev-agent.md`
-- [ ] Test agents independently with `claude -p`
+- [x] Test agents independently with `claude -p`
 
-### Phase 3: Orchestrator [DONE — needs end-to-end test]
+### Phase 3: Orchestrator [DONE]
 - [x] Implement state machine in `orchestrator.py`
 - [x] Wire up PM Agent -> Mattermost -> approval flow
 - [x] Wire up Dev Agent -> speckit workflow -> question handling
 - [x] Wire up PR creation -> Mattermost notification
 - [x] Add `--dry-run` mode for testing without Mattermost
-- [ ] End-to-end dry-run test against a real target project
-- [ ] End-to-end live test with Mattermost
+- [x] End-to-end dry-run test (--verbose flag feature, full pipeline)
+- [x] End-to-end live test with Mattermost (PR #2: --dry-run flag, PR #3: --version flag)
+- [x] `--feature` flag to skip PM and directly implement a named feature
+- [x] Graceful timeout handling (captures partial output, preserves session)
 
-### Phase 4: Hardening
+### Phase 4: Dual Bot Identity & Bidirectional Communication [DONE]
+- [x] Separate PM bot identity (product-manager bot via Mattermost API)
+- [x] Dev/Orchestrator messages via OpenClaw CLI (openclaw bot)
+- [x] Bidirectional PM Q&A during implementation (background thread polling)
+- [x] Human can ask PM questions during any review phase
+- [x] Both bot user IDs filtered when reading human messages
+
+### Phase 5: Plan Review & UX [DONE]
+- [x] Phase summaries posted to Mattermost after specify, plan, and tasks
+- [x] PLAN_REVIEW checkpoint before implementation starts
+- [x] 60-second yolo mode (auto-proceed if no objection, configurable)
+- [x] Emoji approval support (thumbs up/down)
+- [x] @mention stripping (e.g. `@openclaw go` recognized as `go`)
+- [x] 30-minute timeouts for long-running features
+
+### Phase 6: Hardening
 - [ ] Add `--resume` to pick up from a failed state (persist WorkflowState to disk)
 - [ ] Add structured logging (file + Mattermost summary)
 - [ ] Handle `claude -p` timeout/crash gracefully (retry with backoff)
 - [ ] Handle SSH connection failures (retry, alert to Mattermost)
 - [ ] Validate config on startup (check SSH connectivity, channel exists, bot token works)
+- [ ] Rate limiting / cost tracking for Claude API calls
 
-### Phase 5: Polish
-- [ ] Second OpenClaw bot account for Dev Agent (separate identity in Mattermost)
+### Phase 7: Polish
 - [ ] Progress reporting during long speckit phases (stream-json parsing)
 - [ ] Mattermost thread support (keep each feature's discussion in a thread)
-- [ ] `--feature` flag to skip PM and directly implement a named feature
+- [ ] Config-driven target project switching (work on different repos)
+- [ ] Post-PR code review agent (review before merging)
+- [ ] Metrics: time-per-phase, total cost, features shipped
 
 ## Technical Decisions
 
@@ -284,7 +308,8 @@ workflow:
 ### OpenClaw Mattermost Setup (already done)
 - Mattermost server: `http://localhost:8065` (on mac-mini-i7.local)
 - Mattermost server (Tailscale): `http://mac-mini-i7.tail58a751.ts.net:8065`
-- Bot user: `openclaw` (ID: `prmnsceu8bg8tm1kmb3zzhbdwr`, is_bot: true)
+- Dev bot: `openclaw` (ID: `prmnsceu8bg8tm1kmb3zzhbdwr`, is_bot: true) — sends via OpenClaw CLI
+- PM bot: `product-manager` (ID: `osnrc8yrpffifj56friubo5dxr`, is_bot: true) — sends via Mattermost API
 - Bot account in OpenClaw: `productManager`
 - Plugin: `@openclaw/mattermost` (loaded, v2026.2.15)
 - Gateway: port 18789, loopback bind
