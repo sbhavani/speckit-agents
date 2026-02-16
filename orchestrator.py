@@ -6,6 +6,8 @@ Usage:
     python orchestrator.py --config my.yaml    # Custom config
     python orchestrator.py --dry-run           # Skip Mattermost, print to stdout
     python orchestrator.py --loop              # Keep suggesting features after each PR
+    python orchestrator.py --feature "desc"    # Skip PM, implement this feature directly
+    python orchestrator.py --resume            # Resume from last saved state
 """
 
 import argparse
@@ -18,6 +20,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
 
@@ -57,6 +60,34 @@ class WorkflowState:
     pm_session: str | None = None
     dev_session: str | None = None
     pr_url: str | None = None
+
+
+STATE_FILE = ".agent-team-state.json"
+
+# Phase sequence: (Phase, method_name, is_checkpoint)
+# Checkpoint phases return bool — False aborts the workflow.
+PHASE_SEQUENCE_NORMAL: list[tuple[Phase, str, bool]] = [
+    (Phase.INIT, "_phase_init", False),
+    (Phase.PM_SUGGEST, "_phase_pm_suggest", False),
+    (Phase.REVIEW, "_phase_review", True),
+    (Phase.DEV_SPECIFY, "_phase_dev_specify", False),
+    (Phase.DEV_PLAN, "_phase_dev_plan", False),
+    (Phase.DEV_TASKS, "_phase_dev_tasks", False),
+    (Phase.PLAN_REVIEW, "_phase_plan_review", True),
+    (Phase.DEV_IMPLEMENT, "_phase_dev_implement", False),
+    (Phase.CREATE_PR, "_phase_create_pr", False),
+    (Phase.DONE, "_phase_done", False),
+]
+
+PHASE_SEQUENCE_FEATURE: list[tuple[Phase, str, bool]] = [
+    (Phase.DEV_SPECIFY, "_phase_dev_specify", False),
+    (Phase.DEV_PLAN, "_phase_dev_plan", False),
+    (Phase.DEV_TASKS, "_phase_dev_tasks", False),
+    (Phase.PLAN_REVIEW, "_phase_plan_review", True),
+    (Phase.DEV_IMPLEMENT, "_phase_dev_implement", False),
+    (Phase.CREATE_PR, "_phase_create_pr", False),
+    (Phase.DONE, "_phase_done", False),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +215,58 @@ class Orchestrator:
         self.project_path = config["project"]["path"]
         self.prd_path = config["project"]["prd_path"]
         self.state = WorkflowState()
+        self._workflow_type: str = "normal"  # "normal" or "feature"
+        self._resuming: bool = False
+        self._started_at: str | None = None
+
+    # -- State persistence -----------------------------------------------------
+
+    def _state_file_path(self) -> Path:
+        return Path(self.project_path) / STATE_FILE
+
+    def _save_state(self) -> None:
+        """Serialize workflow state to JSON after each phase completes."""
+        now = datetime.now(timezone.utc).isoformat()
+        if self._started_at is None:
+            self._started_at = now
+        data = {
+            "version": 1,
+            "workflow_type": self._workflow_type,
+            "phase": self.state.phase.name,
+            "feature": self.state.feature,
+            "pm_session": self.state.pm_session,
+            "dev_session": self.state.dev_session,
+            "pr_url": self.state.pr_url,
+            "started_at": self._started_at,
+            "updated_at": now,
+        }
+        path = self._state_file_path()
+        path.write_text(json.dumps(data, indent=2))
+        logger.info("State saved: phase=%s", self.state.phase.name)
+
+    def _load_state(self) -> dict | None:
+        """Load state from JSON file. Returns None if missing or corrupt."""
+        path = self._state_file_path()
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+            if data.get("version") != 1:
+                logger.warning("Unknown state file version: %s", data.get("version"))
+                return None
+            return data
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Could not load state file: %s", e)
+            return None
+
+    def _clear_state(self) -> None:
+        """Delete state file on successful completion."""
+        path = self._state_file_path()
+        if path.exists():
+            path.unlink()
+            logger.info("State file cleared")
+
+    # -- Run -------------------------------------------------------------------
 
     def run(self, loop: bool = False) -> None:
         """Execute the full workflow."""
@@ -191,32 +274,59 @@ class Orchestrator:
             try:
                 self._run_once()
             except KeyboardInterrupt:
-                self.msg.send("Workflow interrupted by operator.", sender="Orchestrator")
+                self._save_state()
+                self.msg.send(
+                    "Workflow interrupted. Run with `--resume` to continue.",
+                    sender="Orchestrator",
+                )
                 break
             except Exception as e:
+                self._save_state()
                 logger.exception("Workflow error")
-                self.msg.send(f"Workflow error: {e}", sender="Orchestrator")
+                self.msg.send(
+                    f"Workflow error: {e}\nRun with `--resume` to continue.",
+                    sender="Orchestrator",
+                )
                 break
 
             if not loop:
                 break
             # Reset state for next iteration
             self.state = WorkflowState()
+            self._workflow_type = "normal"
+            self._started_at = None
             self.msg.send("Starting next feature cycle...", sender="Orchestrator")
 
     def _run_once(self) -> None:
-        self._phase_init()
-        self._phase_pm_suggest()
-        if not self._phase_review():
-            return  # rejected
-        self._phase_dev_specify()
-        self._phase_dev_plan()
-        self._phase_dev_tasks()
-        if not self._phase_plan_review():
-            return  # rejected
-        self._phase_dev_implement()
-        self._phase_create_pr()
-        self._phase_done()
+        """Execute the workflow using the phase sequence list."""
+        sequence = (
+            PHASE_SEQUENCE_FEATURE
+            if self._workflow_type == "feature"
+            else PHASE_SEQUENCE_NORMAL
+        )
+
+        # On resume, skip past the last completed phase
+        start_idx = 0
+        if self._resuming:
+            for i, (phase, _, _) in enumerate(sequence):
+                if phase == self.state.phase:
+                    start_idx = i + 1
+                    break
+            self._resuming = False
+
+        for phase, method_name, is_checkpoint in sequence[start_idx:]:
+            method = getattr(self, method_name)
+            if is_checkpoint:
+                if not method():
+                    return  # rejected
+            else:
+                method()
+
+            # Save after each phase; clear on DONE
+            if phase == Phase.DONE:
+                self._clear_state()
+            else:
+                self._save_state()
 
     # -- Phases ----------------------------------------------------------------
 
@@ -681,7 +791,12 @@ def main() -> None:
     parser.add_argument("--loop", action="store_true", help="Keep running for multiple features")
     parser.add_argument("--feature", type=str, default=None,
                         help="Skip PM agent and directly implement this feature description")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from last saved state (.agent-team-state.json)")
     args = parser.parse_args()
+
+    if args.resume and args.feature:
+        parser.error("--resume and --feature are mutually exclusive")
 
     config_path = args.config
     if not os.path.exists(config_path):
@@ -705,11 +820,30 @@ def main() -> None:
         )
         messenger = Messenger(bridge=bridge)
 
-    loop = args.loop or config.get("workflow", {}).get("loop", False)
     orchestrator = Orchestrator(config, messenger)
 
-    if args.feature:
-        # Skip PM — inject the feature directly and jump to dev workflow
+    if args.resume:
+        saved = orchestrator._load_state()
+        if saved is None:
+            print("Error: No saved state found. Run without --resume first.")
+            sys.exit(1)
+        # Restore state from file
+        orchestrator.state.phase = Phase[saved["phase"]]
+        orchestrator.state.feature = saved.get("feature", {})
+        orchestrator.state.pm_session = saved.get("pm_session")
+        orchestrator.state.dev_session = saved.get("dev_session")
+        orchestrator.state.pr_url = saved.get("pr_url")
+        orchestrator._workflow_type = saved.get("workflow_type", "normal")
+        orchestrator._started_at = saved.get("started_at")
+        orchestrator._resuming = True
+        orchestrator.msg.send(
+            f"Resuming from **{saved['phase']}** phase",
+            sender="Orchestrator",
+        )
+        orchestrator.run(loop=False)
+    elif args.feature:
+        # Skip PM — inject the feature directly and use the feature sequence
+        orchestrator._workflow_type = "feature"
         orchestrator.state.feature = {
             "feature": args.feature[:60],
             "description": args.feature,
@@ -720,15 +854,9 @@ def main() -> None:
             f"Feature specified via CLI: **{args.feature[:60]}**",
             sender="Orchestrator",
         )
-        orchestrator._phase_dev_specify()
-        orchestrator._phase_dev_plan()
-        orchestrator._phase_dev_tasks()
-        if not orchestrator._phase_plan_review():
-            return
-        orchestrator._phase_dev_implement()
-        orchestrator._phase_create_pr()
-        orchestrator._phase_done()
+        orchestrator.run(loop=False)
     else:
+        loop = args.loop or config.get("workflow", {}).get("loop", False)
         orchestrator.run(loop=loop)
 
 
