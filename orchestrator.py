@@ -92,7 +92,7 @@ def run_claude(
     session_id: str | None = None,
     allowed_tools: list[str] | None = None,
     system_prompt: str | None = None,
-    timeout: int = 600,
+    timeout: int = 1800,
 ) -> dict:
     """Run `claude -p` and return parsed JSON output.
 
@@ -316,7 +316,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             prompt=f"/speckit.specify {desc}",
             cwd=self.project_path,
             allowed_tools=DEV_TOOLS,
-            timeout=600,
+            timeout=1800,
         )
         self.state.dev_session = result.get("session_id")
 
@@ -332,7 +332,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=600,
+            timeout=1800,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -348,7 +348,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=600,
+            timeout=1800,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -371,7 +371,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=900,  # implementation can take a while
+            timeout=1800,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -420,7 +420,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.pm_session,
             allowed_tools=PM_TOOLS,
-            timeout=120,
+            timeout=1800,
         )
         self.state.pm_session = pm_result.get("session_id", self.state.pm_session)
         pm_answer = pm_result.get("result", "No answer from PM")
@@ -444,7 +444,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=900,
+            timeout=1800,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -465,7 +465,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=["Bash(git *)", "Bash(gh *)"],
-            timeout=300,
+            timeout=1800,
         )
 
         self.state.pr_url = result.get("result", "").strip()
