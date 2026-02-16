@@ -8,10 +8,18 @@ project:
 
 openclaw:
   ssh_host: sb@mac-mini-i7.local
-  # Mattermost channel name or ID to post in
-  mattermost_channel: "product-dev"
-  # OpenClaw account ID for the PM bot (from openclaw config)
-  mattermost_account: productManager
+  # OpenClaw account ID for the bot (from openclaw config)
+  openclaw_account: productManager
+
+mattermost:
+  # Channel ID for #product-dev (use Mattermost API to find)
+  channel_id: bhpbt6h4xtnem8int5ccmbo4dw
+  # Mattermost server URL (as seen from the remote host)
+  url: "http://localhost:8065"
+  # Bot token for API reads (openclaw's main bot token)
+  bot_token: ptw33cc8zi8qxdqhftkeexz7ca
+  # Bot user ID (to filter out bot messages when polling for human replies)
+  bot_user_id: prmnsceu8bg8tm1kmb3zzhbdwr
 
 workflow:
   # Seconds to wait for human approval of feature suggestion

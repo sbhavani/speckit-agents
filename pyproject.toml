@@ -1,0 +1,18 @@
+[project]
+name = "agent-team"
+version = "0.1.0"
+description = "PM + Developer agent team orchestrator with Mattermost via OpenClaw"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require SSH access to mac-mini-i7.local and live Mattermost",
+]

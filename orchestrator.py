@@ -503,10 +503,14 @@ def main() -> None:
     if args.dry_run:
         messenger = Messenger(bridge=None, dry_run=True)
     else:
+        mm = config["mattermost"]
         bridge = MattermostBridge(
             ssh_host=config["openclaw"]["ssh_host"],
-            channel_target=config["openclaw"]["mattermost_channel"],
-            account=config["openclaw"].get("mattermost_account"),
+            channel_id=mm["channel_id"],
+            mattermost_url=mm.get("url", "http://localhost:8065"),
+            bot_token=mm["bot_token"],
+            bot_user_id=mm.get("bot_user_id", ""),
+            openclaw_account=config["openclaw"].get("openclaw_account"),
         )
         messenger = Messenger(bridge=bridge)
 

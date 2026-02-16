@@ -1,4 +1,9 @@
-"""Mattermost communication bridge via OpenClaw CLI over SSH."""
+"""Mattermost communication bridge.
+
+Sends messages via OpenClaw CLI (over SSH).
+Reads messages via the Mattermost REST API (over SSH + curl), since OpenClaw's
+``message read`` is not supported for the Mattermost channel plugin.
+"""
 
 import json
 import logging
@@ -9,113 +14,168 @@ logger = logging.getLogger(__name__)
 
 
 class MattermostBridge:
-    """Send and receive Mattermost messages through OpenClaw CLI on a remote host."""
+    """Send and receive Mattermost messages through a remote host."""
 
-    def __init__(self, ssh_host: str, channel_target: str, account: str | None = None):
+    def __init__(
+        self,
+        ssh_host: str,
+        channel_id: str,
+        mattermost_url: str = "http://localhost:8065",
+        bot_token: str = "",
+        bot_user_id: str = "",
+        openclaw_account: str | None = None,
+    ):
         self.ssh_host = ssh_host
-        self.channel_target = channel_target
-        self.account = account
-        self._last_message_id: str | None = None
+        self.channel_id = channel_id
+        self.mattermost_url = mattermost_url
+        self.bot_token = bot_token
+        self.bot_user_id = bot_user_id
+        self.openclaw_account = openclaw_account
+        self._last_seen_ts: int = 0  # create_at timestamp of last seen post
 
-    def _run_openclaw(self, args: list[str], timeout: int = 30) -> str:
-        """Run an openclaw command on the remote host via SSH."""
-        cmd = ["ssh", self.ssh_host, "openclaw " + " ".join(args)]
-        logger.debug("Running: %s", " ".join(cmd))
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
-        if result.returncode != 0:
-            logger.error("openclaw error: %s", result.stderr)
-            raise RuntimeError(f"openclaw command failed: {result.stderr}")
-        return result.stdout.strip()
+    # ------------------------------------------------------------------
+    # Send (via OpenClaw CLI)
+    # ------------------------------------------------------------------
 
-    def send(self, message: str, sender: str | None = None) -> None:
-        """Send a message to the Mattermost channel."""
+    def send(self, message: str, sender: str | None = None) -> dict:
+        """Send a message to the Mattermost channel. Returns send result."""
         if sender:
             text = f"**[{sender}]** {message}"
         else:
             text = message
 
         args = [
-            "message", "send",
+            "openclaw", "message", "send",
             "--channel", "mattermost",
-            "--target", f"'{self.channel_target}'",
+            "--target", f"channel:{self.channel_id}",
             "-m", self._shell_quote(text),
-        ]
-        if self.account:
-            args.extend(["--account", self.account])
-
-        self._run_openclaw(args)
-        logger.info("Sent to %s: %s", self.channel_target, text[:100])
-
-    def read_recent(self, limit: int = 10) -> list[dict]:
-        """Read recent messages from the channel."""
-        args = [
-            "message", "read",
-            "--channel", "mattermost",
-            "--target", f"'{self.channel_target}'",
-            "--limit", str(limit),
             "--json",
         ]
-        if self.account:
-            args.extend(["--account", self.account])
+        if self.openclaw_account:
+            args.extend(["--account", self.openclaw_account])
 
-        output = self._run_openclaw(args, timeout=15)
+        output = self._ssh(args)
+        logger.info("Sent to %s: %s", self.channel_id, text[:100])
         try:
             return json.loads(output)
         except json.JSONDecodeError:
-            logger.warning("Could not parse message read output: %s", output[:200])
-            return []
+            return {"raw": output}
 
-    def read_new(self) -> list[dict]:
-        """Read only messages newer than the last seen message."""
-        args = [
-            "message", "read",
-            "--channel", "mattermost",
-            "--target", f"'{self.channel_target}'",
-            "--limit", "20",
-            "--json",
+    # ------------------------------------------------------------------
+    # Read (via Mattermost REST API)
+    # ------------------------------------------------------------------
+
+    def read_posts(self, limit: int = 10, after: int = 0) -> list[dict]:
+        """Read recent posts from the channel via the Mattermost API.
+
+        Returns a list of post dicts sorted oldest-first, each containing:
+        ``id``, ``message``, ``user_id``, ``create_at``, ``type``.
+        """
+        url = f"{self.mattermost_url}/api/v4/channels/{self.channel_id}/posts?per_page={limit}"
+        if after:
+            url += f"&since={after}"
+
+        curl_cmd = [
+            "curl", "-sf", f"'{url}'",
+            "-H", f"'Authorization: Bearer {self.bot_token}'",
         ]
-        if self._last_message_id:
-            args.extend(["--after", self._last_message_id])
-        if self.account:
-            args.extend(["--account", self.account])
+        output = self._ssh(curl_cmd, timeout=15)
 
-        output = self._run_openclaw(args, timeout=15)
         try:
-            messages = json.loads(output)
+            data = json.loads(output)
         except json.JSONDecodeError:
+            logger.warning("Could not parse Mattermost API response: %s", output[:200])
             return []
 
-        if messages:
-            self._last_message_id = messages[-1].get("id", self._last_message_id)
-        return messages
+        posts = []
+        for pid in data.get("order", []):
+            p = data["posts"][pid]
+            posts.append({
+                "id": p["id"],
+                "message": p.get("message", ""),
+                "user_id": p.get("user_id", ""),
+                "create_at": p.get("create_at", 0),
+                "type": p.get("type", ""),
+            })
+
+        # Sort oldest first
+        posts.sort(key=lambda x: x["create_at"])
+        return posts
+
+    def read_new_human_messages(self) -> list[dict]:
+        """Read new non-bot, non-system messages since the last check."""
+        posts = self.read_posts(limit=20, after=self._last_seen_ts)
+
+        human = []
+        for p in posts:
+            # Skip system messages
+            if p["type"]:
+                continue
+            # Skip our own bot messages
+            if p["user_id"] == self.bot_user_id:
+                continue
+            # Skip posts we already saw
+            if p["create_at"] <= self._last_seen_ts:
+                continue
+            human.append(p)
+
+        if posts:
+            self._last_seen_ts = max(p["create_at"] for p in posts)
+
+        return human
+
+    def mark_current_position(self) -> None:
+        """Set the read cursor to now so wait_for_response only sees new messages."""
+        posts = self.read_posts(limit=1)
+        if posts:
+            self._last_seen_ts = posts[-1]["create_at"]
 
     def wait_for_response(self, timeout: int = 300, poll_interval: int = 5) -> str | None:
-        """Poll for a human response in the channel. Returns message text or None on timeout."""
-        # Mark the current position so we only see new messages
-        recent = self.read_recent(limit=1)
-        if recent:
-            self._last_message_id = recent[-1].get("id")
+        """Poll for a human response. Returns message text or None on timeout."""
+        self.mark_current_position()
 
         deadline = time.time() + timeout
         while time.time() < deadline:
             time.sleep(poll_interval)
-            new_messages = self.read_new()
-            for msg in new_messages:
-                # Skip bot messages (only care about human responses)
-                is_bot = msg.get("isBot", False) or msg.get("bot", False)
-                if not is_bot:
-                    text = msg.get("text", msg.get("content", "")).strip()
-                    if text:
-                        logger.info("Human response: %s", text[:100])
-                        return text
+            new = self.read_new_human_messages()
+            for msg in new:
+                text = msg.get("message", "").strip()
+                if text:
+                    logger.info("Human response: %s", text[:100])
+                    return text
+
         logger.info("Timed out waiting for response after %ds", timeout)
         return None
+
+    # ------------------------------------------------------------------
+    # SSH helper
+    # ------------------------------------------------------------------
+
+    def _ssh(self, remote_cmd: list[str], timeout: int = 30) -> str:
+        """Run a command on the remote host via SSH."""
+        cmd = ["ssh", self.ssh_host, " ".join(remote_cmd)]
+        logger.debug("SSH: %s", " ".join(remote_cmd))
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            # Filter out the SSH banner
+            lines = [l for l in stderr.splitlines() if not l.startswith("*") and "UNAUTHORIZED" not in l and "monitored" not in l and "Disconnect" not in l]
+            clean_err = "\n".join(lines).strip()
+            if clean_err:
+                logger.error("SSH command error: %s", clean_err)
+                raise RuntimeError(f"Remote command failed: {clean_err}")
+        # Filter SSH banner from stdout too
+        stdout = result.stdout
+        lines = stdout.splitlines()
+        filtered = []
+        for line in lines:
+            if line.startswith("***") or "UNAUTHORIZED" in line or "monitored" in line or "Disconnect" in line:
+                continue
+            filtered.append(line)
+        return "\n".join(filtered).strip()
 
     @staticmethod
     def _shell_quote(s: str) -> str:
         """Quote a string for safe passing through SSH + shell."""
-        # Use $'...' syntax to handle special characters
         escaped = s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
         return f"$'{escaped}'"

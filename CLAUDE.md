@@ -16,25 +16,39 @@ Agent Team — A multi-agent orchestration system where a Product Manager agent 
 ## Commands
 
 ```bash
+# Setup
+uv sync --dev
+
 # Run the orchestrator (posts to Mattermost)
-python orchestrator.py
+uv run python orchestrator.py
 
 # Dry run (prints to stdout, no Mattermost)
-python orchestrator.py --dry-run
+uv run python orchestrator.py --dry-run
 
 # Loop mode (keeps suggesting features after each PR)
-python orchestrator.py --loop
+uv run python orchestrator.py --loop
 
 # Custom config
-python orchestrator.py --config config.local.yaml
+uv run python orchestrator.py --config config.local.yaml
+
+# Tests
+uv run pytest tests/ -m "not integration"    # unit tests only
+uv run pytest tests/ -m integration           # live Mattermost tests
+uv run pytest tests/                          # all tests
 ```
 
 ## Key Dependencies
 
-- Claude Code CLI (`claude`) — must be installed and authenticated
-- OpenClaw on `sb@mac-mini-i7.local` — Mattermost bridge
-- GitHub CLI (`gh`) — for PR creation
-- Python 3.10+ with pyyaml
+- **uv** — dependency management
+- **Claude Code CLI** (`claude`) — must be installed and authenticated
+- **OpenClaw** on `sb@mac-mini-i7.local` — Mattermost bridge
+- **GitHub CLI** (`gh`) — for PR creation
+- Python 3.10+
+
+## Configuration
+
+All environment-specific values live in `config.yaml` (channel IDs, tokens, SSH hosts, etc.).
+Override locally with `config.local.yaml` (gitignored).
 
 ## Target Project
 
