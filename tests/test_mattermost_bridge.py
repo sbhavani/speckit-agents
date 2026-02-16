@@ -37,8 +37,10 @@ def _make_bridge_from_config():
         ssh_host=cfg["openclaw"]["ssh_host"],
         channel_id=mm["channel_id"],
         mattermost_url=mm.get("url", "http://localhost:8065"),
-        bot_token=mm["bot_token"],
-        bot_user_id=mm.get("bot_user_id", ""),
+        dev_bot_token=mm["dev_bot_token"],
+        dev_bot_user_id=mm.get("dev_bot_user_id", ""),
+        pm_bot_token=mm.get("pm_bot_token", ""),
+        pm_bot_user_id=mm.get("pm_bot_user_id", ""),
         openclaw_account=cfg["openclaw"].get("openclaw_account"),
     )
 
@@ -56,8 +58,10 @@ def mock_bridge():
         ssh_host="test@host",
         channel_id="test_channel_id",
         mattermost_url="http://localhost:8065",
-        bot_token="test_token",
-        bot_user_id="bot_user_123",
+        dev_bot_token="test_token",
+        dev_bot_user_id="bot_user_123",
+        pm_bot_token="pm_token_456",
+        pm_bot_user_id="pm_user_456",
         openclaw_account="testAccount",
     )
 
@@ -97,19 +101,33 @@ class TestSend:
         assert result["result"]["messageId"] == "abc123"
 
     @patch("mattermost_bridge.MattermostBridge._ssh")
-    def test_send_with_sender(self, mock_ssh, mock_bridge):
-        mock_ssh.return_value = "{}"
+    def test_send_pm_uses_api(self, mock_ssh, mock_bridge):
+        """PM Agent messages should go via Mattermost API (product-manager bot)."""
+        mock_ssh.return_value = '{"id": "post123"}'
         mock_bridge.send("test message", sender="PM Agent")
         call_args = " ".join(mock_ssh.call_args[0][0])
-        assert "PM Agent" in call_args
+        # Should use curl POST to /api/v4/posts, not openclaw CLI
+        assert "curl" in call_args
+        assert "/api/v4/posts" in call_args
+        assert "pm_token_456" in call_args
 
     @patch("mattermost_bridge.MattermostBridge._ssh")
-    def test_send_with_account(self, mock_ssh, mock_bridge):
+    def test_send_dev_uses_openclaw(self, mock_ssh, mock_bridge):
+        """Dev Agent messages should go via OpenClaw CLI."""
         mock_ssh.return_value = "{}"
-        mock_bridge.send("test")
-        call_args = mock_ssh.call_args[0][0]
+        mock_bridge.send("test message", sender="Dev Agent")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        assert "openclaw" in call_args
         assert "--account" in call_args
         assert "testAccount" in call_args
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_orchestrator_uses_openclaw(self, mock_ssh, mock_bridge):
+        """Orchestrator messages should go via OpenClaw CLI."""
+        mock_ssh.return_value = "{}"
+        mock_bridge.send("test", sender="Orchestrator")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        assert "openclaw" in call_args
 
 
 class TestReadPosts:
@@ -159,6 +177,26 @@ class TestReadNewHumanMessages:
                 },
                 "p2": {
                     "id": "p2", "message": "human msg", "user_id": "human_456",
+                    "create_at": 3000, "type": "",
+                },
+            },
+        })
+        mock_bridge._last_seen_ts = 1000
+        human = mock_bridge.read_new_human_messages()
+        assert len(human) == 1
+        assert human[0]["message"] == "human msg"
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_filters_pm_bot_messages(self, mock_ssh, mock_bridge):
+        mock_ssh.return_value = json.dumps({
+            "order": ["p1", "p2"],
+            "posts": {
+                "p1": {
+                    "id": "p1", "message": "pm bot msg", "user_id": "pm_user_456",
+                    "create_at": 2000, "type": "",
+                },
+                "p2": {
+                    "id": "p2", "message": "human msg", "user_id": "human_789",
                     "create_at": 3000, "type": "",
                 },
             },
@@ -280,6 +318,6 @@ class TestIntegrationSendRead:
 
         # Read new human messages — should be empty since only the bot posted
         human = bridge.read_new_human_messages()
-        # All messages should be from humans (the bot message should be filtered)
+        # All messages should be from humans (bot messages should be filtered)
         for msg in human:
-            assert msg["user_id"] != bridge.bot_user_id
+            assert msg["user_id"] not in bridge.bot_user_ids

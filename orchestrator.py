@@ -14,6 +14,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -357,7 +358,11 @@ Return ONLY a JSON object (no markdown fences, no extra text):
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
         logger.info("Phase: DEV_IMPLEMENT")
-        self.msg.send("Starting implementation...", sender="Dev Agent")
+        self.msg.send(
+            "Starting implementation... You can ask me product questions anytime "
+            "during this phase and the PM will answer.",
+            sender="Dev Agent",
+        )
 
         prompt = """/speckit.implement
 
@@ -366,22 +371,73 @@ IMPORTANT: If you encounter an ambiguity or need a product decision, output ONLY
 
 Otherwise, implement all tasks to completion."""
 
-        result = run_claude(
-            prompt=prompt,
-            cwd=self.project_path,
-            session_id=self.state.dev_session,
-            allowed_tools=DEV_TOOLS,
-            timeout=1800,
-        )
-        self.state.dev_session = result.get("session_id", self.state.dev_session)
+        # Run dev agent in a background thread so we can poll Mattermost
+        # for human questions while it works.
+        dev_result_holder: list[dict] = []
 
-        raw = result.get("result", "")
+        def _run_dev():
+            result = run_claude(
+                prompt=prompt,
+                cwd=self.project_path,
+                session_id=self.state.dev_session,
+                allowed_tools=DEV_TOOLS,
+                timeout=1800,
+            )
+            dev_result_holder.append(result)
 
-        # Check if dev asked a question
-        if '"type": "question"' in raw or '"type":"question"' in raw:
-            self._handle_dev_question(raw)
+        dev_thread = threading.Thread(target=_run_dev, daemon=True)
+        dev_thread.start()
+
+        # Poll for human questions while dev is implementing
+        poll_interval = self.cfg.get("workflow", {}).get("impl_poll_interval", 15)
+        if not self.msg.dry_run:
+            self.msg.bridge.mark_current_position()
+
+        while dev_thread.is_alive():
+            dev_thread.join(timeout=poll_interval)
+            if dev_thread.is_alive() and not self.msg.dry_run:
+                self._check_for_human_questions()
+
+        # Dev agent finished — process its result
+        if dev_result_holder:
+            result = dev_result_holder[0]
+            self.state.dev_session = result.get("session_id", self.state.dev_session)
+            raw = result.get("result", "")
+
+            # Check if dev asked a question (it stopped to ask)
+            if '"type": "question"' in raw or '"type":"question"' in raw:
+                self._handle_dev_question(raw)
 
         self.msg.send("Implementation complete.", sender="Dev Agent")
+
+    def _check_for_human_questions(self) -> None:
+        """Check Mattermost for human messages and route them to the PM agent."""
+        new = self.msg.bridge.read_new_human_messages()
+        for msg in new:
+            text = msg.get("message", "").strip()
+            if not text:
+                continue
+            logger.info("Human question during impl: %s", text[:100])
+            self._answer_human_question(text)
+
+    def _answer_human_question(self, question: str) -> None:
+        """Have the PM agent answer a human question posted in Mattermost."""
+        pm_prompt = (
+            f"A team member asks the following question during feature implementation:\n\n"
+            f"\"{question}\"\n\n"
+            f"Answer based on the PRD (docs/PRD.md) and project context. "
+            f"Be concise and helpful."
+        )
+        pm_result = run_claude(
+            prompt=pm_prompt,
+            cwd=self.project_path,
+            session_id=self.state.pm_session,
+            allowed_tools=PM_TOOLS,
+            timeout=1800,
+        )
+        self.state.pm_session = pm_result.get("session_id", self.state.pm_session)
+        answer = pm_result.get("result", "I couldn't determine an answer from the PRD.")
+        self.msg.send(answer, sender="PM Agent")
 
     def _handle_dev_question(self, raw: str) -> None:
         """Route a developer question through PM and/or Mattermost."""
@@ -525,8 +581,10 @@ def main() -> None:
             ssh_host=config["openclaw"]["ssh_host"],
             channel_id=mm["channel_id"],
             mattermost_url=mm.get("url", "http://localhost:8065"),
-            bot_token=mm["bot_token"],
-            bot_user_id=mm.get("bot_user_id", ""),
+            dev_bot_token=mm["dev_bot_token"],
+            dev_bot_user_id=mm.get("dev_bot_user_id", ""),
+            pm_bot_token=mm.get("pm_bot_token", ""),
+            pm_bot_user_id=mm.get("pm_bot_user_id", ""),
             openclaw_account=config["openclaw"].get("openclaw_account"),
         )
         messenger = Messenger(bridge=bridge)

@@ -8,18 +8,22 @@ project:
 
 openclaw:
   ssh_host: sb@mac-mini-i7.local
-  # OpenClaw account ID for the bot (from openclaw config)
+  # OpenClaw account ID used for sending via openclaw CLI
   openclaw_account: productManager
 
 mattermost:
-  # Channel ID for #product-dev (use Mattermost API to find)
+  # Channel ID for #product-dev
   channel_id: bhpbt6h4xtnem8int5ccmbo4dw
   # Mattermost server URL (as seen from the remote host)
   url: "http://localhost:8065"
-  # Bot token for API reads (openclaw's main bot token)
-  bot_token: ptw33cc8zi8qxdqhftkeexz7ca
-  # Bot user ID (to filter out bot messages when polling for human replies)
-  bot_user_id: prmnsceu8bg8tm1kmb3zzhbdwr
+
+  # Dev Agent bot (openclaw bot — used for dev messages and general reads)
+  dev_bot_token: ptw33cc8zi8qxdqhftkeexz7ca
+  dev_bot_user_id: prmnsceu8bg8tm1kmb3zzhbdwr
+
+  # PM Agent bot (product-manager — separate identity for PM messages)
+  pm_bot_token: 766ym1sjein9znmsxr3y9a41uc
+  pm_bot_user_id: osnrc8yrpffifj56friubo5dxr
 
 workflow:
   # Seconds to wait for human approval of feature suggestion
@@ -30,3 +34,5 @@ workflow:
   auto_approve: false
   # After PR is created, loop back to suggest the next feature
   loop: false
+  # Poll for human questions during implementation (seconds between checks)
+  impl_poll_interval: 15

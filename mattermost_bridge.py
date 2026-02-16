@@ -1,8 +1,11 @@
-"""Mattermost communication bridge.
+"""Mattermost communication bridge with dual bot identities.
 
-Sends messages via OpenClaw CLI (over SSH).
-Reads messages via the Mattermost REST API (over SSH + curl), since OpenClaw's
-``message read`` is not supported for the Mattermost channel plugin.
+Sends messages via either:
+- OpenClaw CLI (over SSH) for the Dev Agent (openclaw bot)
+- Mattermost REST API (over SSH + curl) for the PM Agent (product-manager bot)
+
+Reads messages via the Mattermost REST API, since OpenClaw's ``message read``
+is not supported for the Mattermost channel plugin.
 """
 
 import json
@@ -14,31 +17,50 @@ logger = logging.getLogger(__name__)
 
 
 class MattermostBridge:
-    """Send and receive Mattermost messages through a remote host."""
+    """Send and receive Mattermost messages through a remote host.
+
+    Supports two bot identities: a Dev bot (via OpenClaw) and a PM bot
+    (via Mattermost API). Human messages are those from neither bot.
+    """
 
     def __init__(
         self,
         ssh_host: str,
         channel_id: str,
         mattermost_url: str = "http://localhost:8065",
-        bot_token: str = "",
-        bot_user_id: str = "",
+        dev_bot_token: str = "",
+        dev_bot_user_id: str = "",
+        pm_bot_token: str = "",
+        pm_bot_user_id: str = "",
         openclaw_account: str | None = None,
     ):
         self.ssh_host = ssh_host
         self.channel_id = channel_id
         self.mattermost_url = mattermost_url
-        self.bot_token = bot_token
-        self.bot_user_id = bot_user_id
+        self.dev_bot_token = dev_bot_token
+        self.dev_bot_user_id = dev_bot_user_id
+        self.pm_bot_token = pm_bot_token
+        self.pm_bot_user_id = pm_bot_user_id
         self.openclaw_account = openclaw_account
+        self.bot_user_ids = {dev_bot_user_id, pm_bot_user_id} - {""}
         self._last_seen_ts: int = 0  # create_at timestamp of last seen post
 
     # ------------------------------------------------------------------
-    # Send (via OpenClaw CLI)
+    # Send (dual identity)
     # ------------------------------------------------------------------
 
     def send(self, message: str, sender: str | None = None) -> dict:
-        """Send a message to the Mattermost channel. Returns send result."""
+        """Send a message to the channel.
+
+        If sender is "PM Agent", posts via the PM bot's Mattermost token.
+        Otherwise posts via OpenClaw CLI (Dev bot / Orchestrator).
+        """
+        if sender and sender == "PM Agent" and self.pm_bot_token:
+            return self._send_via_api(message, self.pm_bot_token)
+        return self._send_via_openclaw(message, sender)
+
+    def _send_via_openclaw(self, message: str, sender: str | None = None) -> dict:
+        """Send via OpenClaw CLI (appears as the openclaw/dev bot)."""
         if sender:
             text = f"**[{sender}]** {message}"
         else:
@@ -55,7 +77,25 @@ class MattermostBridge:
             args.extend(["--account", self.openclaw_account])
 
         output = self._ssh(args)
-        logger.info("Sent to %s: %s", self.channel_id, text[:100])
+        logger.info("Sent (dev): %s", text[:100])
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            return {"raw": output}
+
+    def _send_via_api(self, message: str, bot_token: str) -> dict:
+        """Send via Mattermost REST API (appears as the specified bot)."""
+        payload = json.dumps({"channel_id": self.channel_id, "message": message})
+        curl_cmd = [
+            "curl", "-sf",
+            "-X", "POST",
+            f"'{self.mattermost_url}/api/v4/posts'",
+            "-H", f"'Authorization: Bearer {bot_token}'",
+            "-H", "'Content-Type: application/json'",
+            "-d", self._shell_quote(payload),
+        ]
+        output = self._ssh(curl_cmd, timeout=15)
+        logger.info("Sent (pm): %s", message[:100])
         try:
             return json.loads(output)
         except json.JSONDecodeError:
@@ -77,7 +117,7 @@ class MattermostBridge:
 
         curl_cmd = [
             "curl", "-sf", f"'{url}'",
-            "-H", f"'Authorization: Bearer {self.bot_token}'",
+            "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
         ]
         output = self._ssh(curl_cmd, timeout=15)
 
@@ -111,8 +151,8 @@ class MattermostBridge:
             # Skip system messages
             if p["type"]:
                 continue
-            # Skip our own bot messages
-            if p["user_id"] == self.bot_user_id:
+            # Skip all bot messages
+            if p["user_id"] in self.bot_user_ids:
                 continue
             # Skip posts we already saw
             if p["create_at"] <= self._last_seen_ts:
