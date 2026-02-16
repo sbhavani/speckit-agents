@@ -1,0 +1,24 @@
+# Agent Team Configuration
+# Copy to config.local.yaml and customize for your setup
+
+project:
+  # The target project to work on (where PRD.md and speckit commands live)
+  path: /Users/sbhavani/code/finance-agent
+  prd_path: docs/PRD.md
+
+openclaw:
+  ssh_host: sb@mac-mini-i7.local
+  # Mattermost channel name or ID to post in
+  mattermost_channel: "product-dev"
+  # OpenClaw account ID for the PM bot (from openclaw config)
+  mattermost_account: productManager
+
+workflow:
+  # Seconds to wait for human approval of feature suggestion
+  approval_timeout: 300
+  # Seconds to wait for human answer to dev questions
+  question_timeout: 120
+  # Skip human approval and auto-proceed (useful for fully autonomous mode)
+  auto_approve: false
+  # After PR is created, loop back to suggest the next feature
+  loop: false
