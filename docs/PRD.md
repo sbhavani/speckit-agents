@@ -11,40 +11,40 @@ Both agents are powered by Claude Code CLI (`claude -p`) running in headless mod
 1. **Autonomous feature delivery**: PM reads PRD, picks a feature, Dev implements it, PR is created
 2. **Transparent communication**: All decisions and questions are visible in Mattermost
 3. **Human-in-the-loop**: Operator can approve, reject, redirect, or answer questions at any point
-4. **Structured implementation**: Dev follows speckit workflow (specify → plan → tasks → implement)
+4. **Structured implementation**: Dev follows speckit workflow (specify -> plan -> tasks -> implement)
 5. **Minimal infrastructure**: Uses existing tools (Claude Code CLI, OpenClaw, Mattermost)
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                 Mattermost Channel                       │
-│                                                          │
-│  🧑 Human        📋 PM Agent        💻 Dev Agent        │
-│  (intervene       (suggest &         (spec, build,       │
-│   anytime)         answer Qs)         create PR)         │
-└──────────────────────┬───────────────────────────────────┘
-                       │
-          OpenClaw Gateway (mac-mini-i7.local)
-          ws://127.0.0.1:18789 (loopback)
-          accessed via: ssh sb@mac-mini-i7.local
-                       │
-┌──────────────────────┴───────────────────────────────────┐
-│               orchestrator.py (local)                     │
-│                                                           │
-│   State Machine:                                          │
-│   INIT → PM_SUGGEST → REVIEW → DEV_SPECIFY → DEV_PLAN   │
-│        → DEV_TASKS → DEV_IMPLEMENT → CREATE_PR → DONE    │
-│                                                           │
-│   ┌─────────────┐                  ┌──────────────┐      │
-│   │  PM Agent   │   questions →    │  Dev Agent    │      │
-│   │ (claude -p) │   ← answers     │ (claude -p)   │      │
-│   │             │                  │               │      │
-│   │ • Read PRD  │                  │ • speckit.*   │      │
-│   │ • Prioritize│                  │ • Implement   │      │
-│   │ • Answer Qs │                  │ • Create PR   │      │
-│   └─────────────┘                  └──────────────┘      │
-└───────────────────────────────────────────────────────────┘
++---------------------------------------------------------+
+|                 Mattermost Channel                       |
+|                                                          |
+|  Human           PM Agent           Dev Agent            |
+|  (intervene       (suggest &         (spec, build,       |
+|   anytime)         answer Qs)         create PR)         |
++------------------------+---------------------------------+
+                         |
+            OpenClaw Gateway (mac-mini-i7.local)
+            ws://127.0.0.1:18789 (loopback)
+            accessed via: ssh sb@mac-mini-i7.local
+                         |
++------------------------+---------------------------------+
+|               orchestrator.py (local)                     |
+|                                                           |
+|   State Machine:                                          |
+|   INIT -> PM_SUGGEST -> REVIEW -> DEV_SPECIFY -> DEV_PLAN|
+|        -> DEV_TASKS -> DEV_IMPLEMENT -> CREATE_PR -> DONE |
+|                                                           |
+|   +-------------+                  +--------------+       |
+|   |  PM Agent   |   questions ->   |  Dev Agent    |      |
+|   | (claude -p) |   <- answers     | (claude -p)   |      |
+|   |             |                  |               |      |
+|   | - Read PRD  |                  | - speckit.*   |      |
+|   | - Prioritize|                  | - Implement   |      |
+|   | - Answer Qs |                  | - Create PR   |      |
+|   +-------------+                  +--------------+       |
++---------------------------------------------------------+
 ```
 
 ## Components
@@ -64,15 +64,15 @@ The central script that manages the workflow state machine.
 
 | Phase | Description | Agent | Human checkpoint? |
 |-------|-------------|-------|-------------------|
-| `INIT` | Load config, verify connectivity | — | No |
+| `INIT` | Load config, verify connectivity | -- | No |
 | `PM_SUGGEST` | PM reads PRD, suggests highest-priority unimplemented feature | PM | No |
-| `REVIEW` | Post suggestion to Mattermost, wait for approval | — | **Yes** (approve/reject/redirect) |
+| `REVIEW` | Post suggestion to Mattermost, wait for approval | -- | **Yes** (approve/reject/redirect) |
 | `DEV_SPECIFY` | Dev runs `/speckit.specify` with the approved feature | Dev | No |
 | `DEV_PLAN` | Dev runs `/speckit.plan` | Dev | No |
 | `DEV_TASKS` | Dev runs `/speckit.tasks` | Dev | No |
 | `DEV_IMPLEMENT` | Dev runs `/speckit.implement`, may ask questions | Dev | On questions |
 | `CREATE_PR` | Dev creates branch, commits, opens PR via `gh pr create` | Dev | No |
-| `DONE` | Post PR link to Mattermost | — | No |
+| `DONE` | Post PR link to Mattermost | -- | No |
 
 **Question handling during implementation:**
 1. Dev agent is instructed to output questions as structured JSON
@@ -85,49 +85,27 @@ The central script that manages the workflow state machine.
 
 ### 2. Mattermost Bridge (`mattermost_bridge.py`)
 
-Handles all communication with Mattermost through OpenClaw CLI over SSH.
+Handles all communication with Mattermost through a hybrid approach:
+- **Send**: Via OpenClaw CLI (`openclaw message send`) over SSH
+- **Read**: Via Mattermost REST API (`/api/v4/channels/<id>/posts`) over SSH + curl
+
+OpenClaw's `message read` is not supported for the Mattermost channel plugin, so reads go through the API directly.
 
 **Key operations:**
-- `send(message, sender)` — Post to Mattermost channel via `openclaw message send`
-- `read_since(after_id)` — Read new messages via `openclaw message read`
-- `wait_for_response(timeout)` — Poll for human responses
+- `send(message, sender)` -- Post to channel via OpenClaw
+- `read_posts(limit, after)` -- Fetch posts via Mattermost REST API
+- `read_new_human_messages()` -- Filter for non-bot, non-system messages since last check
+- `wait_for_response(timeout)` -- Poll for human responses
 
-**OpenClaw CLI commands used:**
-```bash
-# Send a message to Mattermost channel
-ssh sb@mac-mini-i7.local "openclaw message send \
-  --channel mattermost \
-  --target '<channel_id>' \
-  -m 'message text'"
-
-# Read recent messages
-ssh sb@mac-mini-i7.local "openclaw message read \
-  --channel mattermost \
-  --target '<channel_id>' \
-  --limit 10 \
-  --json"
-
-# Send as specific bot account (PM vs Dev)
-ssh sb@mac-mini-i7.local "openclaw message send \
-  --channel mattermost \
-  --account productManager \
-  --target '<channel_id>' \
-  -m 'PM says: ...'"
-```
-
-**Configuration from OpenClaw (discovered):**
-- Mattermost base: `http://mac-mini-i7.tail58a751.ts.net:8065`
-- Bot account: `productManager` (name: `product-manager`)
-- Gateway: `ws://127.0.0.1:18789` (loopback, accessed via SSH)
-- Chat mode: `oncall` (responds when @mentioned)
-- DM/Group policy: `open`
+**SSH banner filtering:**
+The remote host shows an "UNAUTHORIZED ACCESS" SSH banner on every connection. The bridge automatically strips these lines from both stdout and stderr.
 
 ### 3. PM Agent (`.claude/agents/pm-agent.md`)
 
 A Claude Code subagent definition for the Product Manager role.
 
 **System prompt focus:**
-- Read and understand docs/PRD.md
+- Read and understand the target project's PRD
 - Analyze what features are already implemented (via git log, codebase scanning)
 - Prioritize unimplemented features by business value, dependencies, and risk
 - Provide clear feature descriptions suitable for speckit.specify
@@ -149,27 +127,34 @@ A Claude Code subagent definition for the Developer role.
 
 ### 5. Configuration (`config.yaml`)
 
+All environment-specific values live in config.yaml. Override locally with `config.local.yaml` (gitignored).
+
 ```yaml
 project:
-  name: finance-agent
   path: /Users/sbhavani/code/finance-agent
   prd_path: docs/PRD.md
 
 openclaw:
   ssh_host: sb@mac-mini-i7.local
-  mattermost_channel: "product-dev"
-  mattermost_account: productManager
+  openclaw_account: productManager
+
+mattermost:
+  channel_id: bhpbt6h4xtnem8int5ccmbo4dw
+  url: "http://localhost:8065"
+  bot_token: <from openclaw config>
+  bot_user_id: <bot's mattermost user id>
 
 workflow:
-  approval_timeout: 300        # seconds to wait for human before auto-proceeding
-  question_timeout: 120        # seconds to wait for human answer to dev questions
-  auto_approve: false          # if true, skip human approval for feature suggestion
+  approval_timeout: 300
+  question_timeout: 120
+  auto_approve: false
+  loop: false
 ```
 
 ## Workflow: End-to-End Example
 
 ```
-1. Human runs: python orchestrator.py
+1. Human runs: uv run python orchestrator.py
 2. Orchestrator posts to #product-dev:
    "[PM Agent] Starting feature prioritization..."
 
@@ -178,13 +163,13 @@ workflow:
    Rationale: Currently evaluation runs sequentially; PRD lists this as P1"
 
 5. Orchestrator posts to #product-dev:
-   "[PM Agent] 📋 Feature Suggestion:
+   "[PM Agent] Feature Suggestion:
    **Add parallel benchmark evaluation**
    Priority: P1
    Rationale: Sequential evaluation is slow; PRD requires parallel support.
    Reply 'approve', 'reject', or suggest an alternative."
 
-6. Human replies: "approve" (or timeout → auto-approve)
+6. Human replies: "approve" (or timeout -> auto-approve)
 
 7. Orchestrator posts: "[Dev Agent] Starting speckit workflow..."
 8. Dev Agent runs /speckit.specify, /speckit.plan, /speckit.tasks
@@ -206,36 +191,48 @@ workflow:
     gh pr create --title "Add parallel benchmark evaluation" --body "..."
 
 14. Orchestrator posts to #product-dev:
-    "[Dev Agent] ✅ PR created: https://github.com/sbhavani/finance-agent/pull/42"
+    "[Dev Agent] PR created: https://github.com/sbhavani/finance-agent/pull/42"
 
 15. Orchestrator exits (or loops for next feature)
 ```
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure
-- [ ] Create project structure (`agent-team/`)
-- [ ] Write `config.yaml` with defaults
-- [ ] Write `mattermost_bridge.py` (OpenClaw SSH wrapper)
-- [ ] Test sending/reading messages to Mattermost
+### Phase 1: Core Infrastructure [DONE]
+- [x] Create project structure (`agent-team/`)
+- [x] Write `config.yaml` with all env-specific values
+- [x] Write `mattermost_bridge.py` (hybrid: OpenClaw send + Mattermost API read)
+- [x] Test sending/reading messages to Mattermost (verified live)
+- [x] Fix SSH banner filtering, zsh URL quoting
+- [x] Switch to uv for dependency management
+- [x] 15 unit tests + 3 integration tests, all passing
 
-### Phase 2: Agent Definitions
-- [ ] Write `.claude/agents/pm-agent.md`
-- [ ] Write `.claude/agents/dev-agent.md`
+### Phase 2: Agent Definitions [DONE]
+- [x] Write `.claude/agents/pm-agent.md`
+- [x] Write `.claude/agents/dev-agent.md`
 - [ ] Test agents independently with `claude -p`
 
-### Phase 3: Orchestrator
-- [ ] Implement state machine in `orchestrator.py`
-- [ ] Wire up PM Agent → Mattermost → approval flow
-- [ ] Wire up Dev Agent → speckit workflow → question handling
-- [ ] Wire up PR creation → Mattermost notification
-- [ ] Add `--dry-run` mode for testing without Mattermost
+### Phase 3: Orchestrator [DONE — needs end-to-end test]
+- [x] Implement state machine in `orchestrator.py`
+- [x] Wire up PM Agent -> Mattermost -> approval flow
+- [x] Wire up Dev Agent -> speckit workflow -> question handling
+- [x] Wire up PR creation -> Mattermost notification
+- [x] Add `--dry-run` mode for testing without Mattermost
+- [ ] End-to-end dry-run test against a real target project
+- [ ] End-to-end live test with Mattermost
 
-### Phase 4: Polish
-- [ ] Add logging (file + Mattermost)
-- [ ] Add `--resume` to pick up from a failed state
-- [ ] Add `--loop` mode to continuously process features
-- [ ] Add second OpenClaw bot account for Dev Agent identity
+### Phase 4: Hardening
+- [ ] Add `--resume` to pick up from a failed state (persist WorkflowState to disk)
+- [ ] Add structured logging (file + Mattermost summary)
+- [ ] Handle `claude -p` timeout/crash gracefully (retry with backoff)
+- [ ] Handle SSH connection failures (retry, alert to Mattermost)
+- [ ] Validate config on startup (check SSH connectivity, channel exists, bot token works)
+
+### Phase 5: Polish
+- [ ] Second OpenClaw bot account for Dev Agent (separate identity in Mattermost)
+- [ ] Progress reporting during long speckit phases (stream-json parsing)
+- [ ] Mattermost thread support (keep each feature's discussion in a thread)
+- [ ] `--feature` flag to skip PM and directly implement a named feature
 
 ## Technical Decisions
 
@@ -247,13 +244,11 @@ workflow:
 - The orchestrator is lightweight Python; heavy lifting is in Claude Code
 - Can upgrade to Agent SDK later if needed (same underlying engine)
 
-### Why SSH to OpenClaw instead of WebSocket gateway?
+### Why hybrid send/read for Mattermost?
 
-- Gateway is loopback-only (`bind=loopback` in config)
-- SSH is already configured and working (`ssh sb@mac-mini-i7.local`)
-- `openclaw message send/read` CLI is simpler than raw WebSocket protocol
-- No need to manage WebSocket connection lifecycle
-- Can switch to direct WebSocket if gateway is rebound to LAN/Tailscale
+- **Send via OpenClaw CLI**: Works well, handles Mattermost formatting, bot identity
+- **Read via Mattermost REST API**: OpenClaw's `message read` is not supported for the Mattermost channel plugin, so we curl the API directly
+- Both go over SSH since the gateway is loopback-only
 
 ### Why one orchestrator instead of two independent agents?
 
@@ -272,6 +267,7 @@ workflow:
 
 ## Dependencies
 
+- **uv**: Dependency management
 - **Claude Code CLI** (`claude`): Must be installed and authenticated
 - **OpenClaw** (`openclaw`): Running on mac-mini-i7.local with Mattermost plugin
 - **GitHub CLI** (`gh`): For PR creation
@@ -286,10 +282,13 @@ workflow:
 - `AGENT_TEAM_CONFIG`: Path to config.yaml (default: `./config.yaml`)
 
 ### OpenClaw Mattermost Setup (already done)
-- Mattermost server: `http://mac-mini-i7.tail58a751.ts.net:8065`
-- Bot account: `productManager`
-- Plugin: `@openclaw/mattermost` (loaded)
+- Mattermost server: `http://localhost:8065` (on mac-mini-i7.local)
+- Mattermost server (Tailscale): `http://mac-mini-i7.tail58a751.ts.net:8065`
+- Bot user: `openclaw` (ID: `prmnsceu8bg8tm1kmb3zzhbdwr`, is_bot: true)
+- Bot account in OpenClaw: `productManager`
+- Plugin: `@openclaw/mattermost` (loaded, v2026.2.15)
 - Gateway: port 18789, loopback bind
+- Channel: `#product-dev` (ID: `bhpbt6h4xtnem8int5ccmbo4dw`)
 
 ## Future Enhancements
 
@@ -298,4 +297,3 @@ workflow:
 - **Mattermost slash commands**: Trigger workflows from Mattermost (`/suggest-feature`)
 - **Persistent state**: SQLite or file-based state for crash recovery
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
-- **Second bot account**: Separate Mattermost identity for Dev Agent
