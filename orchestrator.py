@@ -82,6 +82,7 @@ class WorkflowState:
     pm_session: str | None = None
     dev_session: str | None = None
     pr_url: str | None = None
+    root_post_id: str | None = None  # For Mattermost thread
 
 
 STATE_FILE = ".agent-team-state.json"
@@ -379,12 +380,32 @@ class Messenger:
     def __init__(self, bridge: MattermostBridge | None, dry_run: bool = False):
         self.bridge = bridge
         self.dry_run = dry_run
+        self._root_id: str | None = None  # Thread root post ID
 
-    def send(self, message: str, sender: str = "Orchestrator") -> None:
+    @property
+    def root_id(self) -> str | None:
+        return self._root_id
+
+    def start_thread(self, message: str, sender: str = "Orchestrator") -> str | None:
+        """Send a message and start a new thread. Returns the post ID."""
+        if self.dry_run:
+            print(f"\n--- [{sender}] ---\n{message}\n")
+            return "dry-run-id"
+        result = self.bridge.send(message, sender=sender, root_id=None)
+        post_id = result.get("id")
+        if post_id:
+            self._root_id = post_id
+            logger.info("Started thread: %s", post_id)
+        return post_id
+
+    def send(self, message: str, sender: str = "Orchestrator", root_id: str | None = None) -> None:
+        """Send a message. If root_id not provided, uses stored thread root."""
         if self.dry_run:
             print(f"\n--- [{sender}] ---\n{message}\n")
         else:
-            self.bridge.send(message, sender=sender)
+            # Use provided root_id, or fall back to stored thread root
+            effective_root = root_id or self._root_id
+            self.bridge.send(message, sender=sender, root_id=effective_root)
 
     def wait_for_response(self, timeout: int = 300) -> str | None:
         if self.dry_run:
@@ -533,7 +554,8 @@ class Orchestrator:
     def _phase_init(self) -> None:
         self.state.phase = Phase.INIT
         logger.info("Phase: INIT")
-        self.msg.send("Starting feature prioritization...", sender="PM Agent")
+        # Start a new thread for this feature
+        self.msg.start_thread("Starting feature prioritization...", sender="PM Agent")
 
     def _phase_pm_suggest(self) -> None:
         self.state.phase = Phase.PM_SUGGEST
@@ -1185,7 +1207,8 @@ def main() -> None:
             "rationale": "Manually specified via --feature flag",
             "priority": "P1",
         }
-        orchestrator.msg.send(
+        # Start a thread for this feature
+        orchestrator.msg.start_thread(
             f"Feature specified via CLI: **{args.feature[:60]}**",
             sender="Orchestrator",
         )

@@ -49,14 +49,23 @@ class MattermostBridge:
     # Send (dual identity)
     # ------------------------------------------------------------------
 
-    def send(self, message: str, sender: str | None = None) -> dict:
-        """Send a message to the channel.
+    def send(self, message: str, sender: str | None = None, root_id: str | None = None) -> dict:
+        """Send a message to the channel (optionally as a thread reply).
 
-        If sender is "PM Agent", posts via the PM bot's Mattermost token.
-        Otherwise posts via OpenClaw CLI (Dev bot / Orchestrator).
+        Priority:
+        1. If sender is "PM Agent", posts via PM bot's Mattermost token
+        2. If root_id is provided (threading), posts via API with dev_bot_token
+        3. Otherwise posts via OpenClaw CLI (Dev bot / Orchestrator)
+
+        Note: OpenClaw CLI doesn't support threading, so threads are sent via API.
         """
+        # PM Agent always uses PM bot token
         if sender and sender == "PM Agent" and self.pm_bot_token:
-            return self._send_via_api(message, self.pm_bot_token)
+            return self._send_via_api(message, self.pm_bot_token, root_id)
+        # Threading requires API (OpenClaw doesn't support it)
+        if root_id and self.dev_bot_token:
+            return self._send_via_api(message, self.dev_bot_token, root_id)
+        # Default: use OpenClaw CLI
         return self._send_via_openclaw(message, sender)
 
     def _send_via_openclaw(self, message: str, sender: str | None = None) -> dict:
@@ -83,19 +92,26 @@ class MattermostBridge:
         except json.JSONDecodeError:
             return {"raw": output}
 
-    def _send_via_api(self, message: str, bot_token: str) -> dict:
-        """Send via Mattermost REST API (appears as the specified bot)."""
-        payload = json.dumps({"channel_id": self.channel_id, "message": message})
+    def _send_via_api(self, message: str, bot_token: str, root_id: str | None = None) -> dict:
+        """Send via Mattermost REST API (appears as the specified bot).
+
+        If root_id is provided, posts as a reply to that post's thread.
+        """
+        payload = {"channel_id": self.channel_id, "message": message}
+        if root_id:
+            payload["root_id"] = root_id
+
+        payload_json = json.dumps(payload)
         curl_cmd = [
             "curl", "-sf",
             "-X", "POST",
             f"'{self.mattermost_url}/api/v4/posts'",
             "-H", f"'Authorization: Bearer {bot_token}'",
             "-H", "'Content-Type: application/json'",
-            "-d", self._shell_quote(payload),
+            "-d", self._shell_quote(payload_json),
         ]
         output = self._ssh(curl_cmd, timeout=15)
-        logger.info("Sent (pm): %s", message[:100])
+        logger.info("Sent (api%s): %s", f" thread:{root_id}" if root_id else "", message[:100])
         try:
             return json.loads(output)
         except json.JSONDecodeError:

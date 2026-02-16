@@ -253,7 +253,7 @@ workflow:
 
 ### Phase 7: Polish
 - [x] Progress reporting during long speckit phases (stream-json parsing)
-- [ ] Mattermost thread support (keep each feature's discussion in a thread)
+- [x] Mattermost thread support (keep each feature's discussion in a thread)
 - [ ] Config-driven target project switching (work on different repos)
 - [ ] Post-PR code review agent (review before merging)
 - [ ] Metrics: time-per-phase, total cost, features shipped
