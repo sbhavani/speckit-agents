@@ -252,7 +252,7 @@ workflow:
 - [ ] Rate limiting / cost tracking for Claude API calls
 
 ### Phase 7: Polish
-- [ ] Progress reporting during long speckit phases (stream-json parsing)
+- [x] Progress reporting during long speckit phases (stream-json parsing)
 - [ ] Mattermost thread support (keep each feature's discussion in a thread)
 - [ ] Config-driven target project switching (work on different repos)
 - [ ] Post-PR code review agent (review before merging)

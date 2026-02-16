@@ -16,3 +16,8 @@ dev = [
 markers = [
     "integration: tests that require SSH access to mac-mini-i7.local and live Mattermost",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

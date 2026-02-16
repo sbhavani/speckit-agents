@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
+from typing import Any, Callable
 
 import yaml
 
@@ -218,6 +219,154 @@ def run_claude(
 
     # Should not reach here, but satisfy type checker
     raise last_error  # type: ignore[misc]
+
+
+def run_claude_stream(
+    prompt: str,
+    cwd: str,
+    session_id: str | None = None,
+    allowed_tools: list[str] | None = None,
+    system_prompt: str | None = None,
+    timeout: int = 1800,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict:
+    """Run `claude -p` with stream-json output and optional progress callbacks.
+
+    Args:
+        prompt: The prompt to send to claude
+        cwd: Working directory for the subprocess
+        session_id: Optional session to resume
+        allowed_tools: Optional list of allowed tools
+        system_prompt: Optional system prompt
+        timeout: Timeout in seconds
+        progress_callback: Optional callback receiving parsed JSON events.
+            Called for each line of stream-json output. Common events:
+            - {"type": "tool_use", "name": "Read", "input": {...}}
+            - {"type": "tool_result", "tool_use_id": "...", "content": "..."}
+            - {"type": "message_delta", "usage": {...}}
+
+    Returns:
+        dict with keys: result, session_id, usage, etc.
+    """
+    cmd = [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+    if session_id:
+        cmd += ["--resume", session_id]
+    if allowed_tools:
+        cmd += ["--allowedTools", ",".join(allowed_tools)]
+    if system_prompt:
+        cmd += ["--system-prompt", system_prompt]
+
+    logger.info("Running claude -p stream (cwd=%s, session=%s)", cwd, session_id or "new")
+    logger.debug("Prompt: %s", prompt[:200])
+
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+    result_text = ""
+    session_id_out = session_id
+    timed_out = False
+
+    try:
+        logger.debug("Starting subprocess: %s", cmd)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=cwd,
+            env=env,
+            bufsize=1,  # Line buffered
+        )
+        logger.debug("Subprocess started, pid=%s", proc.pid)
+
+        # Read stdout line by line
+        line_count = 0
+        try:
+            for line in iter(proc.stdout.readline, ""):
+                if not line:
+                    break
+                line_count += 1
+                line = line.strip()
+                if not line:
+                    continue
+                logger.debug("Stream: Got line %d", line_count)
+                try:
+                    event = json.loads(line)
+                    result_text += _extract_text_from_event(event)
+
+                    # Track session_id from events
+                    if event.get("type") == "session_id":
+                        session_id_out = event.get("session_id")
+
+                    # Call progress callback if provided
+                    if progress_callback:
+                        progress_callback(event)
+                except json.JSONDecodeError:
+                    # Skip non-JSON lines
+                    continue
+        except Exception as e:
+            logger.debug("Error reading stdout: %s", e)
+
+        # Wait for process with timeout
+        start_time = time.time()
+        while proc.poll() is None:
+            if timeout and (time.time() - start_time) > timeout:
+                proc.kill()
+                timed_out = True
+                logger.warning("claude -p stream timed out after %ds", timeout)
+                break
+            time.sleep(0.1)
+
+    except Exception as e:
+        logger.error("Error running claude stream: %s", e)
+
+    if proc.returncode != 0 and proc.returncode is not None:
+        stderr = proc.stderr.read() if proc.stderr else ""
+        logger.error("claude -p stream failed: %s", stderr[:500])
+
+    # If no result accumulated, fallback to regular mode
+    if not result_text.strip():
+        logger.warning("No output from stream, falling back to regular mode")
+        return run_claude(
+            prompt=prompt,
+            cwd=cwd,
+            session_id=session_id,
+            allowed_tools=allowed_tools,
+            system_prompt=system_prompt,
+            timeout=timeout,
+        )
+
+    # Parse the accumulated result
+    if result_text.strip().startswith("{"):
+        try:
+            parsed = json.loads(result_text.strip())
+            if session_id_out:
+                parsed["session_id"] = session_id_out
+            if timed_out:
+                parsed["_timeout"] = True
+            return parsed
+        except json.JSONDecodeError:
+            pass
+
+    result = {"result": result_text.strip(), "session_id": session_id_out}
+    if timed_out:
+        result["_timeout"] = True
+    return result
+
+
+def _extract_text_from_event(event: dict[str, Any]) -> str:
+    """Extract text content from a stream-json event."""
+    event_type = event.get("type", "")
+
+    if event_type == "content_block_delta":
+        # Text delta within a content block
+        delta = event.get("delta", {})
+        if delta.get("type") == "text_delta":
+            return delta.get("text", "")
+    elif event_type == "result":
+        # Final result event contains the actual response
+        return event.get("result", "")
+
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -481,11 +630,14 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"Running speckit specify for: {desc[:100]}...", sender="Dev Agent")
 
-        result = run_claude(
+        progress_cb = self._make_progress_callback("specify", report_interval=3)
+
+        result = run_claude_stream(
             prompt=f"/speckit.specify {desc}",
             cwd=self.project_path,
             allowed_tools=DEV_TOOLS,
             timeout=1800,
+            progress_callback=progress_cb,
         )
         self.state.dev_session = result.get("session_id")
 
@@ -501,12 +653,15 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_PLAN")
         self.msg.send("Creating technical plan...", sender="Dev Agent")
 
-        result = run_claude(
+        progress_cb = self._make_progress_callback("plan", report_interval=3)
+
+        result = run_claude_stream(
             prompt="/speckit.plan",
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
             timeout=1800,
+            progress_callback=progress_cb,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -522,12 +677,15 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_TASKS")
         self.msg.send("Generating task list...", sender="Dev Agent")
 
-        result = run_claude(
+        progress_cb = self._make_progress_callback("tasks", report_interval=3)
+
+        result = run_claude_stream(
             prompt="/speckit.tasks",
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
             timeout=1800,
+            progress_callback=progress_cb,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -632,6 +790,73 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         self.state.dev_session = result.get("session_id", self.state.dev_session)
         return result.get("result", "(no summary available)")
 
+    def _make_progress_callback(self, phase_name: str, report_interval: int = 3):
+        """Create a progress callback that posts tool usage to Mattermost.
+
+        Args:
+            phase_name: Name of the phase (for logging)
+            report_interval: Minimum seconds between progress updates
+
+        Returns:
+            A callback function suitable for run_claude_stream
+        """
+        last_report_time = [0.0]
+        tool_count = [0]
+
+        def callback(event: dict[str, Any]) -> None:
+            event_type = event.get("type", "")
+
+            # Helper to process a tool_use event
+            def process_tool_use(tool_event: dict[str, Any]) -> None:
+                nonlocal tool_count
+                tool_count[0] += 1
+                tool_name = tool_event.get("name", "unknown")
+                tool_input = tool_event.get("input", {})
+
+                # Extract file path if available
+                file_path = ""
+                if "file_path" in tool_input:
+                    file_path = tool_input["file_path"]
+                elif "path" in tool_input:
+                    file_path = tool_input["path"]
+
+                # Only report every N tools or if it's been a while
+                now = time.time()
+                should_report = (
+                    tool_count[0] % report_interval == 0
+                    or now - last_report_time[0] > 20
+                )
+
+                if should_report and not self.msg.dry_run:
+                    # Build a concise progress message
+                    if file_path:
+                        # Truncate long paths
+                        if len(file_path) > 50:
+                            file_path = "..." + file_path[-47:]
+                        self.msg.send(f"🔧 [{tool_name}] {file_path}", sender="Dev Agent")
+                    else:
+                        self.msg.send(f"🔧 [{tool_name}]", sender="Dev Agent")
+                    last_report_time[0] = now
+
+            # Check for tool_use at top level
+            if event_type == "tool_use":
+                process_tool_use(event)
+
+            # Check for tool_use nested in message content (stream-json format)
+            if event_type == "assistant":
+                message = event.get("message", {})
+                content = message.get("content", [])
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_use":
+                            process_tool_use(block)
+
+            # Log errors
+            if event_type == "error":
+                logger.error("Claude error: %s", event.get("error", ""))
+
+        return callback
+
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
         logger.info("Phase: DEV_IMPLEMENT")
@@ -651,14 +876,16 @@ Otherwise, implement all tasks to completion."""
         # Run dev agent in a background thread so we can poll Mattermost
         # for human questions while it works.
         dev_result_holder: list[dict] = []
+        progress_cb = self._make_progress_callback("implement", report_interval=2)
 
         def _run_dev():
-            result = run_claude(
+            result = run_claude_stream(
                 prompt=prompt,
                 cwd=self.project_path,
                 session_id=self.state.dev_session,
                 allowed_tools=DEV_TOOLS,
                 timeout=1800,
+                progress_callback=progress_cb,
             )
             dev_result_holder.append(result)
 
