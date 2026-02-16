@@ -83,6 +83,9 @@ def _deep_merge(base: dict, override: dict) -> None:
 # Claude Code headless runner
 # ---------------------------------------------------------------------------
 
+CLAUDE_BIN = os.environ.get("CLAUDE_BIN", os.path.expanduser("~/.local/bin/claude"))
+
+
 def run_claude(
     prompt: str,
     cwd: str,
@@ -95,7 +98,7 @@ def run_claude(
 
     Returns dict with keys: result, session_id, usage, etc.
     """
-    cmd = ["claude", "-p", prompt, "--output-format", "json"]
+    cmd = [CLAUDE_BIN, "-p", prompt, "--output-format", "json"]
     if session_id:
         cmd += ["--resume", session_id]
     if allowed_tools:
@@ -106,9 +109,21 @@ def run_claude(
     logger.info("Running claude -p (cwd=%s, session=%s)", cwd, session_id or "new")
     logger.debug("Prompt: %s", prompt[:200])
 
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout
-    )
+    # Clear CLAUDECODE env var so we can spawn from within a Claude Code session
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, env=env
+        )
+    except subprocess.TimeoutExpired as e:
+        logger.warning("claude -p timed out after %ds, capturing partial output", timeout)
+        partial = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
+        # Try to salvage session_id from partial output
+        try:
+            parsed = json.loads(partial)
+            return parsed
+        except (json.JSONDecodeError, ValueError):
+            return {"result": partial.strip(), "session_id": session_id, "_timeout": True}
 
     if result.returncode != 0:
         logger.error("claude stderr: %s", result.stderr[:500])
@@ -118,7 +133,7 @@ def run_claude(
         return json.loads(result.stdout)
     except json.JSONDecodeError:
         # Sometimes output is plain text even with --output-format json
-        return {"result": result.stdout.strip(), "session_id": None}
+        return {"result": result.stdout.strip(), "session_id": session_id}
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +316,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             prompt=f"/speckit.specify {desc}",
             cwd=self.project_path,
             allowed_tools=DEV_TOOLS,
-            timeout=300,
+            timeout=600,
         )
         self.state.dev_session = result.get("session_id")
 
@@ -317,7 +332,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=300,
+            timeout=600,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -333,7 +348,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=300,
+            timeout=600,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -450,7 +465,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=["Bash(git *)", "Bash(gh *)"],
-            timeout=120,
+            timeout=300,
         )
 
         self.state.pr_url = result.get("result", "").strip()
@@ -492,6 +507,8 @@ def main() -> None:
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     parser.add_argument("--dry-run", action="store_true", help="Print to stdout instead of Mattermost")
     parser.add_argument("--loop", action="store_true", help="Keep running for multiple features")
+    parser.add_argument("--feature", type=str, default=None,
+                        help="Skip PM agent and directly implement this feature description")
     args = parser.parse_args()
 
     config_path = args.config
@@ -516,7 +533,27 @@ def main() -> None:
 
     loop = args.loop or config.get("workflow", {}).get("loop", False)
     orchestrator = Orchestrator(config, messenger)
-    orchestrator.run(loop=loop)
+
+    if args.feature:
+        # Skip PM — inject the feature directly and jump to dev workflow
+        orchestrator.state.feature = {
+            "feature": args.feature[:60],
+            "description": args.feature,
+            "rationale": "Manually specified via --feature flag",
+            "priority": "P1",
+        }
+        orchestrator.msg.send(
+            f"Feature specified via CLI: **{args.feature[:60]}**",
+            sender="Orchestrator",
+        )
+        orchestrator._phase_dev_specify()
+        orchestrator._phase_dev_plan()
+        orchestrator._phase_dev_tasks()
+        orchestrator._phase_dev_implement()
+        orchestrator._phase_create_pr()
+        orchestrator._phase_done()
+    else:
+        orchestrator.run(loop=loop)
 
 
 if __name__ == "__main__":
