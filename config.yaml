@@ -9,8 +9,11 @@
 # Multi-project mode (use --project flag to select)
 projects:
   finance-agent:
-    path: /Users/sbhavani/code/finance-agent
+    path: /Users/sb/code/finance-agent
     prd_path: docs/PRD.md
+  live-set-revival:
+    path: /Users/sb/code/live-set-revival
+    prd_path: docs/SPEC.md
   # example:
   #   path: /Users/sbhavani/code/another-project
   #   prd_path: docs/SPEC.md
