@@ -960,12 +960,18 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                              "+1", ":+1:", ":thumbsup:"}
             REJECT_WORDS = {"reject", "no", "stop", "cancel",
                             "\U0001f44e", "-1", ":-1:", ":thumbsdown:"}
+            # Log what we got for debugging
+            logger.info(f"Plan review response: '{response[:50]}...' (lower: '{lower}')")
+
             if lower in APPROVE_WORDS:
                 self.msg.send("Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
                 self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
                 return False
+            # Empty response - skip
+            if not lower:
+                continue
 
             # Treat as a question — route to PM
             logger.info("Question during plan review: %s", response[:100])
