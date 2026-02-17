@@ -21,35 +21,52 @@ Both agents are powered by Claude Code CLI (`claude -p`) running in headless mod
 |                 Mattermost Channel                       |
 |                                                          |
 |  Human           PM Agent           Dev Agent            |
-|  (intervene       (suggest &         (spec, build,       |
-|   anytime)         answer Qs)         create PR)         |
+|  (intervene       (answer Qs)         (spec, build,      |
+|   anytime)                               create PR)      |
 +------------------------+---------------------------------+
                          |
-            OpenClaw Gateway (mac-mini-i7.local)
-            ws://127.0.0.1:18789 (loopback)
-            accessed via: ssh sb@mac-mini-i7.local
+            Mattermost API (http://localhost:8065)
                          |
 +------------------------+---------------------------------+
-|               orchestrator.py (local)                     |
-|                                                           |
-|   State Machine:                                          |
-|   INIT -> PM_SUGGEST -> REVIEW -> DEV_SPECIFY -> DEV_PLAN|
-|   -> DEV_TASKS -> PLAN_REVIEW -> DEV_IMPLEMENT -> CREATE_PR -> DONE |
-|                                                           |
-|   +-------------+                  +--------------+       |
-|   |  PM Agent   |   questions ->   |  Dev Agent    |      |
-|   | (claude -p) |   <- answers     | (claude -p)   |      |
-|   |             |                  |               |      |
-|   | - Read PRD  |                  | - speckit.*   |      |
-|   | - Prioritize|                  | - Implement   |      |
-|   | - Answer Qs |                  | - Create PR   |      |
-|   +-------------+                  +--------------+       |
+|              Local Services (uv)                         |
+|                                                         |
+|  +-------------+     +--------------+    +-----------+  |
+|  |  Responder  | --> | Orchestrator| -->|  Claude   |  |
+|  | (listens)   |     | (workflow)  |    |  CLI      |  |
+|  +-------------+     +--------------+    +-----------+  |
+|         |                                      |       |
+|         v                                      v       |
+|  +-------------+                       +--------------+ |
+|  |   Redis    |                       | Target Repo  | |
+|  |  (docker)  |                       | (worktree)   | |
+|  +-------------+                       +--------------+ |
 +---------------------------------------------------------+
+
+State Machine (Orchestrator):
+INIT -> PM_SUGGEST -> REVIEW -> DEV_SPECIFY -> DEV_PLAN
+-> DEV_TASKS -> PLAN_REVIEW -> DEV_IMPLEMENT -> CREATE_PR -> PM_LEARN -> DONE
 ```
 
 ## Components
 
-### 1. Orchestrator (`orchestrator.py`)
+### 1. Responder (`responder.py`)
+
+A lightweight daemon that listens for commands and @mentions in Mattermost.
+
+**Responsibilities:**
+- Polls for new messages in all channels
+- Detects `/suggest` command to start workflows
+- Handles @product-manager mentions (PRD + context)
+- Spawns orchestrator workflows on demand
+- Answers questions using channel context
+
+**Commands:**
+- `/suggest` — Start feature suggestion workflow
+- `/suggest "Feature name"` — Start implementation of specific feature
+- `@product-manager <question>` — Ask PM questions (PRD + channel context)
+- `@dev-agent <question>` — *[coming soon]* Ask Dev questions with channel context
+
+### 2. Orchestrator (`orchestrator.py`)
 
 The central script that manages the workflow state machine.
 
@@ -59,6 +76,7 @@ The central script that manages the workflow state machine.
 - Bridges agent output to Mattermost via OpenClaw CLI (over SSH)
 - Handles human intervention (approval, rejection, redirection)
 - Manages agent session continuity (resume via session_id)
+- Creates git worktrees for isolated development (doesn't pollute original repo)
 
 **State machine phases:**
 
@@ -73,6 +91,7 @@ The central script that manages the workflow state machine.
 | `PLAN_REVIEW` | 60s window to ask PM questions or reject before impl | PM | **Yes** (yolo auto-proceed) |
 | `DEV_IMPLEMENT` | Dev implements, orchestrator polls for human questions | Dev+PM | On questions |
 | `CREATE_PR` | Dev creates branch, commits, opens PR via `gh pr create` | Dev | No |
+| `PM_LEARN` | PM writes learnings to `.agent/product-manager.md` journal | PM | No |
 | `DONE` | Post PR link to Mattermost | -- | No |
 
 **Question handling during implementation:**
@@ -84,7 +103,7 @@ The central script that manages the workflow state machine.
 6. Orchestrator waits briefly for human override
 7. Final answer is fed back to Dev Agent session (via `--resume`)
 
-### 2. Mattermost Bridge (`mattermost_bridge.py`)
+### 3. Mattermost Bridge (`mattermost_bridge.py`)
 
 Handles all communication with Mattermost through a hybrid approach:
 - **Send**: Via OpenClaw CLI (`openclaw message send`) over SSH
@@ -101,7 +120,7 @@ OpenClaw's `message read` is not supported for the Mattermost channel plugin, so
 **SSH banner filtering:**
 The remote host shows an "UNAUTHORIZED ACCESS" SSH banner on every connection. The bridge automatically strips these lines from both stdout and stderr.
 
-### 3. PM Agent (`.claude/agents/pm-agent.md`)
+### 4. PM Agent (`.claude/agents/pm-agent.md`)
 
 A Claude Code subagent definition for the Product Manager role.
 
@@ -114,7 +133,7 @@ A Claude Code subagent definition for the Product Manager role.
 
 **Tools:** Read, Glob, Grep, Bash(git log), Bash(git diff)
 
-### 4. Dev Agent (`.claude/agents/dev-agent.md`)
+### 5. Dev Agent (`.claude/agents/dev-agent.md`)
 
 A Claude Code subagent definition for the Developer role.
 
@@ -126,18 +145,28 @@ A Claude Code subagent definition for the Developer role.
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep
 
-### 5. Configuration (`config.yaml`)
+### 6. Configuration (`config.yaml`)
 
 All environment-specific values live in config.yaml. Override locally with `config.local.yaml` (gitignored).
 
 ```yaml
-project:
-  path: /Users/sbhavani/code/finance-agent
-  prd_path: docs/PRD.md
+# Multi-project mode
+projects:
+  finance-agent:
+    path: /Users/sb/code/finance-agent
+    prd_path: docs/PRD.md
+    channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br
+  live-set-revival:
+    path: /Users/sb/code/live-set-revival
+    prd_path: docs/SPEC.md
+    channel_id: bxkopjqjntntd89978uhb8wg7y
 
 openclaw:
-  ssh_host: sb@mac-mini-i7.local
+  ssh_host: localhost
   openclaw_account: productManager
+  anthropic_api_key: sk-cp-...  # Minimax API key
+  anthropic_base_url: https://api.minimax.io/anthropic
+  anthropic_model: MiniMax-M2.1
 
 mattermost:
   channel_id: bhpbt6h4xtnem8int5ccmbo4dw
@@ -154,7 +183,36 @@ workflow:
   auto_approve: false
   loop: false
   impl_poll_interval: 15
+  user_mention: ""
 ```
+
+### API Configuration
+
+The responder uses the Minimax API (Anthropic-compatible) for answering PM questions:
+
+```yaml
+openclaw:
+  anthropic_api_key: sk-cp-...  # Minimax API key
+  anthropic_base_url: https://api.minimax.io/anthropic
+  anthropic_model: MiniMax-M2.1
+```
+
+This allows fast responses to @product-manager questions without spawning a full Claude session.
+
+### Redis Caching
+
+Redis is used for caching to improve performance:
+
+| Key Pattern | Value | TTL |
+|-------------|-------|-----|
+| `prd:{project_path}:{prd_path}` | PRD file content | 1 hour |
+| `session:{session_id}` | Orchestrator session state | 24 hours |
+| `channel:{channel_id}:project` | Project config for channel | 1 hour |
+
+**Caching strategy:**
+- **PRD content**: Cached after first read, expires after 1 hour. Invalidated when config changes.
+- **Session state**: Persists across orchestrator restarts for resume functionality.
+- **Channel-project mapping**: Caches which project belongs to which channel for faster lookups.
 
 ## Workflow: End-to-End Example
 
@@ -292,11 +350,11 @@ workflow:
 ## Dependencies
 
 - **uv**: Dependency management
-- **Claude Code CLI** (`claude`): Must be installed and authenticated
-- **OpenClaw** (`openclaw`): Running on mac-mini-i7.local with Mattermost plugin
+- **Redis**: Cache and session state (via docker)
+- **Claude Code CLI** (`claude`): Must be installed and authenticated locally
 - **GitHub CLI** (`gh`): For PR creation
 - **Python 3.10+**: For the orchestrator
-- **SSH access**: To `sb@mac-mini-i7.local`
+- **Mattermost**: Running at http://localhost:8065
 - **speckit commands**: Must be installed in the target project's `.claude/commands/`
 
 ## Configuration Reference
@@ -304,6 +362,8 @@ workflow:
 ### Environment Variables
 - `ANTHROPIC_API_KEY`: For Claude Code (if not using other auth)
 - `AGENT_TEAM_CONFIG`: Path to config.yaml (default: `./config.yaml`)
+- `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`)
+- `HOST_WORKDIR`: Host working directory for docker path mapping
 
 ### OpenClaw Mattermost Setup (already done)
 - Mattermost server: `http://localhost:8065` (on mac-mini-i7.local)
@@ -319,7 +379,7 @@ workflow:
 
 - **Multiple Dev Agents**: Fan out parallel speckit phases to separate sessions
 - **Code Review Agent**: Third agent that reviews Dev's PR before posting
-- **Mattermost slash commands**: Trigger workflows from Mattermost (`/suggest-feature`)
+- **Mattermost slash commands + Webhooks**: Trigger workflows from Mattermost (`/agent start --project live-set-revival`) via slash command that hits a webhook. Eliminates polling. Requires: (1) Set up Mattermost custom slash command, (2) Add HTTP server to orchestrator to receive commands, (3) Public URL (ngrok/Cloudflare Tunnel) if running locally
 - **Persistent state**: SQLite or file-based state for crash recovery
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
 

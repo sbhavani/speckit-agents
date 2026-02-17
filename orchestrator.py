@@ -120,6 +120,8 @@ PHASE_SEQUENCE_FEATURE: list[tuple[Phase, str, bool]] = [
 # ---------------------------------------------------------------------------
 
 def load_config(path: str) -> dict:
+    import yaml
+
     with open(path) as f:
         cfg = yaml.safe_load(f)
     # Allow local overrides
@@ -128,6 +130,18 @@ def load_config(path: str) -> dict:
         with open(local) as f:
             local_cfg = yaml.safe_load(f) or {}
         _deep_merge(cfg, local_cfg)
+
+    # Apply path mapping if HOST_WORKDIR is set
+    host_workdir = os.environ.get("HOST_WORKDIR", "")
+    if host_workdir and "projects" in cfg:
+        # Map container paths to host paths
+        path_map = cfg.get("host_path_map", {})
+        for proj_name, proj in cfg["projects"].items():
+            proj_path = proj.get("path", "")
+            for container_prefix, host_prefix in path_map.items():
+                if proj_path.startswith(container_prefix):
+                    proj["path"] = proj_path.replace(container_prefix, host_prefix, 1)
+
     return cfg
 
 
@@ -176,6 +190,8 @@ def resolve_project_config(config: dict, project_name: str | None = None) -> tup
 
     proj = config["project"]
     return proj.get("path", "."), proj.get("prd_path", "docs/PRD.md"), proj.get("channel_id")
+
+    return path
 
 
 def _deep_merge(base: dict, override: dict) -> None:
@@ -486,8 +502,12 @@ class Orchestrator:
     ):
         self.cfg = config
         self.msg = messenger
-        # Allow override from CLI, otherwise use config
-        self.project_path = project_path or config.get("project", {}).get("path", ".")
+        # Original repo path from config
+        self.original_path = project_path or config.get("project", {}).get("path", ".")
+        # Worktree path (created on start)
+        self.worktree_path: str | None = None
+        # Current working path (original or worktree)
+        self.project_path = self.original_path
         self.prd_path = prd_path or config.get("project", {}).get("prd_path", "docs/PRD.md")
         self.state = WorkflowState()
         self._workflow_type: str = "normal"  # "normal" or "feature"
@@ -500,6 +520,81 @@ class Orchestrator:
 
     def _state_file_path(self) -> Path:
         return Path(self.project_path) / STATE_FILE
+
+    # -- Worktree management -----------------------------------------------------
+
+    def _create_worktree(self) -> None:
+        """Create a git worktree for the agent to work in."""
+        if self.worktree_path:
+            logger.info("Worktree already exists: %s", self.worktree_path)
+            return
+
+        # Check if original path is a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=self.original_path,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.info("Not a git repository, working in-place")
+            return
+
+        import tempfile
+
+        # Extract project name from path
+        project_name = Path(self.original_path).name
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.worktree_path = str(Path(tempfile.gettempdir()) / f"agent-team-{project_name}-{timestamp}")
+
+        logger.info("Creating worktree at: %s", self.worktree_path)
+
+        # Create worktree from main branch
+        result = subprocess.run(
+            ["git", "worktree", "add", self.worktree_path, "main"],
+            cwd=self.original_path,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            # Try with -b flag if main doesn't exist or branch name conflicts
+            branch_name = f"agent-worktree-{timestamp}"
+            result = subprocess.run(
+                ["git", "worktree", "add", "-b", branch_name, self.worktree_path, "HEAD"],
+                cwd=self.original_path,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Failed to create worktree: {result.stderr}")
+
+        # Switch to worktree
+        self.project_path = self.worktree_path
+        logger.info("Worktree created successfully")
+
+    def _cleanup_worktree(self) -> None:
+        """Remove the worktree after workflow completes."""
+        if not self.worktree_path:
+            return
+
+        logger.info("Cleaning up worktree: %s", self.worktree_path)
+
+        try:
+            # Remove the worktree (force if needed)
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", self.worktree_path],
+                cwd=self.original_path,
+                capture_output=True,
+                text=True,
+            )
+            logger.info("Worktree removed successfully")
+        except Exception as e:
+            logger.warning("Failed to remove worktree: %s", e)
+
+        self.worktree_path = None
+        self.project_path = self.original_path
+
+    # ---------------------------------------------------------------------------
 
     def _save_state(self) -> None:
         """Serialize workflow state to JSON after each phase completes."""
@@ -514,7 +609,8 @@ class Orchestrator:
             "pm_session": self.state.pm_session,
             "dev_session": self.state.dev_session,
             "pr_url": self.state.pr_url,
-            "project_path": self.project_path,
+            "original_path": self.original_path,
+            "worktree_path": self.worktree_path,
             "started_at": self._started_at,
             "updated_at": now,
         }
@@ -574,6 +670,10 @@ class Orchestrator:
         self._phase_timings = []
         self._run_start_time = time.time()
 
+        # Create worktree if not resuming (resuming uses existing worktree)
+        if not self._resuming:
+            self._create_worktree()
+
         sequence = (
             PHASE_SEQUENCE_FEATURE
             if self._workflow_type == "feature"
@@ -621,7 +721,6 @@ class Orchestrator:
                 logger.error(error_msg)
                 self.msg.send(error_msg, sender="Orchestrator")
                 raise RuntimeError(f"Configuration validation failed: {errors}")
-            self.msg.send("Configuration validated successfully.", sender="Orchestrator")
 
         # Check for /feature or /suggest command in recent messages
         feature_override, is_suggest = self._check_for_command()
@@ -639,12 +738,11 @@ class Orchestrator:
             return
 
         if is_suggest:
-            # /suggest command - use normal PM suggestion flow
-            self.msg.start_thread("Starting feature prioritization...", sender="PM Agent")
+            # /suggest command - PM will start thread after suggesting feature
             return
 
-        # Normal flow: start PM suggestion
-        self.msg.start_thread("Starting feature prioritization...", sender="PM Agent")
+        # Normal flow: PM will start thread after suggesting feature
+        return
 
     def _phase_pm_suggest(self) -> None:
         self.state.phase = Phase.PM_SUGGEST
@@ -691,6 +789,9 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: REVIEW")
 
         f = self.state.feature
+        # Start thread with feature name
+        self.msg.start_thread(f"{f.get('feature', 'Feature')} (Priority: {f.get('priority', '?')})", sender="PM Agent")
+
         self.msg.send(
             f"**Feature Suggestion**\n\n"
             f"**{f.get('feature', 'N/A')}** (Priority: {f.get('priority', '?')})\n\n"
@@ -1068,11 +1169,19 @@ Otherwise, implement all tasks to completion."""
         if self.msg.dry_run or not self.msg.bridge:
             return None, False
 
+        # Get bot user IDs to skip
+        bot_user_ids = self.msg.bridge.bot_user_ids
+
         try:
             # Read recent messages (last 5)
             posts = self.msg.bridge.read_posts(limit=5)
             for post in posts:
                 msg_text = post.get("message", "").strip()
+                user_id = post.get("user_id", "")
+
+                # Skip bot messages
+                if user_id in bot_user_ids:
+                    continue
                 if not msg_text:
                     continue
 
@@ -1234,7 +1343,7 @@ Be specific about:
 
         result = run_claude(
             prompt=prompt,
-            cwd=self.project_path,
+            cwd=self.original_path,
             session_id=self.state.pm_session,
             allowed_tools=PM_TOOLS + ["Write"],
             timeout=300,
@@ -1246,6 +1355,9 @@ Be specific about:
     def _phase_done(self) -> None:
         self.state.phase = Phase.DONE
         logger.info("Phase: DONE")
+
+        # Clean up worktree after PR is created
+        self._cleanup_worktree()
 
         self._post_summary()
 
@@ -1401,9 +1513,12 @@ def main() -> None:
         orchestrator.state.pr_url = saved.get("pr_url")
         orchestrator._workflow_type = saved.get("workflow_type", "normal")
         orchestrator._started_at = saved.get("started_at")
-        # Use saved project path if available
-        if saved.get("project_path"):
-            orchestrator.project_path = saved["project_path"]
+        # Restore paths from saved state
+        if saved.get("original_path"):
+            orchestrator.original_path = saved["original_path"]
+        if saved.get("worktree_path"):
+            orchestrator.worktree_path = saved["worktree_path"]
+            orchestrator.project_path = saved["worktree_path"]
         orchestrator._resuming = True
         orchestrator.msg.send(
             f"Resuming from **{saved['phase']}** phase",

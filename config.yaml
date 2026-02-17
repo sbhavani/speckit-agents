@@ -21,10 +21,18 @@ projects:
   #   prd_path: docs/SPEC.md
   #   channel_id: abc123...
 
+# Docker/host path mapping (for running in containers)
+# When running in docker, map container paths to host paths
+host_path_map:
+  /Users/sb/code: /Users/sb/code
+
 openclaw:
   ssh_host: sb@mac-mini-i7.local
   # OpenClaw account ID used for sending via openclaw CLI
   openclaw_account: productManager
+  # Minimax API (Anthropic-compatible) for responder questions
+  anthropic_api_key: ***REMOVED***
+  anthropic_base_url: https://api.minimax.io/anthropic
 
 mattermost:
   # Channel ID for #product-dev

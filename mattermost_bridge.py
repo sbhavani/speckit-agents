@@ -33,6 +33,7 @@ class MattermostBridge:
         pm_bot_token: str = "",
         pm_bot_user_id: str = "",
         openclaw_account: str | None = None,
+        use_ssh: bool = True,
     ):
         self.ssh_host = ssh_host
         self.channel_id = channel_id
@@ -42,6 +43,7 @@ class MattermostBridge:
         self.pm_bot_token = pm_bot_token
         self.pm_bot_user_id = pm_bot_user_id
         self.openclaw_account = openclaw_account
+        self.use_ssh = use_ssh
         self.bot_user_ids = {dev_bot_user_id, pm_bot_user_id} - {""}
         self._last_seen_ts: int = 0  # create_at timestamp of last seen post
 
@@ -94,7 +96,7 @@ class MattermostBridge:
     # Send (dual identity)
     # ------------------------------------------------------------------
 
-    def send(self, message: str, sender: str | None = None, root_id: str | None = None) -> dict:
+    def send(self, message: str, sender: str | None = None, root_id: str | None = None, channel_id: str | None = None) -> dict:
         """Send a message to the channel (optionally as a thread reply).
 
         Priority:
@@ -104,29 +106,44 @@ class MattermostBridge:
 
         Note: OpenClaw CLI doesn't support threading, so threads are sent via API.
         """
+        # Use provided channel_id or fall back to default
+        target_channel = channel_id or self.channel_id
+
         # PM Agent always uses PM bot token
         if sender and sender == "PM Agent" and self.pm_bot_token:
-            return self._send_via_api(message, self.pm_bot_token, root_id)
+            return self._send_via_api(message, self.pm_bot_token, root_id, target_channel)
         # Threading requires API (OpenClaw doesn't support it)
         if root_id and self.dev_bot_token:
-            return self._send_via_api(message, self.dev_bot_token, root_id)
+            return self._send_via_api(message, self.dev_bot_token, root_id, target_channel)
         # Default: use OpenClaw CLI
-        return self._send_via_openclaw(message, sender)
+        return self._send_via_openclaw(message, sender, target_channel)
 
-    def _send_via_openclaw(self, message: str, sender: str | None = None) -> dict:
+    def _send_via_openclaw(self, message: str, sender: str | None = None, channel_id: str | None = None) -> dict:
         """Send via OpenClaw CLI (appears as the openclaw/dev bot)."""
         if sender:
             text = f"**[{sender}]** {message}"
         else:
             text = message
 
-        args = [
-            "openclaw", "message", "send",
-            "--channel", "mattermost",
-            "--target", f"channel:{self.channel_id}",
-            "-m", self._shell_quote(text),
-            "--json",
-        ]
+        target_channel = channel_id or self.channel_id
+
+        # Use shell quotes only for SSH; for local, use plain args
+        if self.use_ssh:
+            args = [
+                "openclaw", "message", "send",
+                "--channel", "mattermost",
+                "--target", f"channel:{target_channel}",
+                "-m", self._shell_quote(text),
+                "--json",
+            ]
+        else:
+            args = [
+                "openclaw", "message", "send",
+                "--channel", "mattermost",
+                "--target", f"channel:{target_channel}",
+                "-m", text,
+                "--json",
+            ]
         if self.openclaw_account:
             args.extend(["--account", self.openclaw_account])
 
@@ -137,24 +154,36 @@ class MattermostBridge:
         except json.JSONDecodeError:
             return {"raw": output}
 
-    def _send_via_api(self, message: str, bot_token: str, root_id: str | None = None) -> dict:
+    def _send_via_api(self, message: str, bot_token: str, root_id: str | None = None, channel_id: str | None = None) -> dict:
         """Send via Mattermost REST API (appears as the specified bot).
 
         If root_id is provided, posts as a reply to that post's thread.
         """
-        payload = {"channel_id": self.channel_id, "message": message}
+        target_channel = channel_id or self.channel_id
+        payload = {"channel_id": target_channel, "message": message}
         if root_id:
             payload["root_id"] = root_id
 
         payload_json = json.dumps(payload)
-        curl_cmd = [
-            "curl", "-sf",
-            "-X", "POST",
-            f"'{self.mattermost_url}/api/v4/posts'",
-            "-H", f"'Authorization: Bearer {bot_token}'",
-            "-H", "'Content-Type: application/json'",
-            "-d", self._shell_quote(payload_json),
-        ]
+        # Use shell quotes only for SSH; for local, use plain args
+        if self.use_ssh:
+            curl_cmd = [
+                "curl", "-sf",
+                "-X", "POST",
+                f"'{self.mattermost_url}/api/v4/posts'",
+                "-H", f"'Authorization: Bearer {bot_token}'",
+                "-H", "'Content-Type: application/json'",
+                "-d", self._shell_quote(payload_json),
+            ]
+        else:
+            curl_cmd = [
+                "curl", "-sf",
+                "-X", "POST",
+                f"{self.mattermost_url}/api/v4/posts",
+                "-H", f"Authorization: Bearer {bot_token}",
+                "-H", "Content-Type: application/json",
+                "-d", payload_json,
+            ]
         output = self._ssh(curl_cmd, timeout=15)
         logger.info("Sent (api%s): %s", f" thread:{root_id}" if root_id else "", message[:100])
         try:
@@ -172,14 +201,25 @@ class MattermostBridge:
         Returns a list of post dicts sorted oldest-first, each containing:
         ``id``, ``message``, ``user_id``, ``create_at``, ``type``.
         """
-        url = f"{self.mattermost_url}/api/v4/channels/{self.channel_id}/posts?per_page={limit}"
+        return self.read_posts_from_channel(self.channel_id, limit, after)
+
+    def read_posts_from_channel(self, channel_id: str, limit: int = 10, after: int = 0) -> list[dict]:
+        """Read recent posts from a specific channel via the Mattermost API."""
+        url = f"{self.mattermost_url}/api/v4/channels/{channel_id}/posts?per_page={limit}"
         if after:
             url += f"&since={after}"
 
-        curl_cmd = [
-            "curl", "-sf", f"'{url}'",
-            "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
-        ]
+        # Use shell quotes only for SSH; for local, use plain args
+        if self.use_ssh:
+            curl_cmd = [
+                "curl", "-sf", f"'{url}'",
+                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
+            ]
+        else:
+            curl_cmd = [
+                "curl", "-sf", url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ]
         output = self._ssh(curl_cmd, timeout=15)
 
         try:
@@ -197,11 +237,63 @@ class MattermostBridge:
                 "user_id": p.get("user_id", ""),
                 "create_at": p.get("create_at", 0),
                 "type": p.get("type", ""),
+                "channel_id": channel_id,
             })
 
         # Sort oldest first
         posts.sort(key=lambda x: x["create_at"])
         return posts
+
+    def get_channels(self) -> list[dict]:
+        """Get all channels the bot is a member of."""
+        # Use the Mattermost API to get channels for this user
+        url = f"{self.mattermost_url}/api/v4/users/{self.dev_bot_user_id}/teams"
+        # Use shell quotes only for SSH; for local, use plain args
+        if self.use_ssh:
+            curl_cmd = [
+                "curl", "-sf", f"'{url}'",
+                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
+            ]
+        else:
+            curl_cmd = [
+                "curl", "-sf", url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ]
+        try:
+            output = self._ssh(curl_cmd, timeout=30)
+            teams = json.loads(output)
+        except Exception as e:
+            logger.warning(f"Failed to get teams: {e}")
+            # Fallback to just the default channel
+            return [{"id": self.channel_id, "name": "default"}]
+
+        all_channels = []
+        for team in teams:
+            team_id = team.get("id")
+            # Get channels for this team
+            url = f"{self.mattermost_url}/api/v4/users/{self.dev_bot_user_id}/teams/{team_id}/channels"
+            if self.use_ssh:
+                curl_cmd = [
+                    "curl", "-sf", f"'{url}'",
+                    "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
+                ]
+            else:
+                curl_cmd = [
+                    "curl", "-sf", url,
+                    "-H", f"Authorization: Bearer {self.dev_bot_token}",
+                ]
+            try:
+                output = self._ssh(curl_cmd, timeout=30)
+                channels = json.loads(output)
+                all_channels.extend(channels)
+            except Exception as e:
+                logger.warning(f"Failed to get channels for team {team_id}: {e}")
+
+        if not all_channels:
+            all_channels = [{"id": self.channel_id, "name": "default"}]
+
+        logger.info(f"Found {len(all_channels)} channels")
+        return all_channels
 
     def read_new_human_messages(self) -> list[dict]:
         """Read new non-bot, non-system messages since the last check."""
@@ -253,16 +345,40 @@ class MattermostBridge:
     # ------------------------------------------------------------------
 
     def _ssh(self, remote_cmd: list[str], timeout: int = 30, max_retries: int = 3) -> str:
-        """Run a command on the remote host via SSH with retry logic.
+        """Run a command locally or via SSH with retry logic.
 
         Args:
-            remote_cmd: Command to run on remote host
+            remote_cmd: Command to run (locally or on remote host)
             timeout: Timeout for each attempt
             max_retries: Maximum number of retry attempts
 
         Raises:
             RuntimeError: If all retries fail
         """
+        # If use_ssh is False, run locally (no shell quoting needed)
+        if not self.use_ssh:
+            # Strip shell quoting: $'...' becomes just ... and '...' becomes ...
+            def strip_shell_quotes(arg: str) -> str:
+                if arg.startswith("$'") and arg.endswith("'"):
+                    return arg[2:-1]  # Remove $' and '
+                if arg.startswith("'") and arg.endswith("'"):
+                    return arg[1:-1]  # Remove ' and '
+                return arg
+
+            clean_cmd = [strip_shell_quotes(arg) for arg in remote_cmd]
+            logger.info("Running locally: %s", clean_cmd)
+            result = subprocess.run(
+                clean_cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            logger.info("Result: returncode=%d, stdout=%s, stderr=%s", result.returncode, result.stdout[:200], result.stderr[:200])
+            if result.returncode != 0:
+                logger.error("Local command failed: stdout=%s, stderr=%s", result.stdout, result.stderr)
+                raise RuntimeError(f"Local command failed: {result.stderr}")
+            return result.stdout.strip()
+
         last_error: Exception | None = None
 
         for attempt in range(1, max_retries + 1):

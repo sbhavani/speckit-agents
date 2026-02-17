@@ -1,0 +1,175 @@
+# Agent Team
+
+A multi-agent orchestration system where a **Product Manager agent** and **Developer agent** collaborate to ship features autonomously. Communication happens through Mattermost via OpenClaw, with a human operator able to observe and intervene at any time.
+
+Both agents are powered by Claude Code CLI (`claude -p`) running in headless mode. The Developer agent uses **speckit** for structured feature specification and implementation.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Mattermost Channel                        │
+│                                                              │
+│   Human           PM Agent            Dev Agent              │
+│   (intervene)     (answer Qs)         (spec, build,        │
+│                                            create PR)        │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+              OpenClaw Gateway (SSH)
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│              docker-compose services                          │
+│                                                           │
+│  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐   │
+│  │  Responder  │───▶│ Orchestrator │───▶│   Claude   │   │
+│  │ (listens)  │    │  (workflow)  │    │   Agents   │   │
+│  └─────────────┘    └──────────────┘    └─────────────┘   │
+│        │                   │                   │              │
+│        ▼                   ▼                   ▼              │
+│  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐   │
+│  │   Redis     │    │  Worktree    │    │ Target Repo │   │
+│  │  (cache)    │    │  (isolated)  │    │  (branch)   │   │
+│  └─────────────┘    └──────────────┘    └─────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+
+State Machine (Orchestrator):
+INIT → PM_SUGGEST → REVIEW → DEV_SPECIFY → DEV_PLAN → DEV_TASKS
+→ PLAN_REVIEW → DEV_IMPLEMENT → CREATE_PR → PM_LEARN → DONE
+```
+
+## Quick Start
+
+```bash
+# Setup
+uv sync --dev
+
+# Start Redis (for caching)
+docker compose up -d redis
+
+# Run the responder (listens for /suggest and @mentions)
+uv run python responder.py
+
+# In another terminal: run the orchestrator (usually spawned by responder)
+uv run python orchestrator.py --project live-set-revival
+
+# Dry run (prints to stdout, no Mattermost)
+uv run python orchestrator.py --dry-run
+
+# Skip PM, implement a specific feature
+uv run python orchestrator.py --feature "Add user authentication"
+
+# Resume after crash/interrupt
+uv run python orchestrator.py --resume
+
+# Loop mode (keeps suggesting features after each PR)
+uv run python orchestrator.py --loop
+
+# Run tests
+uv run pytest tests/
+```
+
+## Configuration
+
+All configuration lives in `config.yaml`:
+
+```yaml
+projects:
+  finance-agent:
+    path: /Users/sb/code/finance-agent
+    prd_path: docs/PRD.md
+    channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br
+  live-set-revival:
+    path: /Users/sb/code/live-set-revival
+    prd_path: docs/SPEC.md
+    channel_id: bxkopjqjntntd89978uhb8wg7y
+
+openclaw:
+  ssh_host: localhost
+  openclaw_account: productManager
+  anthropic_api_key: sk-cp-...  # Minimax API key for responder PM questions
+  anthropic_base_url: https://api.minimax.io/anthropic
+  anthropic_model: MiniMax-M2.1
+
+mattermost:
+  channel_id: bhpbt6h4xtnem8int5ccmbo4dw
+  url: "http://localhost:8065"
+  dev_bot_token: ...
+  dev_bot_user_id: ...
+  pm_bot_token: ...
+  pm_bot_user_id: ...
+
+workflow:
+  approval_timeout: 300
+  question_timeout: 120
+  plan_review_timeout: 60
+  auto_approve: false
+  loop: false
+  impl_poll_interval: 15
+  user_mention: ""
+```
+
+Override locally with `config.local.yaml` (gitignored).
+
+## Mattermost Commands
+
+**Orchestrator (during workflow):**
+- **approve** / **reject** — Approve or reject feature suggestions
+- **yolo** — Skip plan review and start implementation immediately
+- **/feature "Feature name"** — Skip PM and directly implement a feature
+
+**Responder (always listening):**
+- **/suggest** — Start feature suggestion workflow
+- **/suggest "Feature name"** — Start implementation of specific feature
+- **@product-manager <question>** — Ask PM questions (includes PRD context)
+
+## How It Works
+
+1. **PM_SUGGEST**: PM Agent reads the project's PRD, analyzes what's already implemented, and suggests the highest-priority feature
+2. **REVIEW**: Feature suggestion is posted to Mattermost for human approval
+3. **DEV_SPECIFY**: Dev Agent runs `/speckit.specify` to create SPEC.md
+4. **DEV_PLAN**: Dev Agent runs `/speckit.plan` to create PLAN.md
+5. **DEV_TASKS**: Dev Agent runs `/speckit.tasks` to create TASKS.md
+6. **PLAN_REVIEW**: Human can ask questions or reject before implementation (60s yolo window)
+7. **DEV_IMPLEMENT**: Dev Agent runs `/speckit.implement`. If questions arise, PM Agent answers them
+8. **CREATE_PR**: Dev Agent creates a branch, commits changes, and opens a PR
+9. **PM_LEARN**: PM Agent writes learnings to `.agent/product-manager.md` journal
+
+## Requirements
+
+- **uv** — Dependency management
+- **Redis** — Cache and session state (via docker)
+- **Claude Code CLI** (`claude`) — Installed locally, authenticated
+- **GitHub CLI** (`gh`) — For PR creation
+- **Python 3.10+**
+- **Mattermost** — Running locally at http://localhost:8065
+
+## Docker Deployment
+
+For production, run as docker-compose services:
+
+```bash
+# Start all services
+docker compose up -d
+
+# Start just the responder (listens for /suggest)
+docker compose up -d responder
+
+# Manually trigger orchestrator
+docker compose run --rm orchestrator --project live-set-revival
+```
+
+Services:
+- **redis** — Cache and session state
+- **responder** — Listens for `/suggest` and @mentions, spawns workflows
+- **orchestrator** — Runs the feature workflow (spawned by responder)
+
+## Files
+
+- `orchestrator.py` — Main workflow state machine
+- `responder.py` — Listens for /suggest and @mentions, spawns workflows
+- `mattermost_bridge.py` — Mattermost communication (OpenClaw CLI + API)
+- `docker-compose.yml` — Docker services (redis, responder, orchestrator)
+- `.claude/agents/pm-agent.md` — PM Agent definition
+- `.claude/agents/dev-agent.md` — Developer Agent definition
+- `config.yaml` — Configuration
+- `docs/PRD.md` — Full product requirements document

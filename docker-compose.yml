@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    # No port mapping - internal only
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  responder:
+    build:
+      context: .
+      dockerfile: Dockerfile.responder
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CONFIG_PATH=/app/config.yaml
+      - HOST_WORKDIR=/host
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./responder.py:/app/responder.py:ro
+      - ./mattermost_bridge.py:/app/mattermost_bridge.py:ro
+      - ./.claude:/app/.claude:ro
+      - ~/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
+    command: python responder.py
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - HOST_WORKDIR=/host
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./orchestrator.py:/app/orchestrator.py:ro
+      - ./mattermost_bridge.py:/app/mattermost_bridge.py:ro
+      - ./.claude:/app/.claude:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
+    command: python orchestrator.py
+
+volumes:
+  redis-data:
