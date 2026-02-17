@@ -2,17 +2,17 @@
 
 ## Overview
 
-A multi-agent orchestration system where a **Product Manager agent** and a **Developer agent** collaborate to ship features autonomously, communicating through Mattermost via OpenClaw. A human operator can observe and intervene at any time through the same Mattermost channel.
+A multi-agent orchestration system where a **Product Manager agent** and a **Developer agent** collaborate to ship features autonomously, communicating through Mattermost. A human operator can observe and intervene at any time through the same Mattermost channel.
 
-Both agents are powered by Claude Code CLI (`claude -p`) running in headless mode. The Developer agent uses **speckit** for structured feature specification and implementation.
+Both agents are powered by Claude Code CLI (`claude -p`) running in headless mode. The Developer agent uses **Spec Kit** for structured feature specification and implementation.
 
 ## Goals
 
 1. **Autonomous feature delivery**: PM reads PRD, picks a feature, Dev implements it, PR is created
 2. **Transparent communication**: All decisions and questions are visible in Mattermost
 3. **Human-in-the-loop**: Operator can approve, reject, redirect, or answer questions at any point
-4. **Structured implementation**: Dev follows speckit workflow (specify -> plan -> tasks -> implement)
-5. **Minimal infrastructure**: Uses existing tools (Claude Code CLI, OpenClaw, Mattermost)
+4. **Structured implementation**: Dev follows Spec Kit workflow (specify -> plan -> tasks -> implement)
+5. **Minimal infrastructure**: Uses existing tools (Claude Code CLI, Mattermost, Redis)
 
 ## Architecture
 
@@ -73,7 +73,7 @@ The central script that manages the workflow state machine.
 **Responsibilities:**
 - Drives the workflow through phases
 - Spawns Claude Code headless sessions for each agent
-- Bridges agent output to Mattermost via OpenClaw CLI (over SSH)
+- Bridges agent output to Mattermost via REST API
 - Handles human intervention (approval, rejection, redirection)
 - Manages agent session continuity (resume via session_id)
 - Creates git worktrees for isolated development (doesn't pollute original repo)
@@ -105,20 +105,19 @@ The central script that manages the workflow state machine.
 
 ### 3. Mattermost Bridge (`mattermost_bridge.py`)
 
-Handles all communication with Mattermost through a hybrid approach:
-- **Send**: Via OpenClaw CLI (`openclaw message send`) over SSH
-- **Read**: Via Mattermost REST API (`/api/v4/channels/<id>/posts`) over SSH + curl
-
-OpenClaw's `message read` is not supported for the Mattermost channel plugin, so reads go through the API directly.
+Handles all communication with Mattermost via REST API:
+- **Send**: Via Mattermost REST API (`/api/v4/posts`)
+- **Read**: Via Mattermost REST API (`/api/v4/channels/<id>/posts`)
 
 **Key operations:**
-- `send(message, sender)` -- Post to channel via OpenClaw
+- `send(message, sender)` -- Post to channel via Mattermost API
 - `read_posts(limit, after)` -- Fetch posts via Mattermost REST API
 - `read_new_human_messages()` -- Filter for non-bot, non-system messages since last check
 - `wait_for_response(timeout)` -- Poll for human responses
 
-**SSH banner filtering:**
-The remote host shows an "UNAUTHORIZED ACCESS" SSH banner on every connection. The bridge automatically strips these lines from both stdout and stderr.
+Uses two bot identities:
+- **Dev bot**: For dev agent and orchestrator messages
+- **PM bot**: For PM agent messages
 
 ### 4. PM Agent (`.claude/agents/pm-agent.md`)
 
@@ -162,17 +161,16 @@ projects:
     channel_id: bxkopjqjntntd89978uhb8wg7y
 
 openclaw:
-  ssh_host: localhost
-  openclaw_account: productManager
-  anthropic_api_key: sk-cp-...  # Minimax API key
+  ssh_host: localhost  # Unused, kept for backward compatibility
+  anthropic_api_key: sk-cp-...  # Minimax API key for responder PM questions
   anthropic_base_url: https://api.minimax.io/anthropic
   anthropic_model: MiniMax-M2.1
 
 mattermost:
   channel_id: bhpbt6h4xtnem8int5ccmbo4dw
   url: "http://localhost:8065"
-  dev_bot_token: <openclaw bot token>
-  dev_bot_user_id: <openclaw bot user id>
+  dev_bot_token: <dev bot token>
+  dev_bot_user_id: <dev bot user id>
   pm_bot_token: <product-manager bot token>
   pm_bot_user_id: <product-manager bot user id>
 
@@ -326,11 +324,12 @@ Redis is used for caching to improve performance:
 - The orchestrator is lightweight Python; heavy lifting is in Claude Code
 - Can upgrade to Agent SDK later if needed (same underlying engine)
 
-### Why hybrid send/read for Mattermost?
+### Why Mattermost API directly?
 
-- **Send via OpenClaw CLI**: Works well, handles Mattermost formatting, bot identity
-- **Read via Mattermost REST API**: OpenClaw's `message read` is not supported for the Mattermost channel plugin, so we curl the API directly
-- Both go over SSH since the gateway is loopback-only
+- **Simplicity**: No extra dependencies (OpenClaw, SSH)
+- **Full control**: Direct access to all API features (threading, reactions, etc.)
+- **Two bot identities**: Dev bot and PM bot for clear message attribution
+- **Runs locally**: Connects directly to Mattermost at http://localhost:8065
 
 ### Why one orchestrator instead of two independent agents?
 
@@ -340,7 +339,7 @@ Redis is used for caching to improve performance:
 - Easier to add features like `--resume` and `--loop`
 - Simpler debugging: one log, one process
 
-### Why speckit for the Dev workflow?
+### Why Spec Kit for the Dev workflow?
 
 - Already in use across multiple projects (finance-agent, github-issue-triage-hub, live-set-revival)
 - Structured output (spec.md, plan.md, tasks.md) makes progress trackable
@@ -365,14 +364,11 @@ Redis is used for caching to improve performance:
 - `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`)
 - `HOST_WORKDIR`: Host working directory for docker path mapping
 
-### OpenClaw Mattermost Setup (already done)
-- Mattermost server: `http://localhost:8065` (on mac-mini-i7.local)
-- Mattermost server (Tailscale): `http://mac-mini-i7.tail58a751.ts.net:8065`
-- Dev bot: `openclaw` (ID: `prmnsceu8bg8tm1kmb3zzhbdwr`, is_bot: true) — sends via OpenClaw CLI
-- PM bot: `product-manager` (ID: `osnrc8yrpffifj56friubo5dxr`, is_bot: true) — sends via Mattermost API
-- Bot account in OpenClaw: `productManager`
-- Plugin: `@openclaw/mattermost` (loaded, v2026.2.15)
-- Gateway: port 18789, loopback bind
+### Mattermost Setup
+
+- Mattermost server: `http://localhost:8065`
+- Dev bot: `openclaw` (ID: `prmnsceu8bg8tm1kmb3zzhbdwr`, is_bot: true)
+- PM bot: `product-manager` (ID: `osnrc8yrpffifj56friubo5dxr`, is_bot: true)
 - Channel: `#product-dev` (ID: `bhpbt6h4xtnem8int5ccmbo4dw`)
 
 ## Future Enhancements
