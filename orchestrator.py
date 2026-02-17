@@ -621,7 +621,20 @@ class Orchestrator:
                 raise RuntimeError(f"Configuration validation failed: {errors}")
             self.msg.send("Configuration validated successfully.", sender="Orchestrator")
 
-        # Start a new thread for this feature
+        # Check for /feature command in recent messages
+        feature_override = self._check_for_feature_command()
+        if feature_override:
+            self._workflow_type = "feature"
+            self.state.feature = {
+                "feature": feature_override[:60],
+                "description": feature_override,
+                "rationale": "Direct /feature command from user",
+                "priority": "P1",
+            }
+            self.msg.start_thread(f"Feature specified: **{feature_override[:60]}**", sender="Orchestrator")
+            return
+
+        # Normal flow: start PM suggestion
         self.msg.start_thread("Starting feature prioritization...", sender="PM Agent")
 
     def _phase_pm_suggest(self) -> None:
@@ -1030,6 +1043,45 @@ Otherwise, implement all tasks to completion."""
                 continue
             logger.info("Human question during impl: %s", text[:100])
             self._answer_human_question(text)
+
+    def _check_for_feature_command(self) -> str | None:
+        """Check for /feature command in recent channel messages.
+
+        Looks for messages like:
+        - /feature build a todo list
+        - @product-manager build a todo list
+        - feature: build a todo list
+
+        Returns the feature description if found, None otherwise.
+        """
+        if self.msg.dry_run or not self.msg.bridge:
+            return None
+
+        try:
+            # Read recent messages (last 5)
+            posts = self.msg.bridge.read_posts(limit=5)
+            for post in posts:
+                msg_text = post.get("message", "").strip()
+                if not msg_text:
+                    continue
+
+                # Check for /feature command
+                if msg_text.startswith("/feature ") or msg_text.startswith("/feature\n"):
+                    feature = msg_text.replace("/feature", "", 1).strip()
+                    logger.info("Found /feature command: %s", feature[:50])
+                    return feature
+
+                # Check for "feature:" prefix (after @mention or standalone)
+                lower = msg_text.lower()
+                if lower.startswith("feature:") or lower.startswith("feature "):
+                    feature = msg_text.split(":", 1)[1].strip() if ":" in msg_text else msg_text.split(" ", 1)[1].strip()
+                    if feature:
+                        logger.info("Found feature: command: %s", feature[:50])
+                        return feature
+        except Exception as e:
+            logger.warning("Error checking for feature command: %s", e)
+
+        return None
 
     def _answer_human_question(self, question: str) -> None:
         """Have the PM agent answer a human question posted in Mattermost."""
