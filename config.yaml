@@ -16,6 +16,10 @@ projects:
     path: /Users/sb/code/live-set-revival
     prd_path: docs/SPEC.md
     channel_id: bxkopjqjntntd89978uhb8wg7y  # #livesets-info
+  agent-team:
+    path: /Volumes/SSD-PGU3/code/agent-team
+    prd_path: docs/PRD.md
+    channel_id: bhpbt6h4xtnem8int5ccmbo4dw  # #product-dev (reuse)
   # example:
   #   path: /Users/sbhavani/code/another-project
   #   prd_path: docs/SPEC.md
