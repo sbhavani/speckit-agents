@@ -46,6 +46,49 @@ class MattermostBridge:
         self._last_seen_ts: int = 0  # create_at timestamp of last seen post
 
     # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+
+    def validate(self) -> tuple[bool, list[str]]:
+        """Validate configuration and connectivity.
+
+        Returns:
+            Tuple of (success: bool, errors: list[str])
+        """
+        errors: list[str] = []
+
+        # 1. Check SSH connectivity
+        try:
+            result = self._ssh(["echo", "ok"], timeout=10)
+            if "ok" not in result:
+                errors.append("SSH connection test failed")
+        except Exception as e:
+            errors.append(f"SSH connection failed: {e}")
+            return False, errors
+
+        # 2. Check Mattermost channel exists and bot token works
+        try:
+            # Try to read from the channel
+            posts = self.read_posts(limit=1)
+            # If we got here, the channel exists and token works
+            logger.info("Mattermost validation passed")
+        except Exception as e:
+            errors.append(f"Mattermost API failed: {e}")
+
+        # 3. Check OpenClaw if configured
+        if self.openclaw_account:
+            try:
+                result = self._ssh(
+                    ["openclaw", "status"],
+                    timeout=10,
+                )
+                logger.info("OpenClaw validation passed")
+            except Exception as e:
+                errors.append(f"OpenClaw check failed: {e}")
+
+        return len(errors) == 0, errors
+
+    # ------------------------------------------------------------------
     # Send (dual identity)
     # ------------------------------------------------------------------
 

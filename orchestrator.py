@@ -554,6 +554,18 @@ class Orchestrator:
     def _phase_init(self) -> None:
         self.state.phase = Phase.INIT
         logger.info("Phase: INIT")
+
+        # Validate config and connectivity (skip in dry-run)
+        if not self.msg.dry_run and self.msg.bridge:
+            logger.info("Validating configuration...")
+            valid, errors = self.msg.bridge.validate()
+            if not valid:
+                error_msg = "Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors)
+                logger.error(error_msg)
+                self.msg.send(error_msg, sender="Orchestrator")
+                raise RuntimeError(f"Configuration validation failed: {errors}")
+            self.msg.send("Configuration validated successfully.", sender="Orchestrator")
+
         # Start a new thread for this feature
         self.msg.start_thread("Starting feature prioritization...", sender="PM Agent")
 
