@@ -9,3 +9,4 @@ build/
 config.local.yaml
 *.log
 .DS_Store
+.agent-team-state.json
