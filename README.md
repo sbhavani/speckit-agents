@@ -134,14 +134,16 @@ Override locally with `config.local.yaml` (gitignored).
 8. **CREATE_PR**: Dev Agent creates a branch, commits changes, and opens a PR
 9. **PM_LEARN**: PM Agent writes learnings to `.agent/product-manager.md` journal
 
-## Requirements
+## Prerequisites
 
-- **uv** — Dependency management
-- **Redis** — Cache and session state (via docker)
-- **Claude Code CLI** (`claude`) — Installed locally, authenticated
-- **GitHub CLI** (`gh`) — For PR creation
-- **Python 3.10+**
-- **Mattermost** — Running locally at http://localhost:8065
+- **[uv](https://github.com/astral-sh/uv)** — Python dependency management
+- **[Docker](https://www.docker.com/)** — For Redis service
+- **[Redis](https://redis.io/)** — Cache and session state (via Docker)
+- **[Claude Code CLI](https://claude.com/claude-code)** — AI assistant, must be installed and authenticated
+- **[GitHub CLI](https://cli.github.com/)** (`gh`) — For PR creation
+- **[Python 3.10+](https://www.python.org/)**
+- **[Mattermost](https://mattermost.com/)** — Running at http://localhost:8065
+- **speckit commands** — Installed in target project's `.claude/commands/`
 
 ## Docker Deployment
 
