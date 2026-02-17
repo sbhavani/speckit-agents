@@ -128,11 +128,13 @@ class Responder:
 
                 text = p.get("message", "").strip()
 
-                # Check if this is a question (ends with ? or starts with question words)
+                # Check if this is a question (ends with ? or contains question words)
                 # This should be handled before /suggest check
                 is_question = text.strip().endswith("?")
                 question_phrases = ["can you", "could you", "would you", "will you", "how do", "how can", "what is", "what's", "why is", "why does", "when will", "should i", "should we"]
-                is_question = is_question or any(text.lower().startswith(phrase) for phrase in question_phrases)
+                # Check if any question phrase is in the text (after any @mention)
+                text_lower = text.lower()
+                is_question = is_question or any(phrase in text_lower for phrase in question_phrases)
 
                 # Check for /resume command
                 if "/resume" in text.lower():
