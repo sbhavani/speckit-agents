@@ -129,6 +129,49 @@ def load_config(path: str) -> dict:
     return cfg
 
 
+def resolve_project_config(config: dict, project_name: str | None = None) -> tuple[str, str]:
+    """Resolve project path and PRD path from config.
+
+    Supports two formats:
+    1. Single project: config["project"]["path"], config["project"]["prd_path"]
+    2. Multi-project: config["projects"]["name"]["path"], config["projects"]["name"]["prd_path"]
+
+    Returns:
+        tuple of (project_path, prd_path)
+
+    Raises:
+        ValueError: If project not found or config is invalid
+    """
+    # Check for multi-project mode
+    if "projects" in config:
+        projects = config["projects"]
+        if not projects:
+            raise ValueError("No projects defined in config")
+
+        # If no project specified, use the only one or error
+        if not project_name:
+            if len(projects) == 1:
+                project_name = list(projects.keys())[0]
+            else:
+                raise ValueError(
+                    f"Multiple projects defined: {list(projects.keys())}. "
+                    "Use --project to specify which one."
+                )
+
+        if project_name not in projects:
+            raise ValueError(f"Project '{project_name}' not found. Available: {list(projects.keys())}")
+
+        proj = projects[project_name]
+        return proj["path"], proj.get("prd_path", "docs/PRD.md")
+
+    # Single project mode (legacy)
+    if "project" not in config:
+        raise ValueError("Config must have either 'project' or 'projects' key")
+
+    proj = config["project"]
+    return proj.get("path", "."), proj.get("prd_path", "docs/PRD.md")
+
+
 def _deep_merge(base: dict, override: dict) -> None:
     for k, v in override.items():
         if k in base and isinstance(base[k], dict) and isinstance(v, dict):
@@ -428,11 +471,18 @@ DEV_TOOLS = [
 
 
 class Orchestrator:
-    def __init__(self, config: dict, messenger: Messenger):
+    def __init__(
+        self,
+        config: dict,
+        messenger: Messenger,
+        project_path: str | None = None,
+        prd_path: str | None = None,
+    ):
         self.cfg = config
         self.msg = messenger
-        self.project_path = config["project"]["path"]
-        self.prd_path = config["project"]["prd_path"]
+        # Allow override from CLI, otherwise use config
+        self.project_path = project_path or config.get("project", {}).get("path", ".")
+        self.prd_path = prd_path or config.get("project", {}).get("prd_path", "docs/PRD.md")
         self.state = WorkflowState()
         self._workflow_type: str = "normal"  # "normal" or "feature"
         self._resuming: bool = False
@@ -458,6 +508,7 @@ class Orchestrator:
             "pm_session": self.state.pm_session,
             "dev_session": self.state.dev_session,
             "pr_url": self.state.pr_url,
+            "project_path": self.project_path,
             "started_at": self._started_at,
             "updated_at": now,
         }
@@ -1162,6 +1213,8 @@ def main() -> None:
                         help="Skip PM agent and directly implement this feature description")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from last saved state (.agent-team-state.json)")
+    parser.add_argument("--project", type=str, default=None,
+                        help="Project name from config (for multi-project setups)")
     args = parser.parse_args()
 
     if args.resume and args.feature:
@@ -1172,6 +1225,13 @@ def main() -> None:
         # Try relative to script directory
         config_path = os.path.join(os.path.dirname(__file__), args.config)
     config = load_config(config_path)
+
+    # Resolve project config (supports single project or multi-project mode)
+    try:
+        project_path, prd_path = resolve_project_config(config, args.project)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
     if args.dry_run:
         messenger = Messenger(bridge=None, dry_run=True)
@@ -1189,7 +1249,7 @@ def main() -> None:
         )
         messenger = Messenger(bridge=bridge)
 
-    orchestrator = Orchestrator(config, messenger)
+    orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path)
 
     if args.resume:
         saved = orchestrator._load_state()
@@ -1204,6 +1264,9 @@ def main() -> None:
         orchestrator.state.pr_url = saved.get("pr_url")
         orchestrator._workflow_type = saved.get("workflow_type", "normal")
         orchestrator._started_at = saved.get("started_at")
+        # Use saved project path if available
+        if saved.get("project_path"):
+            orchestrator.project_path = saved["project_path"]
         orchestrator._resuming = True
         orchestrator.msg.send(
             f"Resuming from **{saved['phase']}** phase",

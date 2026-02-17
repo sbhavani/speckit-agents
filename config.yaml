@@ -1,10 +1,19 @@
 # Agent Team Configuration
 # Copy to config.local.yaml and customize for your setup
 
-project:
-  # The target project to work on (where PRD.md and speckit commands live)
-  path: /Users/sbhavani/code/finance-agent
-  prd_path: docs/PRD.md
+# Single project mode (simplest)
+# project:
+#   path: /Users/sbhavani/code/finance-agent
+#   prd_path: docs/PRD.md
+
+# Multi-project mode (use --project flag to select)
+projects:
+  finance-agent:
+    path: /Users/sbhavani/code/finance-agent
+    prd_path: docs/PRD.md
+  # example:
+  #   path: /Users/sbhavani/code/another-project
+  #   prd_path: docs/SPEC.md
 
 openclaw:
   ssh_host: sb@mac-mini-i7.local
