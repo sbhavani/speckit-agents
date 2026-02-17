@@ -250,8 +250,40 @@ class MattermostBridge:
     # SSH helper
     # ------------------------------------------------------------------
 
-    def _ssh(self, remote_cmd: list[str], timeout: int = 30) -> str:
-        """Run a command on the remote host via SSH."""
+    def _ssh(self, remote_cmd: list[str], timeout: int = 30, max_retries: int = 3) -> str:
+        """Run a command on the remote host via SSH with retry logic.
+
+        Args:
+            remote_cmd: Command to run on remote host
+            timeout: Timeout for each attempt
+            max_retries: Maximum number of retry attempts
+
+        Raises:
+            RuntimeError: If all retries fail
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                return self._ssh_once(remote_cmd, timeout)
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    # Exponential backoff: 2s, 8s, 32s
+                    backoff = 2 ** (attempt + 0)
+                    logger.warning(
+                        "SSH attempt %d/%d failed: %s. Retrying in %ds...",
+                        attempt, max_retries, e, backoff,
+                    )
+                    time.sleep(backoff)
+                else:
+                    logger.error("SSH failed after %d attempts: %s", max_retries, e)
+
+        # All retries failed
+        raise RuntimeError(f"SSH failed after {max_retries} attempts: {last_error}")
+
+    def _ssh_once(self, remote_cmd: list[str], timeout: int = 30) -> str:
+        """Run a single SSH command (no retry)."""
         cmd = ["ssh", self.ssh_host, " ".join(remote_cmd)]
         logger.debug("SSH: %s", " ".join(remote_cmd))
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
