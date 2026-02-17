@@ -158,12 +158,22 @@ class Responder:
 
     def _handle_suggest(self, text: str, channel_id: str) -> None:
         """Handle /suggest command - start orchestrator workflow."""
-        # Extract feature name if provided: /suggest "Add track pages"
+        # Extract feature name: /suggest "Add track pages" OR /suggest Add Redis Streams
         feature = None
+
+        # Try quoted first: /suggest "Add track pages"
         if '"' in text:
             parts = text.split('"')
             if len(parts) >= 2:
                 feature = parts[1]
+        else:
+            # Try text after /suggest: /suggest Add Redis Streams
+            lower = text.lower()
+            if "/suggest" in lower:
+                idx = lower.index("/suggest") + len("/suggest")
+                remainder = text[idx:].strip()
+                if remainder:
+                    feature = remainder
 
         logger.info(f"/suggest command received: feature={feature}")
 
