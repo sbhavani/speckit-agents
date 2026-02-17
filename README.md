@@ -1,4 +1,4 @@
-# Agent Team
+# Spec Kit Agent Team
 
 A multi-agent orchestration system where a **Product Manager agent** and **Developer agent** collaborate to ship features autonomously. Communication happens through Mattermost via OpenClaw, with a human operator able to observe and intervene at any time.
 

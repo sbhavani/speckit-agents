@@ -1,4 +1,4 @@
-# PRD: Agent Team — PM + Developer Code Agents
+# PRD: Spec Kit Agent Team — PM + Developer Code Agents
 
 ## Overview
 
