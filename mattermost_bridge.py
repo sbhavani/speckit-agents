@@ -99,24 +99,18 @@ class MattermostBridge:
     def send(self, message: str, sender: str | None = None, root_id: str | None = None, channel_id: str | None = None) -> dict:
         """Send a message to the channel (optionally as a thread reply).
 
-        Priority:
-        1. If sender is "PM Agent", posts via PM bot's Mattermost token
-        2. If root_id is provided (threading), posts via API with dev_bot_token
-        3. Otherwise posts via OpenClaw CLI (Dev bot / Orchestrator)
-
-        Note: OpenClaw CLI doesn't support threading, so threads are sent via API.
+        Uses Mattermost API directly (no OpenClaw dependency).
         """
         # Use provided channel_id or fall back to default
         target_channel = channel_id or self.channel_id
 
-        # PM Agent always uses PM bot token
-        if sender and sender == "PM Agent" and self.pm_bot_token:
-            return self._send_via_api(message, self.pm_bot_token, root_id, target_channel)
-        # Threading requires API (OpenClaw doesn't support it)
-        if root_id and self.dev_bot_token:
-            return self._send_via_api(message, self.dev_bot_token, root_id, target_channel)
-        # Default: use OpenClaw CLI
-        return self._send_via_openclaw(message, sender, target_channel)
+        # Choose token based on sender
+        if sender == "PM Agent" and self.pm_bot_token:
+            token = self.pm_bot_token
+        else:
+            token = self.dev_bot_token
+
+        return self._send_via_api(message, token, root_id, target_channel)
 
     def _send_via_openclaw(self, message: str, sender: str | None = None, channel_id: str | None = None) -> dict:
         """Send via OpenClaw CLI (appears as the openclaw/dev bot)."""
