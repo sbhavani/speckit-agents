@@ -153,6 +153,7 @@ class TestAutoSave:
         }
         msg = MagicMock(spec=Messenger)
         msg.dry_run = True
+        msg.root_id = None  # Needed for _save_state()
         orch = Orchestrator(config, msg)
         orch.state.phase = Phase.DEV_PLAN
 
@@ -205,6 +206,7 @@ class TestDoneClearsState:
         config, tmp_path = tmp_project
         msg = MagicMock(spec=Messenger)
         msg.dry_run = True
+        msg.root_id = None  # Needed for _save_state()
         orch = Orchestrator(config, msg)
 
         for _, method_name, is_checkpoint in PHASE_SEQUENCE_NORMAL:
@@ -253,6 +255,7 @@ class TestPhaseTimings:
         }
         msg = MagicMock(spec=Messenger)
         msg.dry_run = True
+        msg.root_id = None  # Needed for _save_state()
         return Orchestrator(config, msg)
 
     def test_timings_recorded_for_each_phase(self, tmp_path):
@@ -480,3 +483,79 @@ class TestRunClaudeRetry:
         calls = mock_time.sleep.call_args_list
         assert calls[0][0][0] == 5
         assert calls[1][0][0] == 20
+
+
+# ---------------------------------------------------------------------------
+# Thread ID persistence
+# ---------------------------------------------------------------------------
+
+class TestThreadIdPersistence:
+    def test_save_includes_thread_root_id(self, tmp_project):
+        config, tmp_path = tmp_project
+        msg = Messenger(bridge=None, dry_run=True)
+        msg._root_id = "thread_abc123"
+        orch = Orchestrator(config, msg)
+        orch.state.phase = Phase.DEV_IMPLEMENT
+        orch.state.feature = {"feature": "test"}
+        orch._save_state()
+
+        data = json.loads((tmp_path / ".agent-team-state.json").read_text())
+        assert data["thread_root_id"] == "thread_abc123"
+
+    def test_load_restores_thread_root_id(self, tmp_project):
+        config, tmp_path = tmp_project
+        msg = Messenger(bridge=None, dry_run=True)
+        orch = Orchestrator(config, msg)
+
+        # Create state file with thread_root_id
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps({
+            "version": 1,
+            "phase": "DEV_IMPLEMENT",
+            "thread_root_id": "thread_xyz789",
+            "feature": {},
+        }))
+
+        saved = orch._load_state()
+        assert saved["thread_root_id"] == "thread_xyz789"
+
+
+# ---------------------------------------------------------------------------
+# Question routing (implementation vs product)
+# ---------------------------------------------------------------------------
+
+class TestQuestionRouting:
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        return Orchestrator(config, msg)
+
+    def test_impl_question_routes_to_dev(self, tmp_path):
+        """Questions about next steps, progress, status should go to Dev Agent."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.dev_session = "dev_session"
+
+        with patch("orchestrator.run_claude") as mock:
+            mock.return_value = {"result": "Working on T001", "session_id": "dev_session"}
+            orch._answer_impl_question("What's next?")
+
+        # Should call run_claude
+        mock.assert_called_once()
+        call_args = mock.call_args
+        assert "next" in call_args[1]["prompt"].lower()
+
+    def test_product_question_routes_to_pm(self, tmp_path):
+        """Questions about requirements, PRD, spec should go to PM Agent."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.pm_session = "pm_session"
+
+        with patch("orchestrator.run_claude") as mock:
+            mock.return_value = {"result": "Based on the PRD...", "session_id": "pm_session"}
+            orch._answer_human_question("What's in the PRD?")
+
+        mock.assert_called_once()
+        call_args = mock.call_args
+        assert "PRD" in call_args[1]["prompt"]
