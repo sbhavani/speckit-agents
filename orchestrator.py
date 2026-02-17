@@ -715,14 +715,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"Running speckit specify for: {desc[:100]}...", sender="Dev Agent")
 
-        progress_cb = self._make_progress_callback("specify", report_interval=3)
-
+        # Note: Progress callback disabled - tool call spam not helpful in Mattermost
         result = run_claude_stream(
             prompt=f"/speckit.specify {desc}",
             cwd=self.project_path,
             allowed_tools=DEV_TOOLS,
             timeout=1800,
-            progress_callback=progress_cb,
         )
         self.state.dev_session = result.get("session_id")
 
@@ -738,15 +736,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_PLAN")
         self.msg.send("Creating technical plan...", sender="Dev Agent")
 
-        progress_cb = self._make_progress_callback("plan", report_interval=3)
-
         result = run_claude_stream(
             prompt="/speckit.plan",
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
             timeout=1800,
-            progress_callback=progress_cb,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -762,15 +757,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_TASKS")
         self.msg.send("Generating task list...", sender="Dev Agent")
 
-        progress_cb = self._make_progress_callback("tasks", report_interval=3)
-
         result = run_claude_stream(
             prompt="/speckit.tasks",
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
             timeout=1800,
-            progress_callback=progress_cb,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -984,7 +976,6 @@ Otherwise, implement all tasks to completion."""
         # Run dev agent in a background thread so we can poll Mattermost
         # for human questions while it works.
         dev_result_holder: list[dict] = []
-        progress_cb = self._make_progress_callback("implement", report_interval=2)
 
         def _run_dev():
             result = run_claude_stream(
@@ -993,7 +984,6 @@ Otherwise, implement all tasks to completion."""
                 session_id=self.state.dev_session,
                 allowed_tools=DEV_TOOLS,
                 timeout=1800,
-                progress_callback=progress_cb,
             )
             dev_result_holder.append(result)
 
