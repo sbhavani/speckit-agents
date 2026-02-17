@@ -72,6 +72,7 @@ class Phase(Enum):
     PLAN_REVIEW = auto()
     DEV_IMPLEMENT = auto()
     CREATE_PR = auto()
+    PM_LEARN = auto()
     DONE = auto()
 
 
@@ -99,6 +100,7 @@ PHASE_SEQUENCE_NORMAL: list[tuple[Phase, str, bool]] = [
     (Phase.PLAN_REVIEW, "_phase_plan_review", True),
     (Phase.DEV_IMPLEMENT, "_phase_dev_implement", False),
     (Phase.CREATE_PR, "_phase_create_pr", False),
+    (Phase.PM_LEARN, "_phase_pm_learn", False),
     (Phase.DONE, "_phase_done", False),
 ]
 
@@ -1203,6 +1205,43 @@ Otherwise, implement all tasks to completion."""
 
         self.state.pr_url = result.get("result", "").strip()
         logger.info("PR URL: %s", self.state.pr_url)
+
+    def _phase_pm_learn(self) -> None:
+        """Have PM agent write a learning entry to .agent/product-manager.md journal."""
+        self.state.phase = Phase.PM_LEARN
+        logger.info("Phase: PM_LEARN")
+        self.msg.send("📖 **Learn** — Recording learnings...", sender="PM Agent")
+
+        feature_name = self.state.feature.get("feature", "Unknown")
+
+        prompt = f"""After implementing the feature "{feature_name}", analyze what was learned and write a journal entry to `.agent/product-manager.md`.
+
+1. First, read the existing `.agent/product-manager.md` if it exists to see the format
+2. Add a new entry at the top with today's date
+3. The format should be:
+
+## YYYY-MM-DD - Feature Name
+**Learning:** What did you learn during implementation? What was expensive, tricky, or surprising?
+**Action:** What would you do differently next time? What patterns should be followed?
+
+4. Write the new entry to the file using the Write tool
+
+Be specific about:
+- Performance issues found and how they were fixed
+- Architecture decisions and trade-offs
+- What worked well vs what was painful
+- Recommendations for future work on this codebase"""
+
+        result = run_claude(
+            prompt=prompt,
+            cwd=self.project_path,
+            session_id=self.state.pm_session,
+            allowed_tools=PM_TOOLS + ["Write"],
+            timeout=300,
+        )
+
+        self.state.pm_session = result.get("session_id", self.state.pm_session)
+        logger.info("Learning recorded to journal")
 
     def _phase_done(self) -> None:
         self.state.phase = Phase.DONE
