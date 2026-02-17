@@ -898,12 +898,39 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 tool_name = tool_event.get("name", "unknown")
                 tool_input = tool_event.get("input", {})
 
-                # Extract file path if available
-                file_path = ""
-                if "file_path" in tool_input:
-                    file_path = tool_input["file_path"]
+                # Extract useful info based on tool type
+                detail = ""
+                if tool_name == "Bash":
+                    # Show the command being run
+                    detail = tool_input.get("command", "")[:60]
+                elif tool_name == "Grep":
+                    # Show the pattern
+                    detail = f"pattern: {tool_input.get('pattern', '')}"
+                elif tool_name == "Glob":
+                    # Show the glob pattern
+                    detail = f"pattern: {tool_input.get('pattern', '')}"
+                elif tool_name == "Read":
+                    # Show the file path
+                    detail = tool_input.get("file_path", "")[:50]
+                elif tool_name == "Edit":
+                    # Show the file being edited
+                    detail = tool_input.get("file_path", "")[:50]
+                elif tool_name == "Write":
+                    # Show the file being written
+                    detail = tool_input.get("file_path", "")[:50]
+                elif tool_name == "TodoWrite":
+                    # Show the task description
+                    detail = tool_input.get("content", "")[:40]
+                elif tool_name == "NotebookEdit":
+                    detail = "notebook cell"
+                elif "file_path" in tool_input:
+                    detail = tool_input["file_path"][:50]
                 elif "path" in tool_input:
-                    file_path = tool_input["path"]
+                    detail = tool_input["path"][:50]
+
+                # Skip if no useful detail or if it's a thinking/debug tool
+                if not detail or tool_name in ("Thinking", "TodoRead", "Task", "TaskOutput"):
+                    return
 
                 # Only report every N tools or if it's been a while
                 now = time.time()
@@ -913,14 +940,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 )
 
                 if should_report and not self.msg.dry_run:
-                    # Build a concise progress message
-                    if file_path:
-                        # Truncate long paths
-                        if len(file_path) > 50:
-                            file_path = "..." + file_path[-47:]
-                        self.msg.send(f"🔧 [{tool_name}] {file_path}", sender="Dev Agent")
-                    else:
-                        self.msg.send(f"🔧 [{tool_name}]", sender="Dev Agent")
+                    # Truncate long details
+                    if len(detail) > 50:
+                        detail = detail[:47] + "..."
+                    self.msg.send(f"🔧 {detail}", sender="Dev Agent")
                     last_report_time[0] = now
 
             # Check for tool_use at top level

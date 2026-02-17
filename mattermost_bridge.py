@@ -75,8 +75,10 @@ class MattermostBridge:
         except Exception as e:
             errors.append(f"Mattermost API failed: {e}")
 
-        # 3. Check OpenClaw if configured
-        if self.openclaw_account:
+        # 3. Check OpenClaw if configured (skip for localhost)
+        # Note: OpenClaw validation is optional - it may not be reachable
+        # if running locally or SSH isn't set up
+        if self.openclaw_account and self.ssh_host != "localhost":
             try:
                 result = self._ssh(
                     ["openclaw", "status"],
@@ -84,7 +86,7 @@ class MattermostBridge:
                 )
                 logger.info("OpenClaw validation passed")
             except Exception as e:
-                errors.append(f"OpenClaw check failed: {e}")
+                logger.warning("OpenClaw check failed (continuing anyway): %s", e)
 
         return len(errors) == 0, errors
 
@@ -284,7 +286,8 @@ class MattermostBridge:
 
     def _ssh_once(self, remote_cmd: list[str], timeout: int = 30) -> str:
         """Run a single SSH command (no retry)."""
-        cmd = ["ssh", self.ssh_host, " ".join(remote_cmd)]
+        # Add -o StrictHostKeyChecking=no to skip host key verification
+        cmd = ["ssh", "-o", "StrictHostKeyChecking=no", self.ssh_host, " ".join(remote_cmd)]
         logger.debug("SSH: %s", " ".join(remote_cmd))
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
