@@ -1164,14 +1164,34 @@ Otherwise, implement all tasks to completion."""
         self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
 
     def _check_for_human_questions(self) -> None:
-        """Check Mattermost for human messages and route them to the PM agent."""
+        """Check Mattermost for human messages and route them appropriately.
+
+        Implementation/status questions go to Dev Agent.
+        Product/requirements questions go to PM Agent.
+        """
         new = self.msg.bridge.read_new_human_messages()
         for msg in new:
             text = msg.get("message", "").strip()
             if not text:
                 continue
             logger.info("Human question during impl: %s", text[:100])
-            self._answer_human_question(text)
+
+            # Heuristic: route implementation questions to Dev, product questions to PM
+            impl_keywords = ["next", "task", "progress", "status", "working on", "when will",
+                             "how", "why is it", "why does", "todo", "priority"]
+            product_keywords = ["should", "can you", "could you", "what's the", " PRD",
+                                "requirement", "spec", "feature", "design", "api", "data model"]
+
+            text_lower = text.lower()
+            is_impl = any(kw in text_lower for kw in impl_keywords)
+            is_product = any(kw in text_lower for kw in product_keywords)
+
+            if is_impl and not is_product:
+                # Route to Dev Agent for implementation questions
+                self._answer_impl_question(text)
+            else:
+                # Route to PM Agent for product questions
+                self._answer_human_question(text)
 
     def _check_for_command(self) -> tuple[str | None, bool]:
         """Check for /feature or /suggest commands in recent channel messages.
@@ -1245,6 +1265,25 @@ Otherwise, implement all tasks to completion."""
         self.state.pm_session = pm_result.get("session_id", self.state.pm_session)
         answer = pm_result.get("result", "I couldn't determine an answer from the PRD.")
         self.msg.send(answer, sender="PM Agent")
+
+    def _answer_impl_question(self, question: str) -> None:
+        """Have the Dev agent answer an implementation question posted in Mattermost."""
+        impl_prompt = (
+            f"A team member asks the following question about the current implementation:\n\n"
+            f"\"{question}\"\n\n"
+            f"Answer based on what you're currently working on. "
+            f"Be concise and helpful. Mention which task you're on if relevant."
+        )
+        dev_result = run_claude(
+            prompt=impl_prompt,
+            cwd=self.project_path,
+            session_id=self.state.dev_session,
+            allowed_tools=DEV_TOOLS,
+            timeout=3600,
+        )
+        self.state.dev_session = dev_result.get("session_id", self.state.dev_session)
+        answer = dev_result.get("result", "I'm currently implementing - could you rephrase?")
+        self.msg.send(answer, sender="Dev Agent")
 
     def _handle_dev_question(self, raw: str) -> None:
         """Route a developer question through PM and/or Mattermost."""
