@@ -713,7 +713,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
-        self.msg.send(f"Running speckit specify for: {desc[:100]}...", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
 
         # Note: Progress callback disabled - tool call spam not helpful in Mattermost
         result = run_claude_stream(
@@ -729,12 +729,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "Summarize the specification you just created in 2-3 bullet points. "
             "Focus on: what will be built, key behaviors, and scope boundaries. Be concise."
         )
-        self.msg.send(f"**Specification complete.**\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
         logger.info("Phase: DEV_PLAN")
-        self.msg.send("Creating technical plan...", sender="Dev Agent")
+        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
         result = run_claude_stream(
             prompt="/speckit.plan",
@@ -750,12 +750,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "Summarize the technical plan you just created in 3-5 bullet points. "
             "Include: key files to change, architecture approach, and any trade-offs. Be concise."
         )
-        self.msg.send(f"**Technical plan complete.**\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
         logger.info("Phase: DEV_TASKS")
-        self.msg.send("Generating task list...", sender="Dev Agent")
+        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
 
         result = run_claude_stream(
             prompt="/speckit.tasks",
@@ -771,7 +771,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "List the implementation tasks you just generated as a numbered list. "
             "Keep each item to one line. Be concise."
         )
-        self.msg.send(f"**Task list generated.**\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_plan_review(self) -> bool:
         """Checkpoint: let the human review the plan before implementation starts.
@@ -791,7 +791,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         review_timeout = self.cfg.get("workflow", {}).get("plan_review_timeout", 60)
 
         self.msg.send(
-            "**Ready for implementation.** Review the plan above.\n\n"
+            "👀 **Review** — Ready for implementation. Review the plan above.\n\n"
             "- Ask any questions and the PM will answer\n"
             "- Reply **reject** to stop\n"
             f"- Auto-proceeding in {review_timeout}s if no objection",
@@ -966,7 +966,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         self.state.phase = Phase.DEV_IMPLEMENT
         logger.info("Phase: DEV_IMPLEMENT")
         self.msg.send(
-            "Starting implementation... You can ask me product questions anytime "
+            "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
             "during this phase and the PM will answer.",
             sender="Dev Agent",
         )
@@ -1015,7 +1015,7 @@ Otherwise, implement all tasks to completion."""
             if '"type": "question"' in raw or '"type":"question"' in raw:
                 self._handle_dev_question(raw)
 
-        self.msg.send("Implementation complete.", sender="Dev Agent")
+        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
 
     def _check_for_human_questions(self) -> None:
         """Check Mattermost for human messages and route them to the PM agent."""
@@ -1114,7 +1114,7 @@ Otherwise, implement all tasks to completion."""
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
         logger.info("Phase: CREATE_PR")
-        self.msg.send("Creating pull request...", sender="Dev Agent")
+        self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent")
 
         prompt = """Create a pull request for all the changes on this branch.
 

@@ -322,3 +322,7 @@ workflow:
 - **Mattermost slash commands**: Trigger workflows from Mattermost (`/suggest-feature`)
 - **Persistent state**: SQLite or file-based state for crash recovery
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
+
+### Potential UX Improvements (ideas)
+- **Phase duration**: Show duration per phase in summary (e.g., "Specify: 4m, Plan: 5m, Implement: 15m")
+- **Condensed summary**: Instead of individual tool calls, show "15 files changed, 3 new files" after implementation
