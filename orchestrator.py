@@ -512,6 +512,7 @@ class Orchestrator:
         self.state = WorkflowState()
         self._workflow_type: str = "normal"  # "normal" or "feature"
         self._resuming: bool = False
+        self._auto_approve: bool = False  # Skip plan review when resuming
         self._started_at: str | None = None
         self._phase_timings: list[tuple[str, float]] = []
         self._run_start_time: float | None = None
@@ -926,7 +927,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         )
 
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
-        if auto:
+        if auto or self._auto_approve:
             logger.info("Auto-approve enabled, proceeding to implementation")
             self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator")
             return True
@@ -1470,6 +1471,8 @@ def main() -> None:
                         help="Skip PM agent and directly implement this feature description")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from last saved state (.agent-team-state.json)")
+    parser.add_argument("--approve", action="store_true",
+                        help="Resume and auto-approve the plan (skip review)")
     parser.add_argument("--project", type=str, default=None,
                         help="Project name from config (for multi-project setups)")
     parser.add_argument("--channel", type=str, default=None,
@@ -1533,10 +1536,18 @@ def main() -> None:
             orchestrator.worktree_path = saved["worktree_path"]
             orchestrator.project_path = saved["worktree_path"]
         orchestrator._resuming = True
-        orchestrator.msg.send(
-            f"Resuming from **{saved['phase']}** phase",
-            sender="Orchestrator",
-        )
+        # If --approve is set, skip to implementation
+        if args.approve:
+            orchestrator._auto_approve = True
+            orchestrator.msg.send(
+                f"Resuming from **{saved['phase']}** phase (auto-approve enabled)",
+                sender="Orchestrator",
+            )
+        else:
+            orchestrator.msg.send(
+                f"Resuming from **{saved['phase']}** phase",
+                sender="Orchestrator",
+            )
         orchestrator.run(loop=False)
     elif args.feature:
         # Skip PM — inject the feature directly and use the feature sequence
