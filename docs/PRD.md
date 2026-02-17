@@ -383,6 +383,48 @@ Redis is used for caching to improve performance:
 - **Persistent state**: SQLite or file-based state for crash recovery
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
 
+### Performance & Background Tasks
+
+Current architecture runs synchronously - orchestrator blocks waiting for Claude. For production-scale usage, consider:
+
+#### Priority 1: Redis Streams (Low Effort)
+Replace polling with Redis Streams for event-driven architecture:
+- `XADD` workflow events → Redis stream
+- `XREAD` blocks until events arrive (no polling)
+- Also enables: workflow history, replay, debugging
+- **Effort**: Medium (refactor message polling)
+- **Benefit**: Lower latency, better observability
+
+#### Priority 2: Hatchet (Medium Effort)
+Lightweight background task queue: https://github.com/hatchet-dev/hatchet
+- Queue long-running tasks (specify, plan, implement)
+- Webhook callbacks when tasks complete
+- Built-in retries, timeouts, dashboards
+- Go-based, simpler than Temporal
+- **Effort**: Medium (add worker, queue tasks)
+- **Benefit**: Non-blocking orchestrator, can run multiple workflows
+
+#### Priority 3: Temporal (High Effort)
+Full workflow orchestration: https://github.com/temporalio/temporal
+- Durable executions (survive restarts)
+- Built-in retry logic, timeouts, saga patterns
+- Activity scheduling, child workflows
+- Web UI for debugging
+- **Effort**: High (full rearchitecture)
+- **Benefit**: Enterprise-grade reliability, complex workflows
+
+#### Comparison
+
+| Feature | Redis Streams | Hatchet | Temporal |
+|---------|--------------|----------|----------|
+| Complexity | Low | Medium | High |
+| Durability | Basic | Good | Excellent |
+| Debug UI | No | Yes | Yes |
+| Learning curve | Low | Medium | High |
+| When to use | Polling replacement | Background jobs | Complex workflows |
+
+**Recommendation**: Start with **Redis Streams** (lowest effort, immediate improvement). Graduate to **Hatchet** if you need background task queues. Temporal is only worth it for enterprise requirements.
+
 ### Potential UX Improvements (ideas)
 - **Phase duration**: Show duration per phase in summary (e.g., "Specify: 4m, Plan: 5m, Implement: 15m")
 - **Condensed summary**: Instead of individual tool calls, show "15 files changed, 3 new files" after implementation

@@ -2,7 +2,7 @@
 
 A multi-agent orchestration system where a **Product Manager agent** and **Developer agent** collaborate to ship features autonomously. Communication happens through Mattermost via OpenClaw, with a human operator able to observe and intervene at any time.
 
-Both agents are powered by Claude Code CLI (`claude -p`) running in headless mode. The Developer agent uses **[speckit](https://github.com/github/spec-kit)** (extended from [spec-kit](https://github.com/github/spec-kit)) for structured feature specification and implementation.
+Both agents are powered by Claude Code CLI (`claude -p`) running in headless mode. The Developer agent uses **[Spec Kit](https://github.com/github/spec-kit)** for structured feature specification and implementation.
 
 ## Architecture
 
@@ -166,7 +166,7 @@ Branch: agent-worktree-20260217-120000  ← PR created from this branch
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) — For PR creation
 - **[Python 3.10+](https://www.python.org/)**
 - **[Mattermost](https://mattermost.com/)** — Running at http://localhost:8065
-- **[speckit](https://github.com/github/spec-kit)** — Extended from [spec-kit](https://github.com/github/spec-kit), installed in target project's `.claude/commands/`
+- **[Spec Kit](https://github.com/github/spec-kit)** — Installed in target project's `.claude/commands/`
 
 ## Docker Deployment
 
