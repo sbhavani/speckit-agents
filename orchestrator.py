@@ -847,7 +847,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             prompt=f"/speckit.specify {desc}",
             cwd=self.project_path,
             allowed_tools=DEV_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
         self.state.dev_session = result.get("session_id")
 
@@ -868,7 +868,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -889,7 +889,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -1115,7 +1115,7 @@ Otherwise, implement all tasks to completion."""
                 cwd=self.project_path,
                 session_id=self.state.dev_session,
                 allowed_tools=DEV_TOOLS,
-                timeout=1800,
+                timeout=3600,
             )
             dev_result_holder.append(result)
 
@@ -1221,7 +1221,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.pm_session,
             allowed_tools=PM_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
         self.state.pm_session = pm_result.get("session_id", self.state.pm_session)
         answer = pm_result.get("result", "I couldn't determine an answer from the PRD.")
@@ -1264,7 +1264,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.pm_session,
             allowed_tools=PM_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
         self.state.pm_session = pm_result.get("session_id", self.state.pm_session)
         pm_answer = pm_result.get("result", "No answer from PM")
@@ -1288,7 +1288,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
@@ -1309,7 +1309,7 @@ Otherwise, implement all tasks to completion."""
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
-            timeout=1800,
+            timeout=3600,
         )
 
         self.state.pr_url = result.get("result", "").strip()
@@ -1341,15 +1341,28 @@ Be specific about:
 - What worked well vs what was painful
 - Recommendations for future work on this codebase"""
 
-        result = run_claude(
-            prompt=prompt,
-            cwd=self.original_path,
-            session_id=self.state.pm_session,
-            allowed_tools=PM_TOOLS + ["Write"],
-            timeout=300,
-        )
+        try:
+            result = run_claude(
+                prompt=prompt,
+                cwd=self.original_path,
+                session_id=self.state.pm_session,
+                allowed_tools=PM_TOOLS + ["Write"],
+                timeout=300,
+            )
+            self.state.pm_session = result.get("session_id", self.state.pm_session)
+        except RuntimeError as e:
+            # Session expired, create new one
+            logger.warning(f"PM session expired, creating new session: {e}")
+            self.state.pm_session = None
+            result = run_claude(
+                prompt=prompt,
+                cwd=self.original_path,
+                session_id=None,
+                allowed_tools=PM_TOOLS + ["Write"],
+                timeout=300,
+            )
+            self.state.pm_session = result.get("session_id")
 
-        self.state.pm_session = result.get("session_id", self.state.pm_session)
         logger.info("Learning recorded to journal")
 
     def _phase_done(self) -> None:

@@ -128,14 +128,20 @@ class Responder:
 
                 text = p.get("message", "").strip()
 
-                # Check for /suggest command (anywhere in message)
-                if "/suggest" in text.lower():
+                # Check if this is a question (ends with ? or starts with question words)
+                # This should be handled before /suggest check
+                is_question = text.strip().endswith("?")
+                question_phrases = ["can you", "could you", "would you", "will you", "how do", "how can", "what is", "what's", "why is", "why does", "when will", "should i", "should we"]
+                is_question = is_question or any(text.lower().startswith(phrase) for phrase in question_phrases)
+
+                # Check for /suggest command (anywhere in message, but not questions)
+                if "/suggest" in text.lower() and not is_question:
                     self._handle_suggest(text, channel_id)
                     continue
 
                 # Check for @product-manager or @dev-agent mention
                 if "@product-manager" in text.lower() or "@dev-agent" in text.lower():
-                    self._handle_mention(text, channel_id)
+                    self._handle_mention(text, channel_id, is_question=is_question)
 
             # Update last seen
             if posts:
@@ -158,9 +164,9 @@ class Responder:
         # Spawn orchestrator (no message - orchestrator will start thread when ready)
         self._spawn_orchestrator(feature=feature, channel_id=channel_id)
 
-    def _handle_mention(self, text: str, channel_id: str) -> None:
+    def _handle_mention(self, text: str, channel_id: str, is_question: bool = False) -> None:
         """Handle @product-manager or @dev-agent mention."""
-        logger.info(f"@mention in channel {channel_id}: {text[:100]}...")
+        logger.info(f"@mention in channel {channel_id}: {text[:100]}... is_question={is_question}")
 
         # Determine if it's PM or Dev
         is_pm = "@product-manager" in text.lower()
@@ -173,9 +179,15 @@ class Responder:
             )
             return
 
-        # Generate and send response directly
-        response = self._generate_response(text, channel_id, is_pm)
-        self.bridge.send(response, sender="PM Agent" if is_pm else "Dev Agent", channel_id=channel_id)
+        # If it's a question, just answer it directly (don't spawn orchestrator)
+        if is_question:
+            logger.info("Detected question, answering directly")
+            response = self._generate_response(text, channel_id, is_pm)
+            self.bridge.send(response, sender="PM Agent", channel_id=channel_id)
+            return
+
+        # Not a question - spawn orchestrator for feature workflow
+        self._spawn_orchestrator(channel_id=channel_id)
 
     def _get_project_for_channel(self, channel_id: str) -> tuple[str, str] | None:
         """Get project path and PRD path for a channel."""
