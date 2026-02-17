@@ -42,9 +42,9 @@ class EventMessage:
         """Convert to dictionary for Redis storage."""
         return {
             "event_type": self.event_type,
-            "payload": json.dumps "timestamp": self.timestamp,
-            "(self.payload),
-           metadata": json.dumps(self.metadata),
+            "timestamp": self.timestamp,
+            "payload": json.dumps(self.payload),
+            "metadata": json.dumps(self.metadata),
         }
 
 
