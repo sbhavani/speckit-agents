@@ -53,6 +53,19 @@ mattermost:
   # Move to config.local.yaml: pm_bot_token
   pm_bot_user_id: osnrc8yrpffifj56friubo5dxr
 
+redis_streams:
+  # Redis connection URL
+  url: "redis://localhost:6379"
+  # Default stream configuration
+  defaults:
+    # Maximum events to keep in stream (for automatic trimming)
+    max_length: 10000
+    # Retention period in milliseconds (default: 24 hours)
+    retention_ms: 86400000
+    # Consumer group settings
+    block_ms: 5000
+    count: 10
+
 workflow:
   # Seconds to wait for human approval of feature suggestion
   approval_timeout: 300
