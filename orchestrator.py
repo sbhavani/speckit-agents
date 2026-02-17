@@ -857,6 +857,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "Summarize the specification you just created in 2-3 bullet points. "
             "Focus on: what will be built, key behaviors, and scope boundaries. Be concise."
         )
+        # Truncate to avoid Mattermost message limit
+        max_len = 8000
+        if len(summary) > max_len:
+            summary = summary[:max_len] + "\n... (truncated)"
         self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
@@ -878,6 +882,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "Summarize the technical plan you just created in 3-5 bullet points. "
             "Include: key files to change, architecture approach, and any trade-offs. Be concise."
         )
+        # Truncate to avoid Mattermost message limit
+        max_len = 8000
+        if len(summary) > max_len:
+            summary = summary[:max_len] + "\n... (truncated)"
         self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
@@ -899,6 +907,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "List the implementation tasks you just generated as a numbered list. "
             "Keep each item to one line. Be concise."
         )
+        # Truncate to avoid Mattermost message limit (16383 chars)
+        max_len = 8000
+        if len(summary) > max_len:
+            summary = summary[:max_len] + "\n... (truncated)"
         self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_plan_review(self) -> bool:
