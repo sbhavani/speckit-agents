@@ -129,15 +129,15 @@ def load_config(path: str) -> dict:
     return cfg
 
 
-def resolve_project_config(config: dict, project_name: str | None = None) -> tuple[str, str]:
-    """Resolve project path and PRD path from config.
+def resolve_project_config(config: dict, project_name: str | None = None) -> tuple[str, str, str | None]:
+    """Resolve project path, PRD path, and channel_id from config.
 
     Supports two formats:
-    1. Single project: config["project"]["path"], config["project"]["prd_path"]
-    2. Multi-project: config["projects"]["name"]["path"], config["projects"]["name"]["prd_path"]
+    1. Single project: config["project"]["path"], config["project"]["prd_path"], config["project"]["channel_id"]
+    2. Multi-project: config["projects"]["name"]["path"], config["projects"]["name"]["prd_path"], config["projects"]["name"]["channel_id"]
 
     Returns:
-        tuple of (project_path, prd_path)
+        tuple of (project_path, prd_path, channel_id)
 
     Raises:
         ValueError: If project not found or config is invalid
@@ -162,14 +162,18 @@ def resolve_project_config(config: dict, project_name: str | None = None) -> tup
             raise ValueError(f"Project '{project_name}' not found. Available: {list(projects.keys())}")
 
         proj = projects[project_name]
-        return proj["path"], proj.get("prd_path", "docs/PRD.md")
+        return (
+            proj["path"],
+            proj.get("prd_path", "docs/PRD.md"),
+            proj.get("channel_id"),
+        )
 
     # Single project mode (legacy)
     if "project" not in config:
         raise ValueError("Config must have either 'project' or 'projects' key")
 
     proj = config["project"]
-    return proj.get("path", "."), proj.get("prd_path", "docs/PRD.md")
+    return proj.get("path", "."), proj.get("prd_path", "docs/PRD.md"), proj.get("channel_id")
 
 
 def _deep_merge(base: dict, override: dict) -> None:
@@ -1238,6 +1242,8 @@ def main() -> None:
                         help="Resume from last saved state (.agent-team-state.json)")
     parser.add_argument("--project", type=str, default=None,
                         help="Project name from config (for multi-project setups)")
+    parser.add_argument("--channel", type=str, default=None,
+                        help="Override Mattermost channel ID")
     args = parser.parse_args()
 
     if args.resume and args.feature:
@@ -1251,10 +1257,13 @@ def main() -> None:
 
     # Resolve project config (supports single project or multi-project mode)
     try:
-        project_path, prd_path = resolve_project_config(config, args.project)
+        project_path, prd_path, project_channel_id = resolve_project_config(config, args.project)
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+    # Use --channel override, project channel_id, or fallback to global config
+    channel_id = args.channel or project_channel_id or config.get("mattermost", {}).get("channel_id")
 
     if args.dry_run:
         messenger = Messenger(bridge=None, dry_run=True)
@@ -1262,7 +1271,7 @@ def main() -> None:
         mm = config["mattermost"]
         bridge = MattermostBridge(
             ssh_host=config["openclaw"]["ssh_host"],
-            channel_id=mm["channel_id"],
+            channel_id=channel_id,
             mattermost_url=mm.get("url", "http://localhost:8065"),
             dev_bot_token=mm["dev_bot_token"],
             dev_bot_user_id=mm.get("dev_bot_user_id", ""),
