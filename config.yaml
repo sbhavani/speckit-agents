@@ -50,3 +50,5 @@ workflow:
   loop: false
   # Poll for human questions during implementation (seconds between checks)
   impl_poll_interval: 15
+  # User to mention when PR is created (e.g., "@sbhavani")
+  user_mention: ""

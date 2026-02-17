@@ -886,9 +886,14 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Helper to process a tool_use event
             def process_tool_use(tool_event: dict[str, Any]) -> None:
                 nonlocal tool_count
-                tool_count[0] += 1
                 tool_name = tool_event.get("name", "unknown")
                 tool_input = tool_event.get("input", {})
+
+                # Filter: only show Write, Edit, Bash (skip Glob, Read, Grep, TodoWrite, etc.)
+                if tool_name not in ("Bash", "Edit", "Write"):
+                    return
+
+                tool_count[0] += 1
 
                 # Extract useful info based on tool type
                 detail = ""
@@ -1136,7 +1141,12 @@ Otherwise, implement all tasks to completion."""
         self._post_summary()
 
         if self.state.pr_url:
-            self.msg.send(f"PR created: {self.state.pr_url}", sender="Dev Agent")
+            # Get user mention from config (e.g., "@sbhavani")
+            user_mention = self.cfg.get("workflow", {}).get("user_mention", "")
+            if user_mention:
+                self.msg.send(f"{user_mention} PR created: {self.state.pr_url}", sender="Dev Agent")
+            else:
+                self.msg.send(f"PR created: {self.state.pr_url}", sender="Dev Agent")
         else:
             self.msg.send("Workflow complete (no PR URL captured).", sender="Orchestrator")
 
