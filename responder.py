@@ -356,10 +356,28 @@ class Responder:
 def main():
     # Load config
     config_path = os.environ.get("CONFIG_PATH", "config.yaml")
-    config = yaml.safe_load(Path(config_path).read_text())
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    # Allow local overrides
+    local_path = Path(config_path).with_suffix(".local.yaml")
+    if local_path.exists():
+        with open(local_path) as f:
+            local_cfg = yaml.safe_load(f) or {}
+        # Deep merge local config into base config
+        _deep_merge(config, local_cfg)
 
     responder = Responder(config)
     responder.run()
+
+
+def _deep_merge(base: dict, override: dict) -> None:
+    """Merge override dict into base dict in-place."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
 
 
 if __name__ == "__main__":

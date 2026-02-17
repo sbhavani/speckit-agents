@@ -612,6 +612,7 @@ class Orchestrator:
             "pr_url": self.state.pr_url,
             "original_path": self.original_path,
             "worktree_path": self.worktree_path,
+            "thread_root_id": self.msg.root_id,  # Save thread ID for resume
             "started_at": self._started_at,
             "updated_at": now,
         }
@@ -1592,6 +1593,10 @@ def main() -> None:
         if saved.get("worktree_path"):
             orchestrator.worktree_path = saved["worktree_path"]
             orchestrator.project_path = saved["worktree_path"]
+        # Restore thread root ID so messages continue in the same thread
+        if saved.get("thread_root_id"):
+            orchestrator.msg._root_id = saved["thread_root_id"]
+            logger.info("Restored thread: %s", saved["thread_root_id"])
         orchestrator._resuming = True
         # If --approve is set, skip to implementation
         if args.approve:
