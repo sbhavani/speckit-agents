@@ -621,9 +621,11 @@ class Orchestrator:
                 raise RuntimeError(f"Configuration validation failed: {errors}")
             self.msg.send("Configuration validated successfully.", sender="Orchestrator")
 
-        # Check for /feature command in recent messages
-        feature_override = self._check_for_feature_command()
+        # Check for /feature or /suggest command in recent messages
+        feature_override, is_suggest = self._check_for_command()
+
         if feature_override:
+            # /feature command - skip PM suggestion
             self._workflow_type = "feature"
             self.state.feature = {
                 "feature": feature_override[:60],
@@ -632,6 +634,11 @@ class Orchestrator:
                 "priority": "P1",
             }
             self.msg.start_thread(f"Feature specified: **{feature_override[:60]}**", sender="Orchestrator")
+            return
+
+        if is_suggest:
+            # /suggest command - use normal PM suggestion flow
+            self.msg.start_thread("Starting feature prioritization...", sender="PM Agent")
             return
 
         # Normal flow: start PM suggestion
@@ -1044,18 +1051,20 @@ Otherwise, implement all tasks to completion."""
             logger.info("Human question during impl: %s", text[:100])
             self._answer_human_question(text)
 
-    def _check_for_feature_command(self) -> str | None:
-        """Check for /feature command in recent channel messages.
+    def _check_for_command(self) -> tuple[str | None, bool]:
+        """Check for /feature or /suggest commands in recent channel messages.
 
         Looks for messages like:
-        - /feature build a todo list
-        - @product-manager build a todo list
-        - feature: build a todo list
+        - /feature build a todo list - skip PM, build directly
+        - /suggest - ask PM to suggest a feature from PRD
 
-        Returns the feature description if found, None otherwise.
+        Returns:
+            tuple of (feature_text, is_suggest)
+            - feature_text: description if /feature command, None otherwise
+            - is_suggest: True if /suggest command found
         """
         if self.msg.dry_run or not self.msg.bridge:
-            return None
+            return None, False
 
         try:
             # Read recent messages (last 5)
@@ -1065,11 +1074,16 @@ Otherwise, implement all tasks to completion."""
                 if not msg_text:
                     continue
 
+                # Check for /suggest command
+                if msg_text.startswith("/suggest") or msg_text.startswith("/pm"):
+                    logger.info("Found /suggest command")
+                    return None, True
+
                 # Check for /feature command
                 if msg_text.startswith("/feature ") or msg_text.startswith("/feature\n"):
                     feature = msg_text.replace("/feature", "", 1).strip()
                     logger.info("Found /feature command: %s", feature[:50])
-                    return feature
+                    return feature, False
 
                 # Check for "feature:" prefix (after @mention or standalone)
                 lower = msg_text.lower()
@@ -1077,11 +1091,11 @@ Otherwise, implement all tasks to completion."""
                     feature = msg_text.split(":", 1)[1].strip() if ":" in msg_text else msg_text.split(" ", 1)[1].strip()
                     if feature:
                         logger.info("Found feature: command: %s", feature[:50])
-                        return feature
+                        return feature, False
         except Exception as e:
-            logger.warning("Error checking for feature command: %s", e)
+            logger.warning("Error checking for command: %s", e)
 
-        return None
+        return None, False
 
     def _answer_human_question(self, question: str) -> None:
         """Have the PM agent answer a human question posted in Mattermost."""
