@@ -439,3 +439,33 @@ Full workflow orchestration: https://github.com/temporalio/temporal
 ### Potential UX Improvements (ideas)
 - **Phase duration**: Show duration per phase in summary (e.g., "Specify: 4m, Plan: 5m, Implement: 15m")
 - **Condensed summary**: Instead of individual tool calls, show "15 files changed, 3 new files" after implementation
+
+---
+
+## Learnings from First AI-Generated Feature (Redis Streams)
+
+### What Worked Well
+1. **Speed**: 25 minutes from suggestion to PR - faster than human
+2. **Scope**: Generated 25 files with producer, consumer, checkpoints, monitoring
+3. **Structure**: Good overall architecture with separate modules
+
+### Issues Found (Required Human Fix)
+1. **Syntax error in models.py**: Malformed dictionary literal in `Event.to_dict()`
+   - `"payload": json.dumps "timestamp": self.timestamp` - missing parentheses
+   - **Fix**: Run basic Python syntax check before PR
+2. **Redis API compatibility**: Used `xpending_ext` which isn't available in all Redis versions
+   - **Fix**: Add mypy type checking + version-compatible API
+3. **Test logic**: Some integration tests had incorrect assertions
+   - **Fix**: Add unit tests for contract (publish → read roundtrip)
+
+### Improvements Made
+1. Added **mypy** for type checking to CI
+2. Added **ruff** for linting to CI
+3. Added **CI workflow** to run tests/type/lint on PRs
+
+### Takeaways
+- AI generates good structure but makes subtle syntax/logic errors
+- **Always run tests before human review** - would have caught syntax error
+- Type checking (mypy) catches API compatibility issues
+- Integration tests need careful assertion logic
+
