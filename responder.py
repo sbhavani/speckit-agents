@@ -134,6 +134,11 @@ class Responder:
                 question_phrases = ["can you", "could you", "would you", "will you", "how do", "how can", "what is", "what's", "why is", "why does", "when will", "should i", "should we"]
                 is_question = is_question or any(text.lower().startswith(phrase) for phrase in question_phrases)
 
+                # Check for /resume command
+                if "/resume" in text.lower():
+                    self._handle_resume(text, channel_id)
+                    continue
+
                 # Check for /suggest command (anywhere in message, but not questions)
                 if "/suggest" in text.lower() and not is_question:
                     self._handle_suggest(text, channel_id)
@@ -163,6 +168,20 @@ class Responder:
         # Post acknowledgment
         # Spawn orchestrator (no message - orchestrator will start thread when ready)
         self._spawn_orchestrator(feature=feature, channel_id=channel_id)
+
+    def _handle_resume(self, text: str, channel_id: str) -> None:
+        """Handle /resume command - resume workflow with auto-approve."""
+        logger.info(f"/resume command received in channel {channel_id}")
+
+        # Post acknowledgment
+        self.bridge.send(
+            "Resuming workflow with auto-approve...",
+            sender="Responder",
+            channel_id=channel_id,
+        )
+
+        # Spawn orchestrator with --resume --approve flags
+        self._spawn_orchestrator(channel_id=channel_id, resume=True)
 
     def _handle_mention(self, text: str, channel_id: str, is_question: bool = False) -> None:
         """Handle @product-manager or @dev-agent mention."""
@@ -297,7 +316,7 @@ class Responder:
             logger.error("Minimax API failed: %s", e)
             return "Sorry, I couldn't get a response."
 
-    def _spawn_orchestrator(self, feature: Optional[str] = None, channel_id: Optional[str] = None) -> None:
+    def _spawn_orchestrator(self, feature: Optional[str] = None, channel_id: Optional[str] = None, resume: bool = False) -> None:
         """Spawn the orchestrator locally with uv."""
         # Get project for this channel
         project_name = None
@@ -316,6 +335,8 @@ class Responder:
             cmd.extend(["--feature", feature])
         if channel_id:
             cmd.extend(["--channel", channel_id])
+        if resume:
+            cmd.extend(["--resume", "--approve"])
 
         logger.info(f"Spawning orchestrator: {' '.join(cmd)}")
 
