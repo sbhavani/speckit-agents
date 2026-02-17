@@ -27,12 +27,13 @@ host_path_map:
   /Users/sb/code: /Users/sb/code
 
 openclaw:
-  ssh_host: sb@mac-mini-i7.local
+  ssh_host: localhost
   # OpenClaw account ID used for sending via openclaw CLI
   openclaw_account: productManager
   # Minimax API (Anthropic-compatible) for responder questions
-  anthropic_api_key: ***REMOVED***
+  # Move to config.local.yaml: anthropic_api_key
   anthropic_base_url: https://api.minimax.io/anthropic
+  anthropic_model: MiniMax-M2.1
 
 mattermost:
   # Channel ID for #product-dev
@@ -41,11 +42,11 @@ mattermost:
   url: "http://localhost:8065"
 
   # Dev Agent bot (openclaw bot — used for dev messages and general reads)
-  dev_bot_token: ptw33cc8zi8qxdqhftkeexz7ca
+  # Move to config.local.yaml: dev_bot_token
   dev_bot_user_id: prmnsceu8bg8tm1kmb3zzhbdwr
 
   # PM Agent bot (product-manager — separate identity for PM messages)
-  pm_bot_token: 766ym1sjein9znmsxr3y9a41uc
+  # Move to config.local.yaml: pm_bot_token
   pm_bot_user_id: osnrc8yrpffifj56friubo5dxr
 
 workflow:
