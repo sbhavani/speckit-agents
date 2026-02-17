@@ -373,11 +373,26 @@ Redis is used for caching to improve performance:
 
 ## Future Enhancements
 
-- **Multiple Dev Agents**: Fan out parallel speckit phases to separate sessions
-- **Code Review Agent**: Third agent that reviews Dev's PR before posting
-- **Mattermost slash commands + Webhooks**: Trigger workflows from Mattermost (`/agent start --project live-set-revival`) via slash command that hits a webhook. Eliminates polling. Requires: (1) Set up Mattermost custom slash command, (2) Add HTTP server to orchestrator to receive commands, (3) Public URL (ngrok/Cloudflare Tunnel) if running locally
-- **Persistent state**: SQLite or file-based state for crash recovery
+### MoSCoW Roadmap
+
+#### Must Have (Critical)
+- **Error recovery**: `--resume` already works, but improve handling of corrupted state files
+- **Timeout handling**: Better Claude timeout management (already has retries, could be more robust)
+
+#### Should Have (Important)
+- **Slash commands + Webhooks**: Trigger workflows from Mattermost (`/agent start --project live-set-revival`) via slash command that hits a webhook. Eliminates polling.
+- **Persistent state**: SQLite or file-based state for crash recovery (currently uses JSON files)
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
+
+#### Could Have (Nice to Have)
+- **Multiple Dev Agents**: Fan out parallel Spec Kit phases to separate sessions
+- **Code Review Agent**: Third agent that reviews Dev's PR before posting
+- **Redis Streams**: Replace polling with event-driven architecture for lower latency
+- **Hatchet integration**: Background task queue for non-blocking orchestrator
+
+#### Won't Have (Not for now)
+- **Temporal**: Enterprise workflow orchestration - overkill for current needs
+- **Full multi-agent parallelism**: Complex to implement, limited benefit currently
 
 ### Performance & Background Tasks
 
