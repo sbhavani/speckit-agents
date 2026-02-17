@@ -15,21 +15,26 @@ Both agents are powered by Claude Code CLI (`claude -p`) running in headless mod
 │                                            create PR)        │
 └──────────────────────────┬──────────────────────────────────┘
                            │
-              OpenClaw Gateway (SSH)
+              Mattermost API (http://localhost:8065)
                            │
 ┌──────────────────────────┴──────────────────────────────────┐
-│              docker-compose services                          │
+│              Local Services (uv)                             │
 │                                                           │
 │  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐   │
 │  │  Responder  │───▶│ Orchestrator │───▶│   Claude   │   │
-│  │ (listens)  │    │  (workflow)  │    │   Agents   │   │
+│  │ (listens)  │    │  (workflow)  │    │   CLI       │   │
 │  └─────────────┘    └──────────────┘    └─────────────┘   │
 │        │                   │                   │              │
 │        ▼                   ▼                   ▼              │
 │  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐   │
 │  │   Redis     │    │  Worktree    │    │ Target Repo │   │
-│  │  (cache)    │    │  (isolated)  │    │  (branch)   │   │
+│  │  (docker)  │    │  /tmp/       │    │  (branch)   │   │
 │  └─────────────┘    └──────────────┘    └─────────────┘   │
+│                          │                                  │
+│                          └── Each workflow gets:             │
+│                              • Isolated worktree in /tmp/   │
+│                              • Feature branch for PR        │
+│                              • Cleaned up after PR          │
 └─────────────────────────────────────────────────────────────┘
 
 State Machine (Orchestrator):
@@ -133,6 +138,24 @@ Override locally with `config.local.yaml` (gitignored).
 7. **DEV_IMPLEMENT**: Dev Agent runs `/speckit.implement`. If questions arise, PM Agent answers them
 8. **CREATE_PR**: Dev Agent creates a branch, commits changes, and opens a PR
 9. **PM_LEARN**: PM Agent writes learnings to `.agent/product-manager.md` journal
+
+### Worktree Isolation
+
+Each workflow runs in an isolated **git worktree** (in `/tmp/`) with its own **feature branch**:
+
+```
+/tmp/agent-team-live-set-revival-20260217-120000/
+├── src/          # Copy of the repo (worktree)
+├── .git          # Points to main repo's .git (shared objects)
+└── (worktree files)
+
+Branch: agent-worktree-20260217-120000  ← PR created from this branch
+```
+
+- **Worktree**: Isolated working directory (doesn't touch your main repo)
+- **Branch**: Feature branch for the PR (created fresh each workflow)
+- **Fast**: Worktrees share `.git` objects with main repo (no full clone)
+- **Cleanup**: Worktree and branch deleted after PR is created
 
 ## Prerequisites
 
