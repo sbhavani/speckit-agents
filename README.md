@@ -213,3 +213,85 @@ Services:
 - `.claude/agents/dev-agent.md` — Developer Agent definition
 - `config.yaml` — Configuration
 - `docs/PRD.md` — Full product requirements document
+- `src/redis_streams/` — Redis Streams event-driven library
+
+## Redis Streams Library
+
+This project includes a reusable Redis Streams library (`src/redis_streams/`) for building event-driven systems.
+
+### Quick Start
+
+```python
+from redis_streams import StreamProducer, StreamConsumer, ConsumerGroupManager
+
+# Producer
+producer = StreamProducer(
+    redis_url="redis://localhost:6379",
+    stream_name="events",
+)
+producer.publish(event_type="data.update", payload={"key": "value"})
+producer.close()
+
+# Consumer
+manager = ConsumerGroupManager("redis://localhost:6379")
+manager.create_group("events", "processors", start_id="0")
+
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="processors",
+    consumer="worker-1",
+)
+
+def handle(event):
+    print(f"Received: {event.event_type}")
+    return True
+
+consumer.subscribe(handle)
+```
+
+### Key Features
+
+- **Real-time event delivery** (<500ms latency)
+- **Consumer group support** for multiple concurrent consumers
+- **Checkpoint/resume** for failure recovery
+- **At-least-once delivery** guarantees
+- **Automatic message reclaim** for failed consumers
+
+### Configuration
+
+```python
+# With checkpoint persistence
+from redis_streams import CheckpointStore
+
+checkpoint = CheckpointStore("redis://localhost:6379")
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="processors",
+    consumer="worker-1",
+    checkpoint_store=checkpoint,  # Persists position to Redis
+)
+
+# With automatic reclaim
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="processors",
+    consumer="worker-1",
+    reclaim_enabled=True,
+    reclaim_interval_ms=30000,  # Check every 30s
+    reclaim_min_idle_ms=30000,  # Claim messages idle >30s
+)
+```
+
+### API Reference
+
+| Class | Description |
+|-------|-------------|
+| `StreamProducer` | Publish events to a stream |
+| `StreamManager` | Create/delete streams, get stream info |
+| `StreamConsumer` | Consume events with consumer groups |
+| `ConsumerGroupManager` | Manage consumer groups |
+| `CheckpointStore` | Persist consumer positions to Redis |
+| `InMemoryCheckpointStore` | In-memory checkpoint store (testing) |

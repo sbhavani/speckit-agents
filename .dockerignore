@@ -1,0 +1,39 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+
+# Docs and local config
+*.md
+config.local.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and state
+*.log
+.agent-team-state.json
+
+# Tests
+tests/

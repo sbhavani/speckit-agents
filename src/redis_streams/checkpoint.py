@@ -179,3 +179,7 @@ class InMemoryCheckpointStore:
             for k, v in self._checkpoints.items()
             if k.startswith(prefix)
         }
+
+    def close(self):
+        """Close connection (no-op for in-memory store)."""
+        pass
