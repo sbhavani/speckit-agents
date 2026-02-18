@@ -1597,12 +1597,24 @@ def main() -> None:
                         help="Override Mattermost channel ID")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--show-state", action="store_true", help="Print current state and exit")
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        help="Set logging level (default: INFO)")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output (equivalent to --log-level DEBUG)")
+    parser.add_argument("--doctor", action="store_true", help="Validate config and check setup")
     args = parser.parse_args()
 
     # Handle --version flag
     if args.version:
         print(f"agent-team orchestrator v{__version__}")
         return
+
+    # Handle --log-level flag
+    if args.log_level or args.verbose:
+        level = "DEBUG" if args.verbose else args.log_level
+        logging.getLogger().setLevel(getattr(logging, level))
+        for handler in logging.getLogger().handlers:
+            handler.setLevel(getattr(logging, level))
+        logging.info(f"Log level set to {level}")
 
     if args.resume and args.feature:
         parser.error("--resume and --feature are mutually exclusive")
@@ -1630,6 +1642,76 @@ def main() -> None:
             pprint.pprint(state)
         else:
             print("No saved state found.")
+        return
+
+    # Handle --doctor flag (validate config)
+    if args.doctor:
+        print("Running diagnostics...\n")
+
+        errors = []
+        warnings = []
+
+        # Check config file exists
+        if not os.path.exists(config_path):
+            errors.append(f"Config file not found: {config_path}")
+        else:
+            print(f"✓ Config file: {config_path}")
+
+        # Check projects exist
+        projects = config.get("projects", {})
+        if not projects:
+            warnings.append("No projects defined in config")
+        else:
+            print(f"✓ Projects defined: {list(projects.keys())}")
+
+        # Check each project path
+        for proj_name, proj in projects.items():
+            proj_path = proj.get("path", "")
+            if not os.path.exists(proj_path):
+                errors.append(f"Project path not found: {proj_path}")
+            else:
+                print(f"✓ Project path exists: {proj_name} -> {proj_path}")
+
+        # Check Redis connection
+        try:
+            import redis
+            redis_url = config.get("redis_streams", {}).get("url", "redis://localhost:6379")
+            r = redis.from_url(redis_url)
+            r.ping()
+            print(f"✓ Redis connection: {redis_url}")
+        except Exception as e:
+            warnings.append(f"Redis connection failed: {e}")
+
+        # Check Claude binary
+        claude_bin = os.environ.get("CLAUDE_BIN", os.path.expanduser("~/.local/bin/claude"))
+        if os.path.exists(claude_bin):
+            print(f"✓ Claude CLI: {claude_bin}")
+        else:
+            warnings.append(f"Claude CLI not found: {claude_bin}")
+
+        # Check Git
+        try:
+            subprocess.run(["git", "--version"], capture_output=True, check=True)
+            print("✓ Git: available")
+        except Exception:
+            warnings.append("Git not available")
+
+        # Summary
+        print("\n" + "=" * 40)
+        if errors:
+            print("ERRORS:")
+            for e in errors:
+                print(f"  ✗ {e}")
+        if warnings:
+            print("WARNINGS:")
+            for w in warnings:
+                print(f"  ⚠ {w}")
+        if not errors and not warnings:
+            print("All checks passed! ✓")
+        elif not errors:
+            print("\nSetup is OK (warnings only)")
+        else:
+            print("\nSetup has errors - please fix above")
         return
 
     # Resolve project config (supports single project or multi-project mode)
