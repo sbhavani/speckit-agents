@@ -393,24 +393,114 @@ Redis is used for caching to improve performance:
 - **Temporal**: Enterprise workflow orchestration - overkill for current needs
 - **Full multi-agent parallelism**: Complex to implement, limited benefit currently
 
+---
+
+## Prioritized Feature List (For Testing & Roadmap)
+
+The following features are organized by priority for incremental development and testing.
+
+### P1: Core Workflow Improvements
+
+| Feature | Description | Effort |
+|---------|-------------|--------|
+| **Parallel feature execution** | Run multiple features in parallel via worker pool | Medium |
+| **Enhanced resume** | Better state recovery from partial failures | Small |
+| **Config validation** | Startup checks for all required config values | Small |
+
+### P2: UX Improvements
+
+| Feature | Description | Effort |
+|---------|-------------|--------|
+| **Phase duration display** | Show time per phase in summary | Tiny |
+| **Progress emoji** | Add ✅ ❌ 🔄 to phase completions | Tiny |
+| **Color output** | Add ANSI colors to console output | Tiny |
+| **Verbose mode** | `--verbose` flag for detailed logging | Small |
+| **Config doctor** | `python orchestrator.py --doctor` to validate setup | Small |
+
+### P3: Developer Experience
+
+| Feature | Description | Effort |
+|---------|-------------|--------|
+| **Hot reload** | Watch config files and restart | Small |
+| **Template projects** | `--template` flag for common project setups | Small |
+| **Local dev mode** | Skip git worktree for faster iteration | Small |
+| **Mock mode** | `--mock-llm` for testing without API calls | Medium |
+
+### P4: Observability
+
+| Feature | Description | Effort |
+|---------|-------------|--------|
+| **Structured logs** | JSON logging for log aggregation | Small |
+| **Metrics export** | Prometheus-compatible metrics endpoint | Medium |
+| **Trace IDs** | Add correlation IDs across phases | Small |
+| **Health check endpoint** | HTTP health check for container deployments | Small |
+
+### P5: Advanced Features
+
+| Feature | Description | Effort |
+|---------|-------------|--------|
+| **Auto-scaling workers** | K8s-style HPA for worker pool | Large |
+| **Scheduled runs** | Cron-like scheduling for automated releases | Medium |
+| **Feature branching** | Auto-branch naming conventions | Small |
+| **PR templates** | Custom PR body templates | Tiny |
+
+---
+
+### Quick Wins (Good First Issues)
+
+These are small, isolated changes ideal for testing the contribution workflow:
+
+1. **Add `--version` flag** — Print version and exit (use `__init__.py` or `pyproject.toml`)
+2. **Improve error messages** — Make exception messages more actionable
+3. **Add health check to responder** — Simple endpoint returning status
+4. **Configurable log levels** — `--log-level DEBUG` flag
+5. **Pretty-print state** — `python orchestrator.py --show-state` to print JSON nicely
+
+---
+
+### Testing Strategy
+
+For each feature, follow this testing pattern:
+
+1. **Unit tests** — Test in isolation with mocks
+2. **Integration tests** — Test with real Redis/Mattermost (mark with `@pytest.mark.integration`)
+3. **Manual testing** — Dry-run mode for end-to-end validation
+4. **Load testing** — Concurrent workers for parallel features
+
 ### Performance & Background Tasks
 
 Current architecture runs synchronously - orchestrator blocks waiting for Claude. For production-scale usage, consider:
 
-#### Redis Streams (Partially Implemented)
-The redis_streams library has been added via PR #1:
+#### Redis Streams (Implemented)
+The redis_streams library has been added via PR #1, and parallel workflows are now implemented:
+
 - ✅ StreamProducer/StreamConsumer implementation
 - ✅ Consumer groups for parallel processing
 - ✅ Checkpoint storage for resume
 - ✅ Backpressure monitoring
 - ✅ 8/9 integration tests passing (1 skipped - checkpoint resume)
-- ⚠️ Redis state storage in orchestrator (optional, via config)
-- ⏳ Full polling replacement in mattermost_bridge (not implemented)
+- ✅ Redis state storage in orchestrator (optional, via config)
+- ✅ Parallel feature execution (worker pool) - **NEW in PR #5**
 
-**Current state**: Library is ready to use. Full polling replacement would require:
-- Adding Redis Streams watcher to responder
-- Publishing events to stream instead of HTTP polling
-- Subscribing to stream for real-time message delivery
+**Current state**: Full parallel workflow support is now available:
+- Responder publishes to Redis stream
+- Worker pool spawns multiple workers
+- Each worker runs orchestrator independently
+- Workers auto-ack on success, fallback on failure
+
+**Usage**:
+```bash
+# Start worker pool
+uv run python worker_pool.py --workers 3
+
+# Responder automatically publishes to stream
+# Workers pick up and execute in parallel
+```
+
+**Future enhancements**:
+- Full polling replacement in mattermost_bridge for real-time message delivery
+- Dead letter queue for failed messages
+- Worker health monitoring
 
 #### Priority 2: Hatchet (Medium Effort)
 Lightweight background task queue: https://github.com/hatchet-dev/hatchet
