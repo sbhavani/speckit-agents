@@ -381,13 +381,12 @@ Redis is used for caching to improve performance:
 
 #### Should Have (Important)
 - **Slash commands + Webhooks**: Trigger workflows from Mattermost (`/agent start --project live-set-revival`) via slash command that hits a webhook. Eliminates polling.
-- **Persistent state**: SQLite or file-based state for crash recovery (currently uses JSON files)
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
+- **Redis Streams integration**: Replace HTTP polling with Redis Streams Pub/Sub (see below)
 
 #### Could Have (Nice to Have)
 - **Multiple Dev Agents**: Fan out parallel Spec Kit phases to separate sessions
 - **Code Review Agent**: Third agent that reviews Dev's PR before posting
-- **Redis Streams**: Replace polling with event-driven architecture for lower latency
 - **Hatchet integration**: Background task queue for non-blocking orchestrator
 
 #### Won't Have (Not for now)
@@ -398,13 +397,20 @@ Redis is used for caching to improve performance:
 
 Current architecture runs synchronously - orchestrator blocks waiting for Claude. For production-scale usage, consider:
 
-#### Priority 1: Redis Streams (Low Effort)
-Replace polling with Redis Streams for event-driven architecture:
-- `XADD` workflow events → Redis stream
-- `XREAD` blocks until events arrive (no polling)
-- Also enables: workflow history, replay, debugging
-- **Effort**: Medium (refactor message polling)
-- **Benefit**: Lower latency, better observability
+#### Redis Streams (Partially Implemented)
+The redis_streams library has been added via PR #1:
+- ✅ StreamProducer/StreamConsumer implementation
+- ✅ Consumer groups for parallel processing
+- ✅ Checkpoint storage for resume
+- ✅ Backpressure monitoring
+- ✅ 8/9 integration tests passing (1 skipped - checkpoint resume)
+- ⚠️ Redis state storage in orchestrator (optional, via config)
+- ⏳ Full polling replacement in mattermost_bridge (not implemented)
+
+**Current state**: Library is ready to use. Full polling replacement would require:
+- Adding Redis Streams watcher to responder
+- Publishing events to stream instead of HTTP polling
+- Subscribing to stream for real-time message delivery
 
 #### Priority 2: Hatchet (Medium Effort)
 Lightweight background task queue: https://github.com/hatchet-dev/hatchet
@@ -434,7 +440,7 @@ Full workflow orchestration: https://github.com/temporalio/temporal
 | Learning curve | Low | Medium | High |
 | When to use | Polling replacement | Background jobs | Complex workflows |
 
-**Recommendation**: Start with **Redis Streams** (lowest effort, immediate improvement). Graduate to **Hatchet** if you need background task queues. Temporal is only worth it for enterprise requirements.
+**Recommendation**: Redis Streams library is now available. Next step is full polling replacement in responder. Graduate to **Hatchet** if you need background task queues. Temporal is only worth it for enterprise requirements.
 
 ### Potential UX Improvements (ideas)
 - **Phase duration**: Show duration per phase in summary (e.g., "Specify: 4m, Plan: 5m, Implement: 15m")
