@@ -1557,6 +1557,9 @@ Be specific about:
 # CLI
 # ---------------------------------------------------------------------------
 
+__version__ = "0.1.0"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Agent Team Orchestrator")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
@@ -1572,7 +1575,14 @@ def main() -> None:
                         help="Project name from config (for multi-project setups)")
     parser.add_argument("--channel", type=str, default=None,
                         help="Override Mattermost channel ID")
+    parser.add_argument("--version", action="store_true", help="Print version and exit")
+    parser.add_argument("--show-state", action="store_true", help="Print current state and exit")
     args = parser.parse_args()
+
+    # Handle --version flag
+    if args.version:
+        print(f"agent-team orchestrator v{__version__}")
+        return
 
     if args.resume and args.feature:
         parser.error("--resume and --feature are mutually exclusive")
@@ -1582,6 +1592,25 @@ def main() -> None:
         # Try relative to script directory
         config_path = os.path.join(os.path.dirname(__file__), args.config)
     config = load_config(config_path)
+
+    # Handle --show-state flag
+    if args.show_state:
+        try:
+            project_path, prd_path, project_channel_id = resolve_project_config(config, args.project)
+        except ValueError as e:
+            # Try default path if project not specified
+            project_path = config.get("project", {}).get("path", ".")
+
+        state_file = os.path.join(project_path, STATE_FILE)
+        if os.path.exists(state_file):
+            with open(state_file) as f:
+                state = json.load(f)
+            import pprint
+            print("Current state:")
+            pprint.pprint(state)
+        else:
+            print("No saved state found.")
+        return
 
     # Resolve project config (supports single project or multi-project mode)
     try:
