@@ -559,3 +559,88 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Doctor Checks
+# ---------------------------------------------------------------------------
+
+import tempfile
+import os
+
+from orchestrator import (
+    validate_config_file,
+    validate_yaml_syntax,
+    validate_required_fields,
+    validate_env_vars,
+    check_tool_available,
+    CheckResult,
+)
+
+
+class TestDoctorChecks:
+    def test_validate_config_file_exists(self, tmp_path):
+        """Config file that exists returns OK."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("project: {}\n")
+        result = validate_config_file(str(config_file))
+        assert result.passed is True
+        assert result.name == "config_file"
+
+    def test_validate_config_file_missing(self):
+        """Config file that doesn't exist returns FAIL."""
+        result = validate_config_file("/nonexistent/path/config.yaml")
+        assert result.passed is False
+        assert result.name == "config_file"
+
+    def test_validate_yaml_syntax_valid(self, tmp_path):
+        """Valid YAML returns OK."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("project:\n  path: /tmp\n")
+        result = validate_yaml_syntax(str(config_file))
+        assert result.passed is True
+
+    def test_validate_yaml_syntax_invalid(self, tmp_path):
+        """Invalid YAML returns FAIL."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("project: [unclosed bracket")  # Invalid YAML
+        result = validate_yaml_syntax(str(config_file))
+        assert result.passed is False
+
+    def test_validate_required_fields_complete(self):
+        """Complete config returns OK."""
+        config = {
+            "project": {"path": "/tmp"},
+            "mattermost": {},
+            "openclaw": {},
+        }
+        result = validate_required_fields(config)
+        assert result.passed is True
+
+    def test_validate_required_fields_missing(self):
+        """Missing required fields returns FAIL."""
+        config = {"some_field": "value"}
+        result = validate_required_fields(config)
+        assert result.passed is False
+        assert "missing" in result.message.lower()
+
+    def test_validate_env_vars_all_set(self, monkeypatch):
+        """All env vars set returns OK."""
+        monkeypatch.setenv("DEV_BOT_TOKEN", "test")
+        config = {
+            "mattermost": {"dev_bot_token": "test"},
+        }
+        result = validate_env_vars(config)
+        assert result.passed is True
+
+    def test_check_tool_available_found(self):
+        """Available tool returns OK."""
+        result = check_tool_available("python3")
+        assert result.passed is True
+
+    def test_check_tool_available_not_found(self):
+        """Missing tool returns FAIL."""
+        result = check_tool_available("nonexistent_tool_xyz")
+        assert result.passed is False
+        assert "not found" in result.message.lower()
+

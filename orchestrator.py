@@ -8,6 +8,7 @@ Usage:
     python orchestrator.py --loop              # Keep suggesting features after each PR
     python orchestrator.py --feature "desc"    # Skip PM, implement this feature directly
     python orchestrator.py --resume            # Resume from last saved state
+    python orchestrator.py --doctor            # Validate config and check setup
 """
 
 import argparse
@@ -1574,6 +1575,215 @@ Be specific about:
 
 
 # ---------------------------------------------------------------------------
+# Doctor Checks
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class CheckResult:
+    """Result of a single doctor check."""
+    category: str
+    name: str
+    passed: bool
+    message: str
+    details: dict | None = None
+
+
+def validate_config_file(config_path: str) -> CheckResult:
+    """Check if config file exists and is readable."""
+    import os
+    if os.path.exists(config_path):
+        return CheckResult("config", "config_file", True, f"Config file exists: {config_path}")
+    # Try relative to script directory
+    alt_path = os.path.join(os.path.dirname(__file__), config_path)
+    if os.path.exists(alt_path):
+        return CheckResult("config", "config_file", True, f"Config file exists: {alt_path}")
+    return CheckResult("config", "config_file", False, f"Config file not found: {config_path}")
+
+
+def validate_yaml_syntax(config_path: str) -> CheckResult:
+    """Check if config file has valid YAML syntax."""
+    import os
+    import yaml
+    path = config_path
+    if not os.path.exists(path):
+        path = os.path.join(os.path.dirname(__file__), config_path)
+    try:
+        with open(path) as f:
+            yaml.safe_load(f)
+        return CheckResult("config", "yaml_syntax", True, "YAML syntax is valid")
+    except yaml.YAMLError as e:
+        return CheckResult("config", "yaml_syntax", False, f"Invalid YAML syntax: {e}")
+    except Exception as e:
+        return CheckResult("config", "yaml_syntax", False, f"Error reading config: {e}")
+
+
+def validate_required_fields(config: dict) -> CheckResult:
+    """Check if all required config fields are present."""
+    errors = []
+    # Check for project or projects
+    if "project" not in config and "projects" not in config:
+        errors.append("missing 'project' or 'projects'")
+    # Check for mattermost section
+    if "mattermost" not in config:
+        errors.append("missing 'mattermost'")
+    # Check for openclaw section
+    if "openclaw" not in config:
+        errors.append("missing 'openclaw'")
+    if errors:
+        return CheckResult("config", "required_fields", False, f"Config errors: {', '.join(errors)}")
+    return CheckResult("config", "required_fields", True, "All required fields present")
+
+
+def validate_env_vars(config: dict) -> CheckResult:
+    """Check if required environment variables are set."""
+    import os
+    # Check for tokens that should be in environment
+    missing = []
+    # Check if tokens are in config (they shouldn't be - should be in env)
+    if "mattermost" in config:
+        mm = config["mattermost"]
+        if mm.get("dev_bot_token") and not os.environ.get("DEV_BOT_TOKEN"):
+            missing.append("DEV_BOT_TOKEN")
+        if mm.get("pm_bot_token") and not os.environ.get("PM_BOT_TOKEN"):
+            missing.append("PM_BOT_TOKEN")
+    if missing:
+        return CheckResult("env", "required_env_vars", False,
+                          f"Missing env vars: {', '.join(missing)} (set in config or environment)")
+    return CheckResult("env", "required_env_vars", True, "All required environment variables set")
+
+
+def check_mattermost_connectivity(config: dict) -> CheckResult:
+    """Check Mattermost connectivity."""
+    import os
+    try:
+        from mattermost_bridge import MattermostBridge
+        bridge = MattermostBridge(config, dry_run=True)
+        success, errors = bridge.validate()
+        if success:
+            return CheckResult("connectivity", "mattermost", True, "Mattermost connection OK")
+        return CheckResult("connectivity", "mattermost", False, f"Mattermost error: {errors}")
+    except Exception as e:
+        return CheckResult("connectivity", "mattermost", False, f"Mattermost check failed: {e}")
+
+
+def check_github_auth(config: dict) -> CheckResult:
+    """Check GitHub CLI authentication."""
+    import subprocess
+    try:
+        result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            return CheckResult("connectivity", "github", True, "GitHub CLI authenticated")
+        return CheckResult("connectivity", "github", False, "GitHub CLI not authenticated")
+    except FileNotFoundError:
+        return CheckResult("connectivity", "github", False, "gh CLI not found")
+    except Exception as e:
+        return CheckResult("connectivity", "github", False, f"GitHub check failed: {e}")
+
+
+def check_ssh_available() -> CheckResult:
+    """Check if SSH client is available."""
+    import shutil
+    if shutil.which("ssh"):
+        return CheckResult("connectivity", "ssh", True, "SSH client available")
+    return CheckResult("connectivity", "ssh", False, "SSH client not found")
+
+
+def check_tool_available(tool: str) -> CheckResult:
+    """Check if a tool is available and get its version."""
+    import shutil
+    import subprocess
+    path = shutil.which(tool)
+    if not path:
+        return CheckResult("tools", tool, False, f"{tool} not found", {"install": f"brew install {tool}"})
+    # Try to get version (some tools don't support --version)
+    try:
+        result = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            return CheckResult("tools", tool, True, f"{tool} available at {path}")
+        version = result.stdout.strip() or result.stderr.strip() or "unknown"
+        if len(version) > 50:
+            version = version[:50] + "..."
+        return CheckResult("tools", tool, True, f"{tool} available: {version}")
+    except FileNotFoundError:
+        return CheckResult("tools", tool, False, f"{tool} not found")
+    except Exception:
+        return CheckResult("tools", tool, True, f"{tool} available at {path}")
+
+
+def run_doctor_checks(config_path: str) -> None:
+    """Run all doctor checks and exit with appropriate code."""
+    import sys
+    import time
+
+    print("=== Doctor Check ===")
+    start_time = time.time()
+
+    # Load config
+    config = None
+    config_result = validate_config_file(config_path)
+    print(f"[{config_result.category}] {config_result.name}: {'OK' if config_result.passed else 'FAIL'}")
+    if config_result.passed:
+        yaml_result = validate_yaml_syntax(config_path)
+        print(f"[{yaml_result.category}] {yaml_result.name}: {'OK' if yaml_result.passed else 'FAIL'}")
+        if yaml_result.passed:
+            try:
+                config = load_config(config_path)
+                fields_result = validate_required_fields(config)
+                print(f"[{fields_result.category}] {fields_result.name}: {'OK' if fields_result.passed else 'FAIL'}")
+            except Exception as e:
+                print(f"[config] load_config: FAIL - {e}")
+        else:
+            config = None
+    else:
+        config = None
+
+    # Env vars check
+    if config:
+        env_result = validate_env_vars(config)
+        print(f"[{env_result.category}] {env_result.name}: {'OK' if env_result.passed else 'FAIL'}")
+
+    # Connectivity checks
+    if config:
+        mm_result = check_mattermost_connectivity(config)
+        print(f"[{mm_result.category}] {mm_result.name}: {'OK' if mm_result.passed else 'FAIL'}")
+
+    gh_result = check_github_auth(config)
+    print(f"[{gh_result.category}] {gh_result.name}: {'OK' if gh_result.passed else 'FAIL'}")
+
+    ssh_result = check_ssh_available()
+    print(f"[{ssh_result.category}] {ssh_result.name}: {'OK' if ssh_result.passed else 'FAIL'}")
+
+    # Tool checks
+    for tool in ["uv", "claude", "gh", "ssh"]:
+        tool_result = check_tool_available(tool)
+        print(f"[{tool_result.category}] {tool_result.name}: {'OK' if tool_result.passed else 'FAIL'} - {tool_result.message}")
+
+    duration = time.time() - start_time
+
+    # Determine overall result
+    all_passed = (
+        config_result.passed and
+        yaml_result.passed and
+        (not config or fields_result.passed) and
+        (not config or env_result.passed) and
+        (not config or mm_result.passed) and
+        gh_result.passed and
+        ssh_result.passed
+    )
+
+    if all_passed:
+        print(f"\nAll checks passed! ({duration:.1f}s)")
+        sys.exit(0)
+    else:
+        print(f"\nSome checks failed. Please fix the issues above. ({duration:.1f}s)")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1597,11 +1807,17 @@ def main() -> None:
                         help="Override Mattermost channel ID")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--show-state", action="store_true", help="Print current state and exit")
+    parser.add_argument("--doctor", action="store_true", help="Validate config and check setup")
     args = parser.parse_args()
 
     # Handle --version flag
     if args.version:
         print(f"agent-team orchestrator v{__version__}")
+        return
+
+    # Handle --doctor flag
+    if args.doctor:
+        run_doctor_checks(args.config)
         return
 
     if args.resume and args.feature:
