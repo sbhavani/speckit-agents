@@ -17,6 +17,7 @@ from orchestrator import (
     Orchestrator,
     Phase,
     run_claude,
+    validate_config,
 )
 
 
@@ -559,3 +560,228 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Config validation
+# ---------------------------------------------------------------------------
+
+class TestValidateConfig:
+    def test_valid_single_project_config(self):
+        config = {
+            "project": {"path": "/some/path", "prd_path": "docs/PRD.md"},
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is True
+        assert errors == []
+
+    def test_valid_multi_project_config(self):
+        config = {
+            "projects": {
+                "my-project": {
+                    "path": "/some/path",
+                    "prd_path": "docs/PRD.md",
+                    "channel_id": "abc123",
+                }
+            },
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is True
+        assert errors == []
+
+    def test_missing_project_and_projects(self):
+        config = {
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("must have either" in e for e in errors)
+
+    def test_empty_projects(self):
+        config = {
+            "projects": {},
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("No projects defined" in e for e in errors)
+
+    def test_project_missing_path(self):
+        config = {
+            "projects": {
+                "my-project": {
+                    "prd_path": "docs/PRD.md",
+                    "channel_id": "abc123",
+                }
+            },
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("missing 'path'" in e for e in errors)
+
+    def test_project_missing_channel_id(self):
+        config = {
+            "projects": {
+                "my-project": {
+                    "path": "/some/path",
+                    "prd_path": "docs/PRD.md",
+                }
+            },
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("missing 'channel_id'" in e for e in errors)
+
+    def test_missing_mattermost_config(self):
+        config = {
+            "project": {"path": "/some/path"},
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("mattermost" in e for e in errors)
+
+    def test_missing_mattermost_channel_id(self):
+        config = {
+            "project": {"path": "/some/path"},
+            "mattermost": {
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("channel_id" in e for e in errors)
+
+    def test_missing_openclaw_config(self):
+        config = {
+            "project": {"path": "/some/path"},
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("openclaw" in e for e in errors)
+
+    def test_invalid_workflow_timeout(self):
+        config = {
+            "project": {"path": "/some/path"},
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+            "workflow": {"approval_timeout": -1},
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("positive integer" in e for e in errors)
+
+    def test_valid_redis_streams_config(self):
+        config = {
+            "project": {"path": "/some/path"},
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+            "redis_streams": {
+                "url": "redis://localhost:6379",
+                "stream": "test-stream",
+                "consumer_group": "test-group",
+            },
+        }
+        valid, errors = validate_config(config)
+        assert valid is True
+        assert errors == []
+
+    def test_invalid_redis_streams_missing_url(self):
+        config = {
+            "project": {"path": "/some/path"},
+            "mattermost": {
+                "channel_id": "abc123",
+                "url": "http://localhost:8065",
+                "dev_bot_token": "token123",
+                "dev_bot_user_id": "user123",
+                "pm_bot_token": "token456",
+                "pm_bot_user_id": "user456",
+            },
+            "openclaw": {"ssh_host": "localhost"},
+            "redis_streams": {
+                "stream": "test-stream",
+                "consumer_group": "test-group",
+            },
+        }
+        valid, errors = validate_config(config)
+        assert valid is False
+        assert any("redis_streams.url" in e for e in errors)

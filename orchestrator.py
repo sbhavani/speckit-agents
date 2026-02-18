@@ -229,6 +229,88 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[k] = v
 
 
+def validate_config(config: dict) -> tuple[bool, list[str]]:
+    """Validate configuration structure and required fields.
+
+    Returns:
+        Tuple of (success: bool, errors: list[str])
+    """
+    errors: list[str] = []
+
+    # Check for projects or single project
+    has_projects = "projects" in config
+    has_single_project = "project" in config
+
+    if not has_projects and not has_single_project:
+        errors.append("Config must have either 'project' or 'projects' key")
+
+    # Validate projects
+    if has_projects:
+        projects = config.get("projects", {})
+        if not projects:
+            errors.append("No projects defined in 'projects'")
+        else:
+            for name, proj in projects.items():
+                if not proj.get("path"):
+                    errors.append(f"Project '{name}' is missing 'path'")
+                if not proj.get("channel_id"):
+                    errors.append(f"Project '{name}' is missing 'channel_id'")
+
+    # Validate single project mode
+    if has_single_project:
+        proj = config.get("project", {})
+        if not proj.get("path"):
+            errors.append("Single project is missing 'path'")
+
+    # Validate mattermost config (required unless in dry-run)
+    if "mattermost" in config:
+        mm = config["mattermost"]
+        if not mm.get("channel_id"):
+            errors.append("mattermost.channel_id is required")
+        if not mm.get("url"):
+            errors.append("mattermost.url is required")
+        if not mm.get("dev_bot_token"):
+            errors.append("mattermost.dev_bot_token is required (or set in config.local.yaml)")
+        if not mm.get("dev_bot_user_id"):
+            errors.append("mattermost.dev_bot_user_id is required")
+        if not mm.get("pm_bot_token"):
+            errors.append("mattermost.pm_bot_token is required (or set in config.local.yaml)")
+        if not mm.get("pm_bot_user_id"):
+            errors.append("mattermost.pm_bot_user_id is required")
+    else:
+        errors.append("mattermost configuration is required")
+
+    # Validate openclaw config
+    if "openclaw" in config:
+        oc = config["openclaw"]
+        if not oc.get("ssh_host"):
+            errors.append("openclaw.ssh_host is required")
+    else:
+        errors.append("openclaw configuration is required")
+
+    # Validate redis_streams (optional but warn if incomplete)
+    if "redis_streams" in config:
+        rs = config["redis_streams"]
+        if not rs.get("url"):
+            errors.append("redis_streams.url is required")
+        if not rs.get("stream"):
+            errors.append("redis_streams.stream is required")
+        if not rs.get("consumer_group"):
+            errors.append("redis_streams.consumer_group is required")
+
+    # Validate workflow config (optional)
+    if "workflow" in config:
+        wf = config["workflow"]
+        # Validate timeout values are positive integers
+        for key in ["approval_timeout", "question_timeout", "plan_review_timeout", "impl_poll_interval"]:
+            if key in wf:
+                val = wf[key]
+                if not isinstance(val, int) or val <= 0:
+                    errors.append(f"workflow.{key} must be a positive integer")
+
+    return len(errors) == 0, errors
+
+
 # ---------------------------------------------------------------------------
 # Claude Code headless runner
 # ---------------------------------------------------------------------------
@@ -1646,6 +1728,7 @@ def main() -> None:
                         help="Set logging level (default: INFO)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output (equivalent to --log-level DEBUG)")
     parser.add_argument("--doctor", action="store_true", help="Validate config and check setup")
+    parser.add_argument("--validate", action="store_true", help="Validate config and exit (no startup)")
     args = parser.parse_args()
 
     # Handle --version flag
@@ -1670,6 +1753,17 @@ def main() -> None:
         config_path = os.path.join(os.path.dirname(__file__), args.config)
     config = load_config(config_path)
 
+    # Run config validation on startup (skip in dry-run mode)
+    if not args.dry_run:
+        logger.info("Validating configuration...")
+        valid, errors = validate_config(config)
+        if not valid:
+            error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            logger.error(error_msg)
+            print(error_msg)
+            sys.exit(1)
+        logger.info("Configuration validated successfully")
+
     # Handle --show-state flag
     if args.show_state:
         try:
@@ -1687,6 +1781,41 @@ def main() -> None:
             pprint.pprint(state)
         else:
             print("No saved state found.")
+        return
+
+    # Handle --validate flag (validate config and exit)
+    if args.validate:
+        print("Validating configuration...\n")
+        errors = []
+
+        # Check config file exists
+        if not os.path.exists(config_path):
+            errors.append(f"Config file not found: {config_path}")
+        else:
+            print(f"Config file: {config_path}")
+
+        # Validate config structure
+        if errors:
+            print("\nERRORS:")
+            for e in errors:
+                print(f"  - {e}")
+            sys.exit(1)
+
+        valid, validation_errors = validate_config(config)
+        if not valid:
+            print("\nConfiguration validation FAILED:")
+            for e in validation_errors:
+                print(f"  - {e}")
+            sys.exit(1)
+
+        print("Configuration validation PASSED")
+        # Show config summary
+        projects = config.get("projects", {})
+        if projects:
+            print(f"Projects: {list(projects.keys())}")
+        mm = config.get("mattermost", {})
+        if mm:
+            print(f"Mattermost: {mm.get('url')} (channel: {mm.get('channel_id', 'N/A')})")
         return
 
     # Handle --doctor flag (validate config)
