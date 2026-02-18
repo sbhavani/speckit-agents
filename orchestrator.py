@@ -1572,6 +1572,318 @@ Be specific about:
 
 
 # ---------------------------------------------------------------------------
+# Doctor - Self-diagnostic checks
+# ---------------------------------------------------------------------------
+
+class CheckStatus:
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SKIP = "SKIP"
+
+
+# ANSI color codes for doctor output
+class DoctorColors:
+    RESET = "\033[0m"
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    YELLOW = "\033[33m"
+    BOLD = "\033[1m"
+
+
+def run_doctor(config_path: str) -> None:
+    """Run diagnostic checks on the environment and configuration.
+
+    Exit codes:
+    - 0: All checks passed
+    - 1: General error
+    - 2: Configuration invalid
+    - 3: Missing dependencies
+    - 4: Connectivity failures
+    """
+    print(f"\n=== Doctor Report ===")
+    print(f"Timestamp: {datetime.now().isoformat()}\n")
+
+    checks = []
+    exit_code = 0
+
+    # T003: Check Python version
+    check = _check_python_version()
+    checks.append(check)
+    if check["status"] == CheckStatus.FAIL:
+        exit_code = max(exit_code, 3)
+
+    # T004: Check dependencies
+    check = _check_dependencies()
+    checks.append(check)
+    if check["status"] == CheckStatus.FAIL:
+        exit_code = max(exit_code, 3)
+
+    # T005: Validate config
+    check, config_data = _check_config(config_path)
+    checks.append(check)
+    if check["status"] == CheckStatus.FAIL:
+        exit_code = max(exit_code, 2)
+
+    # T006: Check Redis connectivity (optional)
+    if config_data:
+        check = _check_redis(config_data)
+        checks.append(check)
+        if check["status"] == CheckStatus.FAIL:
+            exit_code = max(exit_code, 4)
+    else:
+        checks.append({
+            "name": "redis",
+            "description": "Redis connectivity",
+            "status": CheckStatus.SKIP,
+            "message": "Config not available, skipping"
+        })
+
+    # T007: Check SSH/OpenClaw connectivity (optional)
+    if config_data:
+        check = _check_ssh(config_data)
+        checks.append(check)
+        if check["status"] == CheckStatus.FAIL:
+            exit_code = max(exit_code, 4)
+    else:
+        checks.append({
+            "name": "ssh",
+            "description": "SSH/OpenClaw connectivity",
+            "status": CheckStatus.SKIP,
+            "message": "Config not available, skipping"
+        })
+
+    # Print results
+    for check in checks:
+        _print_check(check)
+
+    # Overall status
+    overall = CheckStatus.PASS if exit_code == 0 else CheckStatus.FAIL
+    overall_color = DoctorColors.GREEN if overall == CheckStatus.PASS else DoctorColors.RED
+
+    print(f"\n=== Overall: {overall_color}{overall}{DoctorColors.RESET} ===")
+    sys.exit(exit_code)
+
+
+def _check_python_version() -> dict:
+    """Check if Python version is >= 3.10."""
+    import sys
+    version = sys.version_info
+    required = (3, 10)
+    actual = (version.major, version.minor)
+
+    if actual >= required:
+        return {
+            "name": "python_version",
+            "description": f"Python version ({'.'.join(map(str, actual))})",
+            "status": CheckStatus.PASS,
+            "message": f"Python {'.'.join(map(str, actual))} meets minimum requirement of 3.10"
+        }
+    else:
+        return {
+            "name": "python_version",
+            "description": f"Python version ({'.'.join(map(str, actual))})",
+            "status": CheckStatus.FAIL,
+            "message": f"Python {'.'.join(map(str, actual))} is below minimum requirement of 3.10"
+        }
+
+
+def _check_dependencies() -> dict:
+    """Check if all required dependencies can be imported."""
+    required_deps = {
+        "yaml": "pyyaml",
+        "redis": "redis",
+        "anthropic": "anthropic",
+    }
+
+    missing = []
+    available = []
+
+    for lib_name, package_name in required_deps.items():
+        try:
+            __import__(lib_name)
+            available.append(package_name)
+        except ImportError:
+            missing.append(package_name)
+
+    if not missing:
+        return {
+            "name": "dependencies",
+            "description": "Required dependencies",
+            "status": CheckStatus.PASS,
+            "message": f"All required packages available: {', '.join(available)}"
+        }
+    else:
+        return {
+            "name": "dependencies",
+            "description": "Required dependencies",
+            "status": CheckStatus.FAIL,
+            "message": f"Missing packages: {', '.join(missing)}. Install with: pip install pyyaml redis anthropic"
+        }
+
+
+def _check_config(config_path: str) -> tuple[dict, dict | None]:
+    """Validate config.yaml can be loaded."""
+    # Try relative to script directory first
+    if not os.path.exists(config_path):
+        config_path = os.path.join(os.path.dirname(__file__), config_path)
+
+    if not os.path.exists(config_path):
+        return {
+            "name": "config",
+            "description": "Config file (config.yaml)",
+            "status": CheckStatus.FAIL,
+            "message": f"Config file not found at {config_path}"
+        }, None
+
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+
+        # Validate required keys
+        missing_keys = []
+        if "mattermost" not in config:
+            missing_keys.append("mattermost")
+        if "openclaw" not in config:
+            missing_keys.append("openclaw")
+
+        if missing_keys:
+            return {
+                "name": "config",
+                "description": "Config file (config.yaml)",
+                "status": CheckStatus.FAIL,
+                "message": f"Config missing required keys: {', '.join(missing_keys)}"
+            }, config
+
+        return {
+            "name": "config",
+            "description": "Config file (config.yaml)",
+            "status": CheckStatus.PASS,
+            "message": "Valid config.yaml with required keys"
+        }, config
+
+    except yaml.YAMLError as e:
+        return {
+            "name": "config",
+            "description": "Config file (config.yaml)",
+            "status": CheckStatus.FAIL,
+            "message": f"Invalid YAML: {e}"
+        }, None
+    except Exception as e:
+        return {
+            "name": "config",
+            "description": "Config file (config.yaml)",
+            "status": CheckStatus.FAIL,
+            "message": f"Error reading config: {e}"
+        }, None
+
+
+def _check_redis(config: dict) -> dict:
+    """Check Redis connectivity if configured."""
+    redis_url = config.get("workflow", {}).get("redis_url")
+
+    if not redis_url:
+        return {
+            "name": "redis",
+            "description": "Redis connectivity",
+            "status": CheckStatus.SKIP,
+            "message": "Not configured (redis_url not set)"
+        }
+
+    try:
+        import redis
+        client = redis.from_url(redis_url)
+        client.ping()
+        return {
+            "name": "redis",
+            "description": "Redis connectivity",
+            "status": CheckStatus.PASS,
+            "message": f"Successfully connected to {redis_url}"
+        }
+    except Exception as e:
+        return {
+            "name": "redis",
+            "description": "Redis connectivity",
+            "status": CheckStatus.FAIL,
+            "message": f"Connection failed: {e}. Check redis_url in config."
+        }
+
+
+def _check_ssh(config: dict) -> dict:
+    """Check SSH/OpenClaw connectivity if configured."""
+    ssh_host = config.get("openclaw", {}).get("ssh_host")
+
+    if not ssh_host:
+        return {
+            "name": "ssh",
+            "description": "SSH/OpenClaw connectivity",
+            "status": CheckStatus.SKIP,
+            "message": "Not configured (ssh_host not set)"
+        }
+
+    try:
+        result = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ssh_host, "echo", "ok"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            return {
+                "name": "ssh",
+                "description": "SSH/OpenClaw connectivity",
+                "status": CheckStatus.PASS,
+                "message": f"Successfully connected to {ssh_host}"
+            }
+        else:
+            return {
+                "name": "ssh",
+                "description": "SSH/OpenClaw connectivity",
+                "status": CheckStatus.FAIL,
+                "message": f"SSH connection failed: {result.stderr.strip()}"
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "name": "ssh",
+            "description": "SSH/OpenClaw connectivity",
+            "status": CheckStatus.FAIL,
+            "message": f"Connection to {ssh_host} timed out"
+        }
+    except FileNotFoundError:
+        return {
+            "name": "ssh",
+            "description": "SSH/OpenClaw connectivity",
+            "status": CheckStatus.SKIP,
+            "message": "SSH client not found, skipping"
+        }
+    except Exception as e:
+        return {
+            "name": "ssh",
+            "description": "SSH/OpenClaw connectivity",
+            "status": CheckStatus.FAIL,
+            "message": f"Connection error: {e}"
+        }
+
+
+def _print_check(check: dict) -> None:
+    """Print a single diagnostic check with colored status."""
+    status = check["status"]
+    name = check["name"]
+    message = check.get("message", "")
+
+    if status == CheckStatus.PASS:
+        color = DoctorColors.GREEN
+        symbol = "PASS"
+    elif status == CheckStatus.FAIL:
+        color = DoctorColors.RED
+        symbol = "FAIL"
+    else:  # SKIP
+        color = DoctorColors.YELLOW
+        symbol = "SKIP"
+
+    print(f"[{color}{symbol}{DoctorColors.RESET}] {name}: {message}")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1595,11 +1907,17 @@ def main() -> None:
                         help="Override Mattermost channel ID")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--show-state", action="store_true", help="Print current state and exit")
+    parser.add_argument("--doctor", action="store_true", help="Run diagnostic checks and report health status")
     args = parser.parse_args()
 
     # Handle --version flag
     if args.version:
         print(f"agent-team orchestrator v{__version__}")
+        return
+
+    # Handle --doctor flag
+    if args.doctor:
+        run_doctor(args.config)
         return
 
     if args.resume and args.feature:

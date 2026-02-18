@@ -70,6 +70,8 @@ The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (confi
 ## Active Technologies
 - Redis 5.0+ (for Streams API), redis-py or equivalent client library (004-redis-streams)
 - Redis (stream storage), optional: metadata store for consumer offsets (004-redis-streams)
+- Python 3.10+ + pyyaml>=6.0, redis>=5.0, anthropic>=0.25.0 (001-doctor-flag)
+- File-based state (config.yaml), optional Redis for workflow state (001-doctor-flag)
 
 ## Recent Changes
 - 004-redis-streams: Added Redis 5.0+ (for Streams API), redis-py or equivalent client library
