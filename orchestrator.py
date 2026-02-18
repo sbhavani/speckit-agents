@@ -573,10 +573,12 @@ class Orchestrator:
             return
 
         import tempfile
+        import uuid
 
         # Extract project name from path
         project_name = Path(self.original_path).name
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        # Use microseconds + short UUID for uniqueness
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{uuid.uuid4().hex[:6]}"
         self.worktree_path = str(Path(tempfile.gettempdir()) / f"agent-team-{project_name}-{timestamp}")
 
         logger.info("Creating worktree at: %s", self.worktree_path)
