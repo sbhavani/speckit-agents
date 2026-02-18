@@ -83,6 +83,87 @@ uv run python orchestrator.py --feature "Add X" --simple # Simple mode (skip spe
 # Parallel Workflows (via Redis Streams)
 uv run python worker.py --consumer worker1                # Run a worker
 uv run python worker_pool.py --workers 3                  # Run 3 workers
+
+## Redis Streams Library
+
+This project includes a Redis Streams library for event-driven architecture (`src/redis_streams/`).
+
+### Producer Example
+
+```python
+from redis_streams import StreamProducer, StreamManager
+
+# Create stream manager and stream
+manager = StreamManager("redis://localhost:6379")
+manager.create_stream("data-updates", max_length=10000)
+
+# Create producer
+producer = StreamProducer(
+    redis_url="redis://localhost:6379",
+    stream_name="data-updates",
+)
+
+# Publish events
+message_id = producer.publish(
+    event_type="price.update",
+    payload={"symbol": "AAPL", "price": 150.25},
+    metadata={"source": "market-feed"}
+)
+print(f"Published: {message_id}")
+producer.close()
+```
+
+### Consumer Example
+
+```python
+from redis_streams import StreamConsumer, ConsumerGroupManager, CheckpointStore
+
+# Create consumer group (run once)
+group_mgr = ConsumerGroupManager("redis://localhost:6379")
+group_mgr.create_group("data-updates", "processors", start_id="0")
+
+# Create checkpoint store for persistence
+checkpoint_store = CheckpointStore("redis://localhost:6379")
+
+# Create consumer with checkpoint support
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="data-updates",
+    group="processors",
+    consumer="worker-1",
+    checkpoint_store=checkpoint_store,
+    checkpoint_interval=10,
+)
+
+# Process messages
+def handle_message(msg):
+    print(f"Received: {msg.event_type} - {msg.payload}")
+    return True  # Acknowledge
+
+try:
+    consumer.subscribe(handle_message)
+except KeyboardInterrupt:
+    consumer.close()
+```
+
+### Key Features
+
+- **Real-time event delivery**: Sub-500ms latency
+- **Consumer groups**: Multiple independent consumers
+- **Checkpoint/resume**: Persist position for failure recovery
+- **Stale message reclaim**: Automatic claiming of abandoned messages
+- **Retry with backoff**: Exponential backoff for connection errors
+
+### API Reference
+
+| Class | Description |
+|-------|-------------|
+| `StreamProducer` | Publish events to streams |
+| `StreamManager` | Create/delete/manage streams |
+| `StreamConsumer` | Consume events with consumer groups |
+| `ConsumerGroupManager` | Manage consumer groups |
+| `CheckpointStore` | Redis-backed checkpoint storage |
+| `InMemoryCheckpointStore` | In-memory checkpoint storage (testing) |
 ```
 
 ## Configuration

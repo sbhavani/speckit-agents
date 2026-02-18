@@ -1,18 +1,67 @@
 """Redis connection management with connection pooling."""
 
-from typing import Optional
+import logging
+import time
+from typing import Optional, Callable, TypeVar, Any
 import redis
 from redis.connection import ConnectionPool
 
+logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+def with_retry(
+    func: Callable[..., T],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exponential_base: float = 2.0,
+) -> Callable[..., T]:
+    """Decorator to add retry with exponential backoff.
+
+    Args:
+        func: Function to wrap
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay between retries
+        exponential_base: Base for exponential backoff
+
+    Returns:
+        Wrapped function with retry logic
+    """
+    def wrapper(*args, **kwargs) -> T:
+        last_exception = None
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except (redis.ConnectionError, redis.TimeoutError) as e:
+                last_exception = e
+                if attempt < max_retries:
+                    delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                    logger.warning(
+                        f"Redis connection failed (attempt {attempt + 1}/{max_retries + 1}), "
+                        f"retrying in {delay:.1f}s: {e}"
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        f"Redis connection failed after {max_retries + 1} attempts: {e}"
+                    )
+        raise last_exception
+    return wrapper
+
 
 class RedisConnection:
-    """Manages Redis connections with pooling."""
+    """Manages Redis connections with pooling and retry support."""
 
     def __init__(
         self,
         url: str = "redis://localhost:6379",
         max_connections: int = 10,
         decode_responses: bool = True,
+        max_retries: int = 3,
+        retry_base_delay: float = 1.0,
     ):
         """Initialize Redis connection.
 
@@ -20,12 +69,16 @@ class RedisConnection:
             url: Redis connection URL
             max_connections: Maximum connections in pool
             decode_responses: Whether to decode responses to strings
+            max_retries: Maximum retry attempts for connection errors
+            retry_base_delay: Base delay for exponential backoff
         """
         self.url = url
         self._pool: Optional[ConnectionPool] = None
         self._client: Optional[redis.Redis] = None
         self._max_connections = max_connections
         self._decode_responses = decode_responses
+        self._max_retries = max_retries
+        self._retry_base_delay = retry_base_delay
 
     def connect(self) -> redis.Redis:
         """Create and return a Redis client."""
