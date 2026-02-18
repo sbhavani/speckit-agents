@@ -969,9 +969,9 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         self.msg.send(
             "👀 **Review** — Ready for implementation. Review the plan above.\n\n"
-            "- Ask any questions and the PM will answer\n"
+            "- Reply **approve** to proceed\n"
             "- Reply **reject** to stop\n"
-            f"- Auto-proceeding in {review_timeout}s if no objection",
+            f"- Auto-proceeding in {review_timeout}s if no response",
             sender="Orchestrator",
         )
 
@@ -1022,12 +1022,13 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             if not lower:
                 continue
 
-            # Treat as a question — route to PM
-            logger.info("Question during plan review: %s", response[:100])
-            self._answer_human_question(response)
+            # During PLAN_REVIEW, only accept approve/reject
+            # Questions during review are not supported - user must approve or reject
+            # This prevents PM from answering during review (only approve/reject allowed)
+            logger.info("Plan review: ignoring non-approve/reject message: %s", response[:50])
             self.msg.send(
-                f"Any more questions? Auto-proceeding in {int(deadline - time.time())}s, "
-                "or reply **reject** to stop.",
+                f"Please reply **approve** to proceed or **reject** to stop. "
+                f"Auto-proceeding in {int(deadline - time.time())}s.",
                 sender="Orchestrator",
             )
 
