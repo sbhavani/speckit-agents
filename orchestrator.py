@@ -172,6 +172,74 @@ def load_config(path: str) -> dict:
     return cfg
 
 
+def validate_config(config: dict) -> tuple[bool, list[str]]:
+    """Validate the configuration for required fields and proper structure.
+
+    Returns:
+        Tuple of (is_valid: bool, errors: list[str])
+    """
+    errors: list[str] = []
+
+    # Check for required top-level sections
+    required_sections = ["mattermost", "openclaw"]
+    for section in required_sections:
+        if section not in config:
+            errors.append(f"Missing required config section: '{section}'")
+
+    # Validate mattermost section
+    if "mattermost" in config:
+        mm = config["mattermost"]
+        if not mm.get("channel_id"):
+            errors.append("Missing required field: mattermost.channel_id")
+        if not mm.get("url"):
+            errors.append("Missing required field: mattermost.url")
+
+    # Validate openclaw section
+    if "openclaw" in config:
+        oc = config["openclaw"]
+        if not oc.get("ssh_host"):
+            errors.append("Missing required field: openclaw.ssh_host")
+
+    # Validate projects (if using multi-project mode)
+    if "projects" in config:
+        projects = config["projects"]
+        if not projects:
+            errors.append("Config has empty 'projects' section")
+        for proj_name, proj in projects.items():
+            if not proj.get("path"):
+                errors.append(f"Project '{proj_name}' is missing required field: path")
+
+    # Validate single project mode (legacy)
+    if "project" in config:
+        proj = config["project"]
+        if not proj.get("path"):
+            errors.append("Single project mode requires 'project.path' to be set")
+
+    # Check that at least one project mode is configured
+    if not config.get("projects") and not config.get("project"):
+        errors.append("Config must have either 'project' or 'projects' section")
+
+    # Validate redis_streams section (if present)
+    if "redis_streams" in config:
+        rs = config["redis_streams"]
+        if rs.get("url"):
+            # Basic URL format validation
+            if not rs["url"].startswith("redis://"):
+                errors.append("redis_streams.url must start with 'redis://'")
+
+    # Validate workflow section timeouts (if present)
+    if "workflow" in config:
+        wf = config["workflow"]
+        timeout_fields = ["approval_timeout", "question_timeout", "plan_review_timeout", "impl_poll_interval"]
+        for field in timeout_fields:
+            if field in wf:
+                value = wf[field]
+                if not isinstance(value, (int, float)) or value <= 0:
+                    errors.append(f"workflow.{field} must be a positive number")
+
+    return len(errors) == 0, errors
+
+
 def resolve_project_config(config: dict, project_name: str | None = None) -> tuple[str, str, str | None]:
     """Resolve project path, PRD path, and channel_id from config.
 
@@ -1646,6 +1714,7 @@ def main() -> None:
                         help="Set logging level (default: INFO)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output (equivalent to --log-level DEBUG)")
     parser.add_argument("--doctor", action="store_true", help="Validate config and check setup")
+    parser.add_argument("--skip-validation", action="store_true", help="Skip config validation on startup")
     args = parser.parse_args()
 
     # Handle --version flag
@@ -1669,6 +1738,15 @@ def main() -> None:
         # Try relative to script directory
         config_path = os.path.join(os.path.dirname(__file__), args.config)
     config = load_config(config_path)
+
+    # Validate config on startup (skip for --doctor which has its own diagnostics)
+    if not args.doctor and not args.skip_validation:
+        is_valid, validation_errors = validate_config(config)
+        if not is_valid:
+            print("Configuration validation failed:", file=sys.stderr)
+            for error in validation_errors:
+                print(f"  - {error}", file=sys.stderr)
+            sys.exit(1)
 
     # Handle --show-state flag
     if args.show_state:

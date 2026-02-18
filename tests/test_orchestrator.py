@@ -17,6 +17,7 @@ from orchestrator import (
     Orchestrator,
     Phase,
     run_claude,
+    validate_config,
 )
 
 
@@ -559,3 +560,260 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Config validation
+# ---------------------------------------------------------------------------
+
+class TestValidateConfig:
+    def test_valid_multi_project_config(self):
+        """Valid multi-project config should pass validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "projects": {
+                "my-project": {
+                    "path": "/tmp/test",
+                    "prd_path": "docs/PRD.md",
+                },
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is True
+        assert errors == []
+
+    def test_valid_single_project_config(self):
+        """Valid single project config should pass validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {
+                "path": "/tmp/test",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is True
+        assert errors == []
+
+    def test_missing_mattermost_section(self):
+        """Missing mattermost section should fail validation."""
+        config = {
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("mattermost" in e.lower() for e in errors)
+
+    def test_missing_openclaw_section(self):
+        """Missing openclaw section should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("openclaw" in e.lower() for e in errors)
+
+    def test_missing_mattermost_channel_id(self):
+        """Missing mattermost.channel_id should fail validation."""
+        config = {
+            "mattermost": {
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {"path": "/tmp/test"},
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("channel_id" in e for e in errors)
+
+    def test_missing_mattermost_url(self):
+        """Missing mattermost.url should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {"path": "/tmp/test"},
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("url" in e for e in errors)
+
+    def test_missing_openclaw_ssh_host(self):
+        """ Missing openclaw.ssh_host should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {},
+            "project": {"path": "/tmp/test"},
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("ssh_host" in e for e in errors)
+
+    def test_empty_projects_section(self):
+        """Empty projects section should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "projects": {},
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("empty" in e.lower() for e in errors)
+
+    def test_project_missing_path(self):
+        """Project without path should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "projects": {
+                "my-project": {
+                    "prd_path": "docs/PRD.md",
+                },
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("path" in e.lower() for e in errors)
+
+    def test_single_project_missing_path(self):
+        """Single project mode without path should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {
+                "prd_path": "docs/PRD.md",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+
+    def test_no_project_or_projects_section(self):
+        """Missing both project and projects sections should fail."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("project" in e.lower() for e in errors)
+
+    def test_invalid_redis_url_format(self):
+        """Invalid redis URL format should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {"path": "/tmp/test"},
+            "redis_streams": {
+                "url": "invalid_url",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("redis" in e.lower() for e in errors)
+
+    def test_valid_redis_url_format(self):
+        """Valid redis URL format should pass validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {"path": "/tmp/test"},
+            "redis_streams": {
+                "url": "redis://localhost:6379",
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is True
+
+    def test_invalid_workflow_timeout(self):
+        """Invalid workflow timeout should fail validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {"path": "/tmp/test"},
+            "workflow": {
+                "approval_timeout": -10,  # Negative timeout
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is False
+        assert any("approval_timeout" in e for e in errors)
+
+    def test_valid_workflow_config(self):
+        """Valid workflow config should pass validation."""
+        config = {
+            "mattermost": {
+                "channel_id": "test_channel",
+                "url": "http://localhost:8065",
+            },
+            "openclaw": {
+                "ssh_host": "localhost",
+            },
+            "project": {"path": "/tmp/test"},
+            "workflow": {
+                "approval_timeout": 300,
+                "question_timeout": 120,
+                "plan_review_timeout": 60,
+                "impl_poll_interval": 15,
+            },
+        }
+        is_valid, errors = validate_config(config)
+        assert is_valid is True
