@@ -119,7 +119,31 @@ Uses two bot identities:
 - **Dev bot**: For dev agent and orchestrator messages
 - **PM bot**: For PM agent messages
 
-### 4. PM Agent (`.claude/agents/pm-agent.md`)
+### 4. Worker (`worker.py`)
+
+Redis Streams consumer that runs orchestrator in parallel.
+
+**Responsibilities:**
+- Consumes feature requests from Redis stream via consumer group
+- Runs orchestrator for each feature request
+- Auto-acks messages on success
+
+**Usage:**
+```bash
+python worker.py --consumer worker1
+python worker.py --consumer worker2 --dry-run
+```
+
+### 5. Worker Pool (`worker_pool.py`)
+
+Manager that spawns multiple worker processes.
+
+**Usage:**
+```bash
+python worker_pool.py --workers 3
+```
+
+### 6. PM Agent (`.claude/agents/pm-agent.md`)
 
 A Claude Code subagent definition for the Product Manager role.
 
@@ -132,7 +156,7 @@ A Claude Code subagent definition for the Product Manager role.
 
 **Tools:** Read, Glob, Grep, Bash(git log), Bash(git diff)
 
-### 5. Dev Agent (`.claude/agents/dev-agent.md`)
+### 7. Dev Agent (`.claude/agents/dev-agent.md`)
 
 A Claude Code subagent definition for the Developer role.
 
@@ -144,7 +168,7 @@ A Claude Code subagent definition for the Developer role.
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep
 
-### 6. Configuration (`config.yaml`)
+### 8. Configuration (`config.yaml`)
 
 All environment-specific values live in config.yaml. Override locally with `config.local.yaml` (gitignored).
 

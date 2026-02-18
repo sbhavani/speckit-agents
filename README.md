@@ -71,6 +71,18 @@ uv run python orchestrator.py --loop
 
 # Run tests
 uv run pytest tests/
+
+# New CLI Flags
+uv run python orchestrator.py --version                    # Print version
+uv run python orchestrator.py --show-state                 # Show saved state
+uv run python orchestrator.py --log-level DEBUG           # Set log level
+uv run python orchestrator.py --verbose                   # Verbose output (DEBUG)
+uv run python orchestrator.py --doctor                    # Validate config
+uv run python orchestrator.py --feature "Add X" --simple # Simple mode (skip spec/plan)
+
+# Parallel Workflows (via Redis Streams)
+uv run python worker.py --consumer worker1                # Run a worker
+uv run python worker_pool.py --workers 3                  # Run 3 workers
 ```
 
 ## Configuration
@@ -192,7 +204,10 @@ Services:
 
 - `orchestrator.py` — Main workflow state machine
 - `responder.py` — Listens for /suggest and @mentions, spawns workflows
+- `worker.py` — Redis Streams consumer for parallel workflows
+- `worker_pool.py` — Spawns multiple worker processes
 - `mattermost_bridge.py` — Mattermost communication (OpenClaw CLI + API)
+- `state_redis.py` — Redis-backed state storage
 - `docker-compose.yml` — Docker services (redis, responder, orchestrator)
 - `.claude/agents/pm-agent.md` — PM Agent definition
 - `.claude/agents/dev-agent.md` — Developer Agent definition
