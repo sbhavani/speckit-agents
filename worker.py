@@ -201,7 +201,7 @@ class Worker:
 
         try:
             # Build the orchestrator command
-            cmd = ["uv", "run", "python", "orchestrator.py"]
+            cmd = ["uv", "run", "python", "orchestrator.py", "--simple"]
             if project_name:
                 cmd.extend(["--project", project_name])
             if channel_id:
