@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitkeep
+
+# Local config
+.env
+.env.*
+config.local.yaml
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Specs (may contain sensitive info)
+specs/
+
+# CI/CD
+.github/

@@ -1,18 +1,28 @@
 """Redis connection management with connection pooling."""
 
-from typing import Optional
+import logging
+import time
+from typing import Optional, Callable, Any, TypeVar
 import redis
 from redis.connection import ConnectionPool
+from redis.exceptions import ConnectionError, TimeoutError as RedisTimeoutError
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
 
 
 class RedisConnection:
-    """Manages Redis connections with pooling."""
+    """Manages Redis connections with pooling and retry support."""
 
     def __init__(
         self,
         url: str = "redis://localhost:6379",
         max_connections: int = 10,
         decode_responses: bool = True,
+        max_retries: int = 3,
+        base_delay: float = 0.5,
+        max_delay: float = 30.0,
     ):
         """Initialize Redis connection.
 
@@ -20,12 +30,18 @@ class RedisConnection:
             url: Redis connection URL
             max_connections: Maximum connections in pool
             decode_responses: Whether to decode responses to strings
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay for exponential backoff (seconds)
+            max_delay: Maximum delay between retries (seconds)
         """
         self.url = url
         self._pool: Optional[ConnectionPool] = None
         self._client: Optional[redis.Redis] = None
         self._max_connections = max_connections
         self._decode_responses = decode_responses
+        self._max_retries = max_retries
+        self._base_delay = base_delay
+        self._max_delay = max_delay
 
     def connect(self) -> redis.Redis:
         """Create and return a Redis client."""
@@ -45,6 +61,53 @@ class RedisConnection:
         if self._client is None:
             return self.connect()
         return self._client
+
+    def execute_with_retry(
+        self,
+        func: Callable[[], T],
+        max_retries: Optional[int] = None,
+    ) -> T:
+        """Execute a function with exponential backoff retry.
+
+        Args:
+            func: Function to execute
+            max_retries: Override max retries for this call
+
+        Returns:
+            Result of func()
+
+        Raises:
+            The last exception if all retries fail
+        """
+        max_retries = max_retries if max_retries is not None else self._max_retries
+        last_exception = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                return func()
+            except (ConnectionError, RedisTimeoutError) as e:
+                last_exception = e
+                if attempt < max_retries:
+                    # Calculate exponential backoff with jitter
+                    delay = min(
+                        self._base_delay * (2 ** attempt),
+                        self._max_delay
+                    )
+                    # Add jitter (0-25% of delay)
+                    import random
+                    delay *= (1 + random.random() * 0.25)
+                    logger.warning(
+                        f"Redis connection error (attempt {attempt + 1}/{max_retries + 1}), "
+                        f"retrying in {delay:.2f}s: {e}"
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        f"Redis connection failed after {max_retries + 1} attempts: {e}"
+                    )
+
+        # Raise the last exception
+        raise last_exception
 
     def ping(self) -> bool:
         """Check if Redis is available."""

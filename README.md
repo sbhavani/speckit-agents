@@ -213,3 +213,119 @@ Services:
 - `.claude/agents/dev-agent.md` — Developer Agent definition
 - `config.yaml` — Configuration
 - `docs/PRD.md` — Full product requirements document
+- `src/redis_streams/` — Redis Streams event-driven architecture module
+
+## Redis Streams Module
+
+The `src/redis_streams/` module provides an event-driven architecture for inter-service communication using Redis Streams. It replaces polling-based communication with push notifications.
+
+### Installation
+
+The module requires Redis 5.0+ and the redis-py client:
+
+```bash
+uv add redis>=5.0
+```
+
+### Quick Start
+
+```python
+from redis_streams.producer import StreamProducer, StreamManager
+from redis_streams.consumer import StreamConsumer, ConsumerGroupManager
+
+# Create a stream and produce events
+producer = StreamProducer(
+    redis_url="redis://localhost:6379",
+    stream_name="events"
+)
+producer.publish(event_type="order.created", payload={"order_id": 123})
+producer.close()
+
+# Consume events with a consumer group
+def handle_event(event):
+    print(f"Received: {event.payload}")
+    return True  # Acknowledge
+
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="order_processors",
+    consumer="worker-1",
+    auto_ack=True
+)
+consumer.subscribe(handle_event)
+```
+
+### Configuration Options
+
+**StreamProducer:**
+- `redis_url`: Redis connection URL
+- `stream_name`: Name of the stream
+- `max_stream_length`: Optional max stream length for trimming
+
+**StreamConsumer:**
+- `redis_url`: Redis connection URL
+- `stream`: Stream name
+- `group`: Consumer group name
+- `consumer`: Unique consumer identifier
+- `block_ms`: Blocking timeout in milliseconds
+- `count`: Max messages per fetch
+- `auto_ack`: Auto-acknowledge after callback
+- `checkpoint_enabled`: Enable checkpoint persistence
+- `checkpoint_store`: Custom CheckpointStore (optional)
+- `reclaim_interval`: Seconds between stale message reclamation (0=disabled)
+- `reclaim_min_idle_ms`: Min idle time before claiming messages
+
+### Checkpoint Resume
+
+The consumer supports checkpoint persistence for resume after restart:
+
+```python
+from redis_streams.checkpoint import CheckpointStore
+from redis_streams.consumer import StreamConsumer
+
+# Use Redis-backed checkpoint store
+checkpoint_store = CheckpointStore(redis_url="redis://localhost:6379")
+
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="consumers",
+    consumer="worker-1",
+    checkpoint_store=checkpoint_store,
+    checkpoint_enabled=True
+)
+
+# On restart, consumer resumes from last checkpoint
+consumer.subscribe(callback)
+```
+
+### Failure Recovery
+
+Enable automatic reclamation of stale messages:
+
+```python
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="consumers",
+    consumer="worker-1",
+    reclaim_interval=30,  # Check every 30 seconds
+    reclaim_min_idle_ms=60000  # Claim messages idle > 1 minute
+)
+```
+
+### Testing
+
+Run the integration tests:
+
+```bash
+# Start Redis
+docker compose up -d redis
+
+# Run Redis Streams tests
+uv run pytest tests/integration/test_event_delivery.py -v
+uv run pytest tests/integration/test_concurrent_consumers.py -v
+uv run pytest tests/integration/test_event_ordering.py -v
+uv run pytest tests/integration/test_failure_recovery.py -v
+```
