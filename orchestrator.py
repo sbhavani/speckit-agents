@@ -29,6 +29,7 @@ import yaml
 
 from mattermost_bridge import MattermostBridge
 from state_redis import RedisState
+from tool_augment import ToolAugmentor, ToolAugmentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -543,6 +544,8 @@ class Orchestrator:
         self._started_at: str | None = None
         self._phase_timings: list[tuple[str, float]] = []
         self._run_start_time: float | None = None
+        self._augmentor: ToolAugmentor | None = None
+        self._augment_context: dict = {}
 
         # Optional Redis state storage
         redis_url = config.get("workflow", {}).get("redis_url")
@@ -555,6 +558,31 @@ class Orchestrator:
                 self._redis_state = None
         else:
             self._redis_state = None
+
+    # -- Tool augmentation init -------------------------------------------------
+
+    def _init_augmentor(self, force_enabled: bool | None = None) -> None:
+        """Initialize the tool augmentor from config (or CLI override)."""
+        aug_cfg_dict = self.cfg.get("workflow", {}).get("tool_augmentation", {})
+        aug_cfg = ToolAugmentConfig.from_dict(aug_cfg_dict)
+
+        # CLI override: --tools / --no-tools
+        if force_enabled is not None:
+            aug_cfg.enabled = force_enabled
+
+        if not aug_cfg.enabled:
+            self._augmentor = None
+            return
+
+        import uuid
+        run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{uuid.uuid4().hex[:6]}"
+        self._augmentor = ToolAugmentor(
+            project_path=self.project_path,
+            config=aug_cfg,
+            run_id=run_id,
+            run_claude_fn=run_claude,
+        )
+        logger.info("Tool augmentation enabled (run_id=%s)", run_id)
 
     # -- State persistence -----------------------------------------------------
 
@@ -760,12 +788,31 @@ class Orchestrator:
         for phase, method_name, is_checkpoint in sequence[start_idx:]:
             method = getattr(self, method_name)
             t0 = time.time()
+
+            # Pre-stage discovery hook
+            if self._augmentor:
+                pre = self._augmentor.run_pre_hook(phase, self.state)
+                if pre:
+                    self._augment_context[phase] = pre
+
             if is_checkpoint:
                 if not method():
+                    # Post-hook even on rejection (for logging)
+                    if self._augmentor:
+                        post = self._augmentor.run_post_hook(phase, self.state)
+                        if post:
+                            self._augment_context[f"{phase}_post"] = post
                     self._phase_timings.append((phase.name, time.time() - t0))
                     return  # rejected
             else:
                 method()
+
+            # Post-stage validation hook
+            if self._augmentor:
+                post = self._augmentor.run_post_hook(phase, self.state)
+                if post:
+                    self._augment_context[f"{phase}_post"] = post
+
             self._phase_timings.append((phase.name, time.time() - t0))
 
             # Save after each phase; clear on DONE
@@ -910,9 +957,19 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
 
+        # Inject pre-hook findings as codebase context
+        prompt = f"/speckit.specify {desc}"
+        pre = self._augment_context.get(Phase.DEV_SPECIFY)
+        if pre:
+            prompt = (
+                f"CODEBASE CONTEXT (automated discovery):\n"
+                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                f"Use this to ground your spec in the actual codebase.\n\n{prompt}"
+            )
+
         # Note: Progress callback disabled - tool call spam not helpful in Mattermost
         result = run_claude_stream(
-            prompt=f"/speckit.specify {desc}",
+            prompt=prompt,
             cwd=self.project_path,
             allowed_tools=DEV_TOOLS,
             timeout=3600,
@@ -935,8 +992,17 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_PLAN")
         self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
+        prompt = "/speckit.plan"
+        pre = self._augment_context.get(Phase.DEV_PLAN)
+        if pre:
+            prompt = (
+                f"CODEBASE CONTEXT (automated discovery):\n"
+                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                f"Use this to ground your plan in the actual codebase.\n\n{prompt}"
+            )
+
         result = run_claude_stream(
-            prompt="/speckit.plan",
+            prompt=prompt,
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
@@ -960,8 +1026,17 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_TASKS")
         self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
 
+        prompt = "/speckit.tasks"
+        pre = self._augment_context.get(Phase.DEV_TASKS)
+        if pre:
+            prompt = (
+                f"CODEBASE CONTEXT (automated discovery):\n"
+                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                f"Use this to ground your tasks in the actual codebase.\n\n{prompt}"
+            )
+
         result = run_claude_stream(
-            prompt="/speckit.tasks",
+            prompt=prompt,
             cwd=self.project_path,
             session_id=self.state.dev_session,
             allowed_tools=DEV_TOOLS,
@@ -1224,6 +1299,14 @@ If you encounter an ambiguity or need a product decision, output ONLY this JSON 
 {{"type": "question", "question": "...", "context": "...", "options": ["A: ...", "B: ..."]}}
 
 Otherwise, implement all tasks to completion."""
+
+        pre = self._augment_context.get(Phase.DEV_IMPLEMENT)
+        if pre:
+            prompt = (
+                f"CODEBASE CONTEXT (pre-flight checks):\n"
+                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                f"Use this to understand the current state before implementing.\n\n{prompt}"
+            )
 
         # Run dev agent in a background thread so we can poll Mattermost
         # for human questions while it works.
@@ -1528,6 +1611,11 @@ Be specific about:
         self.state.phase = Phase.DONE
         logger.info("Phase: DONE")
 
+        # Finalize augmentation logging
+        if self._augmentor:
+            outcome = "success" if self.state.pr_url else "completed_no_pr"
+            self._augmentor.finalize(outcome)
+
         # Clean up worktree after PR is created
         self._cleanup_worktree()
 
@@ -1576,12 +1664,21 @@ Be specific about:
             + "\n".join(rows)
         )
 
+        # Augmentation metrics row
+        aug_line = ""
+        if self._augmentor:
+            aug = self._augmentor
+            aug_line = (
+                f"\nTool Augmentation: {aug._total_hooks} hooks, "
+                f"{self._fmt_duration(aug._total_duration_ms / 1000)} overhead"
+            )
+
         if error:
             summary = (
                 f"**Workflow Summary**\n"
                 f"Feature: {feature_name}\n"
                 f"Status: {status} | Duration: {duration_str}\n\n"
-                f"{table}\n\n"
+                f"{table}{aug_line}\n\n"
                 f"Error: {error}\n"
                 f"Run with `--resume` to continue."
             )
@@ -1591,7 +1688,7 @@ Be specific about:
                 f"**Workflow Summary**\n"
                 f"Feature: {feature_name}\n"
                 f"Status: {status} | Duration: {duration_str}\n\n"
-                f"{table}"
+                f"{table}{aug_line}"
                 f"{pr_line}"
             )
 
@@ -1646,6 +1743,10 @@ def main() -> None:
                         help="Set logging level (default: INFO)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output (equivalent to --log-level DEBUG)")
     parser.add_argument("--doctor", action="store_true", help="Validate config and check setup")
+    parser.add_argument("--tools", action="store_true",
+                        help="Enable tool-augmented discovery/validation hooks")
+    parser.add_argument("--no-tools", action="store_true",
+                        help="Disable tool-augmented hooks (overrides config)")
     args = parser.parse_args()
 
     # Handle --version flag
@@ -1786,6 +1887,15 @@ def main() -> None:
         messenger = Messenger(bridge=bridge)
 
     orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path)
+
+    # Resolve tool augmentation: --no-tools > --tools > config > default (disabled)
+    if args.no_tools:
+        tools_enabled = False
+    elif args.tools:
+        tools_enabled = True
+    else:
+        tools_enabled = None  # defer to config
+    orchestrator._init_augmentor(force_enabled=tools_enabled)
 
     if args.resume:
         saved = orchestrator._load_state()
