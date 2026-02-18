@@ -1,8 +1,64 @@
 """Redis connection management with connection pooling."""
 
-from typing import Optional
+import time
+import logging
+from typing import Optional, Callable, Any
 import redis
 from redis.connection import ConnectionPool
+from redis.exceptions import ConnectionError, TimeoutError as RedisTimeoutError
+
+logger = logging.getLogger(__name__)
+
+
+def retry_with_exponential_backoff(
+    max_retries: int = 5,
+    base_delay: float = 0.1,
+    max_delay: float = 30.0,
+    exponential_base: float = 2.0,
+    retryable_exceptions: tuple = (ConnectionError, RedisTimeoutError),
+) -> Callable:
+    """Decorator for retrying functions with exponential backoff.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay between retries in seconds
+        exponential_base: Base for exponential calculation
+        retryable_exceptions: Tuple of exceptions that trigger retry
+
+    Returns:
+        Decorated function with retry logic
+    """
+    def decorator(func: Callable) -> Callable:
+        def wrapper(*args, **kwargs) -> Any:
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except retryable_exceptions as e:
+                    last_exception = e
+
+                    if attempt >= max_retries:
+                        logger.error(
+                            f"Max retries ({max_retries}) reached for {func.__name__}"
+                        )
+                        raise
+
+                    # Calculate delay with exponential backoff
+                    delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                    logger.warning(
+                        f"Retry {attempt + 1}/{max_retries} for {func.__name__} "
+                        f"after {delay:.2f}s delay. Error: {e}"
+                    )
+                    time.sleep(delay)
+
+            # Should not reach here, but just in case
+            if last_exception:
+                raise last_exception
+
+        return wrapper
+    return decorator
 
 
 class RedisConnection:
@@ -13,6 +69,9 @@ class RedisConnection:
         url: str = "redis://localhost:6379",
         max_connections: int = 10,
         decode_responses: bool = True,
+        max_retries: int = 5,
+        retry_base_delay: float = 0.1,
+        retry_max_delay: float = 30.0,
     ):
         """Initialize Redis connection.
 
@@ -20,13 +79,24 @@ class RedisConnection:
             url: Redis connection URL
             max_connections: Maximum connections in pool
             decode_responses: Whether to decode responses to strings
+            max_retries: Maximum retry attempts for connection errors
+            retry_base_delay: Initial delay for exponential backoff
+            retry_max_delay: Maximum delay between retries
         """
         self.url = url
         self._pool: Optional[ConnectionPool] = None
         self._client: Optional[redis.Redis] = None
         self._max_connections = max_connections
         self._decode_responses = decode_responses
+        self._max_retries = max_retries
+        self._retry_base_delay = retry_base_delay
+        self._retry_max_delay = retry_max_delay
 
+    @retry_with_exponential_backoff(
+        max_retries=5,
+        base_delay=0.1,
+        max_delay=30.0,
+    )
     def connect(self) -> redis.Redis:
         """Create and return a Redis client."""
         if self._pool is None:
@@ -46,12 +116,14 @@ class RedisConnection:
             return self.connect()
         return self._client
 
+    @retry_with_exponential_backoff(
+        max_retries=3,
+        base_delay=0.1,
+        max_delay=5.0,
+    )
     def ping(self) -> bool:
         """Check if Redis is available."""
-        try:
-            return self.client.ping()
-        except redis.ConnectionError:
-            return False
+        return self.client.ping()
 
     def close(self):
         """Close connection pool."""

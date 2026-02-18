@@ -8,7 +8,8 @@ from typing import Optional, Callable, List, Any
 import redis
 from redis.exceptions import ResponseError
 
-from redis_streams.connection import RedisConnection
+from redis_streams.connection import RedisConnection, retry_with_exponential_backoff
+from redis_streams.checkpoint import CheckpointStore, InMemoryCheckpointStore
 from redis_streams.exceptions import (
     GroupNotFoundError,
     StreamNotFoundError,
@@ -154,6 +155,11 @@ class StreamConsumer:
         block_ms: int = 5000,
         count: int = 10,
         auto_ack: bool = False,
+        checkpoint_store: Optional[Any] = None,
+        use_redis_checkpoint: bool = True,
+        reclaim_enabled: bool = False,
+        reclaim_interval_ms: int = 30000,
+        reclaim_min_idle_ms: int = 30000,
     ):
         """Initialize StreamConsumer.
 
@@ -165,6 +171,11 @@ class StreamConsumer:
             block_ms: Blocking timeout in milliseconds
             count: Max messages to fetch at once
             auto_ack: Automatically acknowledge messages after callback
+            checkpoint_store: Custom checkpoint store (optional)
+            use_redis_checkpoint: Use Redis-backed checkpoint (vs in-memory)
+            reclaim_enabled: Enable automatic stale message reclaim
+            reclaim_interval_ms: Interval for reclaim loop in milliseconds
+            reclaim_min_idle_ms: Min idle time (ms) before claiming stale messages
         """
         self._connection = RedisConnection(redis_url)
         self.stream = stream
@@ -173,9 +184,21 @@ class StreamConsumer:
         self.block_ms = block_ms
         self.count = count
         self.auto_ack = auto_ack
+        self.reclaim_enabled = reclaim_enabled
+        self.reclaim_interval_ms = reclaim_interval_ms
+        self.reclaim_min_idle_ms = reclaim_min_idle_ms
+
+        # Initialize checkpoint store
+        if checkpoint_store is not None:
+            self._checkpoint_store = checkpoint_store
+        elif use_redis_checkpoint:
+            self._checkpoint_store = CheckpointStore(redis_url)
+        else:
+            self._checkpoint_store = InMemoryCheckpointStore()
 
         self._running = False
         self._stop_event = threading.Event()
+        self._reclaim_thread: Optional[threading.Thread] = None
 
     @property
     def client(self) -> redis.Redis:
@@ -209,28 +232,59 @@ class StreamConsumer:
         self._running = True
         self._stop_event.clear()
 
-        logger.info(
-            f"Starting consumer {self.consumer} in group {self.group} "
-            f"on stream {self.stream}"
+        # Start reclaim loop (T023)
+        self._start_reclaim_loop()
+
+        # Resume from checkpoint on startup (T019)
+        checkpoint_id = self._checkpoint_store.load(
+            self.stream,
+            self.group,
+            self.consumer,
         )
+
+        # Determine starting position: checkpoint or ">" (new messages only)
+        if checkpoint_id:
+            start_position = checkpoint_id
+            logger.info(
+                f"Resuming from checkpoint {checkpoint_id} for "
+                f"{self.stream}/{self.group}/{self.consumer}"
+            )
+        else:
+            start_position = ">"
+            logger.info(
+                f"Starting consumer {self.consumer} in group {self.group} "
+                f"on stream {self.stream} from new messages"
+            )
+
+        # Retry counter for exponential backoff
+        retry_attempt = 0
 
         while self._running:
             try:
                 messages = self.client.xreadgroup(
                     groupname=self.group,
                     consumername=self.consumer,
-                    streams={self.stream: ">"},
+                    streams={self.stream: start_position},
                     count=self.count,
                     block=self.block_ms,
                 )
 
                 if not messages:
+                    # After first iteration, switch to ">" to get only new messages
+                    start_position = ">"
+                    # Reset retry counter on successful (empty) read
+                    retry_attempt = 0
                     continue
 
                 for stream_name, stream_messages in messages:
                     for msg in stream_messages:
                         message_id = msg[0]
                         values = msg[1]
+
+                        # After first batch, always read new messages
+                        start_position = ">"
+                        # Reset retry counter on successful message processing
+                        retry_attempt = 0
 
                         try:
                             event = EventMessage.from_redis(
@@ -252,12 +306,17 @@ class StreamConsumer:
             except redis.exceptions.ConnectionError as e:
                 logger.error(f"Connection error: {e}")
                 if self._running:
-                    time.sleep(1)  # Wait before retrying
+                    # Exponential backoff for reconnection (T031)
+                    delay = min(1 * (2 ** retry_attempt), 30)
+                    time.sleep(delay)
+                    retry_attempt += 1
                 continue
             except Exception as e:
                 logger.error(f"Unexpected error in consumer: {e}")
                 if self._running:
-                    time.sleep(1)
+                    delay = min(1 * (2 ** retry_attempt), 30)
+                    time.sleep(delay)
+                    retry_attempt += 1
 
             # Check if we should stop
             if self._stop_event.is_set():
@@ -280,6 +339,15 @@ class StreamConsumer:
         try:
             result = self.client.xack(self.stream, self.group, message_id)
             logger.debug(f"Acknowledged message {message_id}")
+
+            # Persist checkpoint after acknowledgment (T018)
+            self._checkpoint_store.save(
+                self.stream,
+                self.group,
+                self.consumer,
+                message_id,
+            )
+
             return result
         except ResponseError as e:
             raise RedisStreamsError(f"Failed to acknowledge message: {e}") from e
@@ -344,11 +412,57 @@ class StreamConsumer:
             logger.error(f"Failed to claim stale messages: {e}")
             return []
 
+    def _reclaim_loop(self):
+        """Background thread for reclaiming stale messages."""
+        logger.info(
+            f"Reclaim loop started for {self.stream}/{self.group}/{self.consumer}"
+        )
+        while self._running:
+            try:
+                claimed = self.claim_stale_messages(
+                    min_idle_ms=self.reclaim_min_idle_ms
+                )
+                if claimed:
+                    logger.info(
+                        f"Reclaimed {len(claimed)} stale messages for "
+                        f"{self.stream}/{self.group}/{self.consumer}"
+                    )
+            except Exception as e:
+                logger.error(f"Error in reclaim loop: {e}")
+
+            # Sleep for the configured interval
+            self._stop_event.wait(timeout=self.reclaim_interval_ms / 1000.0)
+
+        logger.info(f"Reclaim loop stopped for {self.consumer}")
+
+    def _start_reclaim_loop(self):
+        """Start the reclaim loop in a background thread."""
+        if not self.reclaim_enabled:
+            return
+
+        self._reclaim_thread = threading.Thread(target=self._reclaim_loop)
+        self._reclaim_thread.daemon = True
+        self._reclaim_thread.start()
+        logger.info(
+            f"Reclaim loop enabled with interval {self.reclaim_interval_ms}ms, "
+            f"min_idle {self.reclaim_min_idle_ms}ms"
+        )
+
+    def _stop_reclaim_loop(self):
+        """Stop the reclaim loop."""
+        if self._reclaim_thread and self._reclaim_thread.is_alive():
+            self._reclaim_thread.join(timeout=2.0)
+
     def close(self):
         """Gracefully stop consuming and close connection."""
         self._running = False
         self._stop_event.set()
+        # Stop reclaim loop first
+        self._stop_reclaim_loop()
         self._connection.close()
+        # Close checkpoint store if it's Redis-backed
+        if hasattr(self._checkpoint_store, 'close'):
+            self._checkpoint_store.close()
         logger.info(f"Consumer {self.consumer} closed")
 
     def __enter__(self):

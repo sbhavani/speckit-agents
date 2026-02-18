@@ -81,7 +81,7 @@ graph TD
 - [X] T013 [P] [US2] Add consumer instance tracking in StreamConsumer for status management
 - [X] T014 [P] [US2] Implement consumer start position handling (from beginning "0" or from "$" for new only) in ConsumerGroupManager
 - [X] T015 [US2] Add multi-consumer test: two consumers independently receive same events in `tests/integration/test_concurrent_consumers.py`
-- [ ] T016 [US2] Add test: new consumer joins and receives from configured position in `tests/integration/test_consumer_join.py`
+- [X] T016 [US2] Add test: new consumer joins and receives from configured position in `tests/integration/test_consumer_join.py`
 
 ---
 
@@ -98,8 +98,8 @@ graph TD
 ### Implementation
 
 - [X] T017 [P] [US3] Implement checkpoint storage (in-memory for MVP, Redis key for production) in `src/redis_streams/checkpoint.py`
-- [ ] T018 [US3] Update StreamConsumer to persist checkpoint after acknowledge
-- [ ] T019 [US3] Update StreamConsumer to resume from checkpoint on startup
+- [X] T018 [US3] Update StreamConsumer to persist checkpoint after acknowledge
+- [X] T019 [US3] Update StreamConsumer to resume from checkpoint on startup
 - [X] T020 [US3] Add test: ordered events arrive in order in `tests/integration/test_event_ordering.py`
 - [X] T021 [US3] Add test: consumer restart resumes from checkpoint in `tests/integration/test_event_ordering.py`
 
@@ -118,7 +118,7 @@ graph TD
 ### Implementation
 
 - [X] T022 [P] [US4] Implement message reclaim for stale deliveries (XCLAIM) in `src/redis_streams/consumer.py`
-- [ ] T023 [P] [US4] Add reclaim loop with configurable interval in StreamConsumer
+- [X] T023 [P] [US4] Add reclaim loop with configurable interval in StreamConsumer
 - [X] T024 [US4] Add backpressure detection (XPENDING lag monitoring) in `src/redis_streams/monitoring.py`
 - [X] T025 [US4] Add stream length monitoring for backpressure signals in StreamManager
 - [X] T026 [US4] Add test: offline consumer catches up on reconnect in `tests/integration/test_failure_recovery.py`
@@ -131,8 +131,8 @@ graph TD
 - [X] T028 Add stream trimming with MAXLEN ~ for production use in StreamProducer
 - [X] T029 Add graceful shutdown (finish in-flight messages) to StreamConsumer
 - [X] T030 Add configuration support (redis_url, streams, block_ms, count) via config.yaml
-- [ ] T031 Add retry with exponential backoff for Redis connection errors
-- [ ] T032 Update README.md with usage documentation
+- [X] T031 Add retry with exponential backoff for Redis connection errors
+- [X] T032 Update README.md with usage documentation
 
 ---
 
@@ -141,15 +141,15 @@ graph TD
 | Metric | Value |
 |--------|-------|
 | **Total Tasks** | 32 |
-| **Completed** | 25 |
-| **Remaining** | 7 |
+| **Completed** | 32 |
+| **Remaining** | 0 |
 | **Setup** | 3/3 |
 | **Foundational** | 3/3 |
 | **US1: Real-Time Event Delivery** | 6/6 |
-| **US2: Multiple Concurrent Consumers** | 3/4 |
-| **US3: Event Ordering** | 3/5 |
-| **US4: Failure Recovery** | 4/6 |
-| **Polish** | 3/5 |
+| **US2: Multiple Concurrent Consumers** | 4/4 |
+| **US3: Event Ordering** | 5/5 |
+| **US4: Failure Recovery** | 6/6 |
+| **Polish** | 5/5 |
 
 **Parallel Opportunities**: 10 tasks marked [P] - can run concurrently in different files
 

@@ -113,6 +113,66 @@ pytest tests/unit/test_streams.py -v
 
 ---
 
+## Advanced Features
+
+### Checkpoint Resume (Auto-Recovery)
+
+Consumers automatically persist checkpoints to Redis after acknowledging messages and resume from the last checkpoint on restart:
+
+```python
+# Use Redis-backed checkpoint (default)
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="data-updates",
+    group="processors",
+    consumer="worker-1",
+    use_redis_checkpoint=True  # Default
+)
+
+# Or use in-memory checkpoint (for testing)
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="data-updates",
+    group="processors",
+    consumer="worker-1",
+    use_redis_checkpoint=False
+)
+```
+
+### Reclaim Loop (Failure Recovery)
+
+Enable automatic stale message reclaim to handle consumers that crash without acknowledging:
+
+```python
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="data-updates",
+    group="processors",
+    consumer="worker-1",
+    reclaim_enabled=True,
+    reclaim_interval_ms=30000,  # Check every 30 seconds
+    reclaim_min_idle_ms=30000    # Claim messages idle > 30 seconds
+)
+```
+
+### Connection Retry with Exponential Backoff
+
+Connection errors automatically retry with exponential backoff (configured in RedisConnection):
+
+```python
+from redis_streams import RedisConnection
+
+# Custom retry settings
+conn = RedisConnection(
+    url="redis://localhost:6379",
+    max_retries=5,
+    retry_base_delay=0.1,  # Start at 100ms
+    retry_max_delay=30.0    # Max 30 seconds
+)
+```
+
+---
+
 ## Common Issues
 
 | Issue | Solution |
@@ -120,7 +180,8 @@ pytest tests/unit/test_streams.py -v
 | `BUSYGROUP` error | Group already exists; use `mkstream=True` or handle gracefully |
 | Messages never delivered | Check consumer group exists before consuming |
 | Stream grows unbounded | Always set `max_length` on producer |
-| Consumer crashes, messages lost | Set appropriate `block_ms`, implement reclaim loop |
+| Consumer crashes, messages lost | Enable `reclaim_enabled=True` for automatic recovery |
+| Consumer restarts, processes old messages | Checkpoints auto-resume from last acknowledged message |
 
 ---
 
