@@ -85,17 +85,32 @@ class Worker:
     def _ensure_consumer_group(self) -> None:
         """Create consumer group if it doesn't exist."""
         try:
-            # Try to create the group
-            self.redis.xgroup_create(
-                self.stream_name,
-                self.consumer_group,
-                id="0",  # Read from beginning
-                mkstream=True,
-            )
-            logger.info(f"Created consumer group: {self.consumer_group}")
+            # First check if stream exists
+            if self.redis.exists(self.stream_name):
+                # Stream exists, create group
+                self.redis.xgroup_create(
+                    self.stream_name,
+                    self.consumer_group,
+                    id="0",
+                    mkstream=False,
+                )
+                logger.info(f"Created consumer group: {self.consumer_group}")
+            else:
+                # Stream doesn't exist yet, create with mkstream
+                self.redis.xgroup_create(
+                    self.stream_name,
+                    self.consumer_group,
+                    id="0",
+                    mkstream=True,
+                )
+                logger.info(f"Created stream and consumer group: {self.consumer_group}")
         except redis.ResponseError as e:
             if "BUSYGROUP" in str(e):
                 logger.info(f"Consumer group already exists: {self.consumer_group}")
+            elif "NOSPC" in str(e):
+                logger.warning(f"Stream full, trimming old messages")
+                self.redis.xtrim(self.stream_name, 1000, limit=100)
+                self._ensure_consumer_group()  # Retry
             else:
                 raise
 
@@ -112,7 +127,7 @@ class Worker:
 
     def _consume_messages(self) -> None:
         """Read messages from stream and process them."""
-        # Read from stream using consumer group
+        # Read new messages from stream using consumer group
         messages = self.redis.xreadgroup(
             self.consumer_group,
             self.consumer_name,
@@ -173,7 +188,8 @@ class Worker:
             if channel_id:
                 cmd.extend(["--channel", channel_id])
             if feature:
-                cmd.extend(["--feature", feature])
+                # Use = syntax to avoid issues with features starting with --
+                cmd.extend([f"--feature={feature}"])
             if command == "resume":
                 cmd.extend(["--resume", "--approve"])
 
