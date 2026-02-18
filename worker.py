@@ -121,20 +121,39 @@ class Worker:
         while True:
             try:
                 self._consume_messages()
+            except redis.ResponseError as e:
+                if "NOGROUP" in str(e) or "NOSPC" in str(e):
+                    # Recreate consumer group if needed
+                    logger.warning(f"Stream error: {e}, recreating group")
+                    self._ensure_consumer_group()
+                else:
+                    logger.exception("Error in consumer loop")
+                    time.sleep(5)
             except Exception as e:
                 logger.exception("Error in consumer loop")
                 time.sleep(5)  # Back off on error
 
     def _consume_messages(self) -> None:
         """Read messages from stream and process them."""
-        # Read new messages from stream using consumer group
+        # Process ONE message at a time for better load balancing
+        # Use count=1 so workers can grab messages individually
         messages = self.redis.xreadgroup(
             self.consumer_group,
             self.consumer_name,
             {self.stream_name: ">"},
-            count=self.count,
-            block=self.block_ms,
+            count=1,  # One at a time for fair distribution
+            block=100,
         )
+
+        if not messages:
+            # Try reading pending messages (for failed deliveries)
+            messages = self.redis.xreadgroup(
+                self.consumer_group,
+                self.consumer_name,
+                {self.stream_name: "0"},  # Read pending
+                count=1,
+                block=100,
+            )
 
         if not messages:
             return
