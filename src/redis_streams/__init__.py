@@ -12,6 +12,8 @@
 from redis_streams.producer import StreamProducer, StreamManager
 from redis_streams.consumer import StreamConsumer, ConsumerGroupManager
 from redis_streams.models import EventMessage, PendingMessage
+from redis_streams.checkpoint import CheckpointStore, InMemoryCheckpointStore
+from redis_streams.connection import with_retry, RedisConnection
 from redis_streams.exceptions import (
     RedisStreamsError,
     StreamNotFoundError,
@@ -29,6 +31,10 @@ __all__ = [
     "ConsumerGroupManager",
     "EventMessage",
     "PendingMessage",
+    "CheckpointStore",
+    "InMemoryCheckpointStore",
+    "with_retry",
+    "RedisConnection",
     "RedisStreamsError",
     "StreamNotFoundError",
     "GroupNotFoundError",

@@ -1,8 +1,57 @@
 """Redis connection management with connection pooling."""
 
-from typing import Optional
+import logging
+import time
+from typing import Optional, Callable, TypeVar, Any
 import redis
 from redis.connection import ConnectionPool
+from redis.exceptions import ConnectionError, TimeoutError as RedisTimeoutError
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def with_retry(
+    func: Callable[..., T],
+    max_retries: int = 3,
+    base_delay: float = 0.5,
+    max_delay: float = 30.0,
+    exponential_base: float = 2.0,
+) -> T:
+    """Execute a function with exponential backoff retry.
+
+    Args:
+        func: Function to execute
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay between retries
+        exponential_base: Base for exponential backoff
+
+    Returns:
+        Result of func
+
+    Raises:
+        The last exception if all retries fail
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except (ConnectionError, RedisTimeoutError) as e:
+            last_exception = e
+            if attempt < max_retries:
+                delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                logger.warning(
+                    f"Redis connection failed (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {delay:.1f}s: {e}"
+                )
+                time.sleep(delay)
+            else:
+                logger.error(f"Redis connection failed after {max_retries + 1} attempts")
+
+    raise last_exception
 
 
 class RedisConnection:
@@ -52,6 +101,22 @@ class RedisConnection:
             return self.client.ping()
         except redis.ConnectionError:
             return False
+
+    def execute_with_retry(
+        self,
+        func: Callable[..., T],
+        max_retries: int = 3,
+    ) -> T:
+        """Execute a Redis command with exponential backoff retry.
+
+        Args:
+            func: Function that executes a Redis command
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            Result of func
+        """
+        return with_retry(func, max_retries=max_retries)
 
     def close(self):
         """Close connection pool."""

@@ -198,3 +198,59 @@ Services:
 - `.claude/agents/dev-agent.md` — Developer Agent definition
 - `config.yaml` — Configuration
 - `docs/PRD.md` — Full product requirements document
+- `src/redis_streams/` — Redis Streams library for event-driven worker coordination
+
+---
+
+## Redis Streams Library
+
+The project includes a Redis Streams library (`src/redis_streams/`) used for event-driven communication between workers.
+
+### Key Features
+
+- **Real-time event delivery** with sub-500ms latency
+- **Consumer group support** for multiple concurrent consumers
+- **Checkpoint/resume** for failure recovery
+- **At-least-once delivery guarantees**
+- **Automatic stale message reclamation**
+- **Exponential backoff retry** for connection errors
+
+### Usage
+
+```python
+from redis_streams import StreamProducer, StreamConsumer, CheckpointStore
+
+# Producer
+producer = StreamProducer("redis://localhost:6379", "events")
+message_id = producer.publish("data.update", {"key": "value"})
+
+# Consumer with checkpoint persistence
+checkpoint_store = CheckpointStore("redis://localhost:6379")
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="processors",
+    consumer="worker-1",
+    checkpoint_store=checkpoint_store,
+    enable_reclaim=True,
+)
+
+def handle(msg):
+    print(f"Received: {msg.payload}")
+    return True  # Acknowledge
+
+consumer.subscribe(handle)
+```
+
+### Configuration
+
+```yaml
+redis_streams:
+  url: "redis://localhost:6379"
+  stream: "feature-requests"
+  consumer_group: "orchestrator-workers"
+  defaults:
+    block_ms: 5000
+    count: 10
+    auto_ack: false
+```
