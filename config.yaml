@@ -56,6 +56,10 @@ mattermost:
 redis_streams:
   # Redis connection URL
   url: "redis://localhost:6379"
+  # Stream name for feature requests
+  stream: "feature-requests"
+  # Consumer group name for workers
+  consumer_group: "orchestrator-workers"
   # Default stream configuration
   defaults:
     # Maximum events to keep in stream (for automatic trimming)

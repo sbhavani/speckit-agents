@@ -61,13 +61,15 @@ class Responder:
         self.minimax_model = openclaw.get("anthropic_model", "MiniMax-M2.1")
 
         # Initialize Redis client
-        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+        redis_config = config.get("redis_streams", {})
+        self.redis_url = redis_config.get("url", "redis://localhost:6379")
+        self.redis_stream = redis_config.get("stream", "feature-requests")
         try:
-            self.redis = redis.from_url(redis_url, decode_responses=True)
+            self.redis = redis.from_url(self.redis_url, decode_responses=True)
             self.redis.ping()
-            logger.info(f"Connected to Redis: {redis_url}")
+            logger.info(f"Connected to Redis: {self.redis_url}")
         except Exception as e:
-            logger.warning(f"Failed to connect to Redis: {e}. Running without cache.")
+            logger.warning(f"Failed to connect to Redis: {e}. Falling back to subprocess mode.")
             self.redis = None
 
     def run(self) -> None:
@@ -178,8 +180,8 @@ class Responder:
         logger.info(f"/suggest command received: feature={feature}")
 
         # Post acknowledgment
-        # Spawn orchestrator (no message - orchestrator will start thread when ready)
-        self._spawn_orchestrator(feature=feature, channel_id=channel_id)
+        # Publish feature request to Redis stream (or fallback to subprocess)
+        self._publish_feature_request(feature=feature, channel_id=channel_id)
 
     def _handle_resume(self, text: str, channel_id: str) -> None:
         """Handle /resume command - resume workflow with auto-approve."""
@@ -192,8 +194,8 @@ class Responder:
             channel_id=channel_id,
         )
 
-        # Spawn orchestrator with --resume --approve flags
-        self._spawn_orchestrator(channel_id=channel_id, resume=True)
+        # Publish resume request to Redis stream
+        self._publish_feature_request(channel_id=channel_id, resume=True)
 
     def _handle_mention(self, text: str, channel_id: str, is_question: bool = False) -> None:
         """Handle @product-manager or @dev-agent mention."""
@@ -217,8 +219,8 @@ class Responder:
             self.bridge.send(response, sender="PM Agent", channel_id=channel_id)
             return
 
-        # Not a question - spawn orchestrator for feature workflow
-        self._spawn_orchestrator(channel_id=channel_id)
+        # Not a question - publish feature request to Redis stream
+        self._publish_feature_request(channel_id=channel_id)
 
     def _get_project_for_channel(self, channel_id: str) -> tuple[str, str] | None:
         """Get project path and PRD path for a channel."""
@@ -329,7 +331,7 @@ class Responder:
             return "Sorry, I couldn't get a response."
 
     def _spawn_orchestrator(self, feature: Optional[str] = None, channel_id: Optional[str] = None, resume: bool = False) -> None:
-        """Spawn the orchestrator locally with uv."""
+        """Spawn the orchestrator locally with uv (fallback when Redis unavailable)."""
         # Get project for this channel
         project_name = None
         if channel_id:
@@ -350,7 +352,7 @@ class Responder:
         if resume:
             cmd.extend(["--resume", "--approve"])
 
-        logger.info(f"Spawning orchestrator: {' '.join(cmd)}")
+        logger.info(f"Spawning orchestrator (fallback mode): {' '.join(cmd)}")
 
         # Run locally with uv in background, don't wait
         try:
@@ -363,6 +365,39 @@ class Responder:
             logger.info(f"Orchestrator spawned with PID: {proc.pid}")
         except Exception as e:
             logger.error(f"Failed to spawn orchestrator: {e}")
+
+    def _publish_feature_request(self, feature: Optional[str] = None, channel_id: Optional[str] = None, resume: bool = False) -> None:
+        """Publish feature request to Redis stream for worker processing."""
+        if not self.redis:
+            logger.warning("Redis not available, falling back to subprocess")
+            self._spawn_orchestrator(feature=feature, channel_id=channel_id, resume=resume)
+            return
+
+        # Get project for this channel
+        project_name = None
+        if channel_id:
+            projects = self.cfg.get("projects", {})
+            for proj_name, proj in projects.items():
+                if proj.get("channel_id") == channel_id:
+                    project_name = proj_name
+                    break
+
+        # Build the request payload
+        payload = {
+            "project_name": project_name or "",
+            "channel_id": channel_id or "",
+            "feature": feature or "",
+            "command": "resume" if resume else "suggest",
+        }
+
+        try:
+            # Add to Redis stream
+            stream_name = self.redis_stream
+            self.redis.xadd(stream_name, payload)
+            logger.info(f"Published feature request to stream: {payload}")
+        except Exception as e:
+            logger.error(f"Failed to publish to Redis stream: {e}, falling back to subprocess")
+            self._spawn_orchestrator(feature=feature, channel_id=channel_id, resume=resume)
 
 
 def main():
