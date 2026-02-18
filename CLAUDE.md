@@ -66,3 +66,10 @@ The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (confi
 - Do NOT add `Co-Authored-By` lines to commit messages
 - Keep subject line under 72 characters
 - Use imperative mood in subject ("add feature" not "added feature")
+
+## Active Technologies
+- Redis 5.0+ (for Streams API), redis-py or equivalent client library (004-redis-streams)
+- Redis (stream storage), optional: metadata store for consumer offsets (004-redis-streams)
+
+## Recent Changes
+- 004-redis-streams: Added Redis 5.0+ (for Streams API), redis-py or equivalent client library
