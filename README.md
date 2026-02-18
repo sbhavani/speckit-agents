@@ -213,3 +213,122 @@ Services:
 - `.claude/agents/dev-agent.md` — Developer Agent definition
 - `config.yaml` — Configuration
 - `docs/PRD.md` — Full product requirements document
+
+## Redis Streams Module
+
+This project includes a Redis Streams module (`src/redis_streams/`) for event-driven architecture, replacing polling-based inter-service communication.
+
+### Installation
+
+The module requires Redis 5.0+ and the redis-py client:
+
+```bash
+pip install redis
+```
+
+### Quick Start
+
+```python
+from redis_streams.producer import StreamProducer, StreamManager
+from redis_streams.consumer import StreamConsumer, ConsumerGroupManager
+
+# Create a stream
+manager = StreamManager("redis://localhost:6379")
+manager.create_stream("events", retention_ms=86400000)
+manager.close()
+
+# Produce events
+producer = StreamProducer(
+    redis_url="redis://localhost:6379",
+    stream_name="events"
+)
+message_id = producer.publish(
+    event_type="data.update",
+    payload={"symbol": "AAPL", "price": 150.25}
+)
+producer.close()
+
+# Consume events
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="my-group",
+    consumer="consumer-1"
+)
+
+def handle_event(event):
+    print(f"Received: {event.payload}")
+    return True  # Acknowledge
+
+consumer.subscribe(handle_event)
+```
+
+### Checkpoint & Resume
+
+Enable checkpoint persistence to resume from the last processed message after restart:
+
+```python
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="my-group",
+    consumer="consumer-1",
+    enable_checkpoint=True  # Persists position to Redis
+)
+```
+
+### Consumer Groups
+
+Consumer groups enable multiple consumers to process the same stream independently:
+
+```python
+# Create group with start position
+manager = ConsumerGroupManager("redis://localhost:6379")
+manager.create_group("events", "processors", start_id="0")  # "0" = from beginning, "$" = new only
+
+# Multiple consumers in the same group
+c1 = StreamConsumer(stream="events", group="processors", consumer="worker-1")
+c2 = StreamConsumer(stream="events", group="processors", consumer="worker-2")
+```
+
+### API Reference
+
+**Producer:**
+- `StreamProducer.publish(event_type, payload, metadata)` - Publish event to stream
+- `StreamManager.create_stream(name, retention_ms, max_length)` - Create stream
+- `StreamManager.delete_stream(name)` - Delete stream
+
+**Consumer:**
+- `StreamConsumer.subscribe(callback)` - Start consuming (blocking)
+- `StreamConsumer.acknowledge(message_id)` - Acknowledge processed message
+- `StreamConsumer.get_pending()` - Get unacknowledged messages
+- `ConsumerGroupManager.create_group(stream, group, start_id)` - Create consumer group
+
+### Configuration
+
+```python
+# Consumer options
+consumer = StreamConsumer(
+    redis_url="redis://localhost:6379",
+    stream="events",
+    group="my-group",
+    consumer="consumer-1",
+    block_ms=5000,           # Blocking timeout (ms)
+    count=10,                # Max messages per fetch
+    auto_ack=False,          # Auto-ack after callback
+    enable_checkpoint=True, # Enable checkpoint persistence
+    enable_reclaim=False,    # Enable stale message reclaim
+    reclaim_interval_ms=30000,  # Reclaim loop interval
+    reclaim_min_idle_ms=30000   # Min idle time before reclaim
+)
+```
+
+### Monitoring
+
+```python
+from redis_streams.monitoring import get_stream_metrics, get_group_metrics
+
+metrics = get_stream_metrics("redis://localhost:6379", "events")
+print(f"Stream length: {metrics['length']}")
+print(f"First entry: {metrics['first_entry']}")
+```

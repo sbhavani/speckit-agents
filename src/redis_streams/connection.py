@@ -1,8 +1,63 @@
 """Redis connection management with connection pooling."""
 
-from typing import Optional
+import logging
+import time
+from typing import Optional, Callable, TypeVar, Any
 import redis
 from redis.connection import ConnectionPool
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def retry_with_backoff(
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exponential_base: float = 2.0,
+    exceptions: tuple = (redis.ConnectionError, redis.TimeoutError),
+):
+    """Decorator for retrying operations with exponential backoff.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds
+        exponential_base: Base for exponential backoff
+        exceptions: Tuple of exceptions to catch and retry
+
+    Returns:
+        Decorated function with retry logic
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            delay = initial_delay
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Redis operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                            f"Retrying in {delay:.1f}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * exponential_base, max_delay)
+                    else:
+                        logger.error(
+                            f"Redis operation failed after {max_retries + 1} attempts: {e}"
+                        )
+
+            raise last_exception
+
+        return wrapper
+
+    return decorator
 
 
 class RedisConnection:
@@ -27,8 +82,9 @@ class RedisConnection:
         self._max_connections = max_connections
         self._decode_responses = decode_responses
 
+    @retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=30.0)
     def connect(self) -> redis.Redis:
-        """Create and return a Redis client."""
+        """Create and return a Redis client with retry on connection errors."""
         if self._pool is None:
             self._pool = ConnectionPool.from_url(
                 self.url,
