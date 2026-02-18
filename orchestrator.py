@@ -1195,10 +1195,28 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             sender="Dev Agent",
         )
 
-        # Get feature description to include in prompt
+        # Get feature description
         feature_desc = self.state.feature.get("description", self.state.feature.get("feature", ""))
 
-        prompt = f"""/speckit.implement {feature_desc}
+        # Use simpler prompt for simple mode, speckit for feature mode
+        if self._workflow_type == "simple":
+            # Simple mode: direct implementation without speckit workflow
+            prompt = f"""Implement the following feature in this codebase:
+
+{feature_desc}
+
+1. First, understand the existing code structure
+2. Create necessary files and modify existing ones to implement the feature
+3. Write tests if appropriate
+4. Make sure the implementation is complete and functional
+
+If you need clarification, ask a question in JSON format:
+{{"type": "question", "question": "...", "context": "...", "options": ["A: ...", "B: ..."]}}
+
+Otherwise, implement the feature completely."""
+        else:
+            # Feature mode: use full speckit workflow
+            prompt = f"""/speckit.implement {feature_desc}
 
 IMPORTANT: If no SPEC.md, plan.md, or tasks.md files exist, create them based on the feature description above, then implement all tasks to completion.
 
