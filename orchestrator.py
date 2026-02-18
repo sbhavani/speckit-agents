@@ -1179,16 +1179,31 @@ Return ONLY a JSON object (no markdown fences, no extra text):
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
         logger.info("Phase: DEV_IMPLEMENT")
+
+        # Clean up any stale spec/plan/tasks files from previous features
+        # This prevents implementing the wrong feature in simple mode
+        stale_files = ["SPEC.md", "plan.md", "tasks.md"]
+        for f in stale_files:
+            fpath = Path(self.project_path) / f
+            if fpath.exists():
+                fpath.unlink()
+                logger.info("Removed stale file: %s", fpath)
+
         self.msg.send(
             "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
             "during this phase and the PM will answer.",
             sender="Dev Agent",
         )
 
-        prompt = """/speckit.implement
+        # Get feature description to include in prompt
+        feature_desc = self.state.feature.get("description", self.state.feature.get("feature", ""))
 
-IMPORTANT: If you encounter an ambiguity or need a product decision, output ONLY this JSON (no markdown fences) and then STOP:
-{"type": "question", "question": "...", "context": "...", "options": ["A: ...", "B: ..."]}
+        prompt = f"""/speckit.implement {feature_desc}
+
+IMPORTANT: If no SPEC.md, plan.md, or tasks.md files exist, create them based on the feature description above, then implement all tasks to completion.
+
+If you encounter an ambiguity or need a product decision, output ONLY this JSON (no markdown fences) and then STOP:
+{{"type": "question", "question": "...", "context": "...", "options": ["A: ...", "B: ..."]}}
 
 Otherwise, implement all tasks to completion."""
 
