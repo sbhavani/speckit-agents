@@ -51,14 +51,29 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-def _setup_logging() -> None:
-    """Configure console (INFO) and file (DEBUG) logging handlers."""
+def _setup_logging(log_level: str = "info") -> None:
+    """Configure console and file logging handlers.
+
+    Args:
+        log_level: Console log verbosity level (debug, info, warning, error).
+                   Defaults to "info". Case-insensitive.
+    """
     root = logging.getLogger()
+
+    # Clear existing handlers to allow reconfiguration
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+
     root.setLevel(logging.DEBUG)
 
-    # Console handler — colored output
+    # Convert string level to logging constant
+    level = logging.getLevelName(log_level.upper())
+    if not isinstance(level, int):
+        level = logging.INFO  # fallback to default
+
+    # Console handler — colored output with configurable level
     console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
+    console.setLevel(level)
     console.setFormatter(ColoredFormatter(
         "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S",
     ))
@@ -1595,12 +1610,28 @@ def main() -> None:
                         help="Override Mattermost channel ID")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--show-state", action="store_true", help="Print current state and exit")
+
+    # Custom type for case-insensitive log level validation
+    def log_level_type(value: str) -> str:
+        valid = {"debug", "info", "warning", "error"}
+        lower = value.lower()
+        if lower not in valid:
+            raise argparse.ArgumentTypeError(
+                f"invalid choice: '{value}' (choose from {', '.join(repr(v) for v in sorted(valid))})"
+            )
+        return lower
+
+    parser.add_argument("--log-level", type=log_level_type, default="info",
+                        help="Console log verbosity level (default: info)")
     args = parser.parse_args()
 
     # Handle --version flag
     if args.version:
         print(f"agent-team orchestrator v{__version__}")
         return
+
+    # Apply user-specified log level (reconfigures console handler)
+    _setup_logging(args.log_level)
 
     if args.resume and args.feature:
         parser.error("--resume and --feature are mutually exclusive")
