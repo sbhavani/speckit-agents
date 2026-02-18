@@ -28,6 +28,7 @@ from typing import Any, Callable
 import yaml
 
 from mattermost_bridge import MattermostBridge
+from state_redis import RedisState
 
 logger = logging.getLogger(__name__)
 
@@ -517,6 +518,18 @@ class Orchestrator:
         self._phase_timings: list[tuple[str, float]] = []
         self._run_start_time: float | None = None
 
+        # Optional Redis state storage
+        redis_url = config.get("workflow", {}).get("redis_url")
+        if redis_url:
+            try:
+                self._redis_state = RedisState(redis_url=redis_url)
+                logger.info("Using Redis for state storage: %s", redis_url)
+            except Exception as e:
+                logger.warning("Failed to connect to Redis: %s, using file-based state", e)
+                self._redis_state = None
+        else:
+            self._redis_state = None
+
     # -- State persistence -----------------------------------------------------
 
     def _state_file_path(self) -> Path:
@@ -616,12 +629,29 @@ class Orchestrator:
             "started_at": self._started_at,
             "updated_at": now,
         }
-        path = self._state_file_path()
-        path.write_text(json.dumps(data, indent=2))
-        logger.info("State saved: phase=%s", self.state.phase.name)
+
+        # Save to Redis if available, otherwise use file
+        if self._redis_state:
+            self._redis_state.save(self.project_path, data)
+            logger.info("State saved to Redis: phase=%s", self.state.phase.name)
+        else:
+            path = self._state_file_path()
+            path.write_text(json.dumps(data, indent=2))
+            logger.info("State saved to file: phase=%s", self.state.phase.name)
 
     def _load_state(self) -> dict | None:
-        """Load state from JSON file. Returns None if missing or corrupt."""
+        """Load state from Redis or file. Returns None if missing or corrupt."""
+        # Try Redis first if available
+        if self._redis_state:
+            data = self._redis_state.load(self.project_path)
+            if data:
+                if data.get("version") != 1:
+                    logger.warning("Unknown state version: %s", data.get("version"))
+                    return None
+                logger.info("State loaded from Redis: phase=%s", data.get("phase"))
+                return data
+
+        # Fall back to file
         path = self._state_file_path()
         if not path.exists():
             return None
@@ -630,13 +660,19 @@ class Orchestrator:
             if data.get("version") != 1:
                 logger.warning("Unknown state file version: %s", data.get("version"))
                 return None
+            logger.info("State loaded from file: phase=%s", data.get("phase"))
             return data
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("Could not load state file: %s", e)
             return None
 
     def _clear_state(self) -> None:
-        """Delete state file on successful completion."""
+        """Delete state on successful completion."""
+        # Clear Redis if available
+        if self._redis_state:
+            self._redis_state.delete(self.project_path)
+            logger.info("State cleared from Redis")
+        # Also clear file for clean state
         path = self._state_file_path()
         if path.exists():
             path.unlink()
