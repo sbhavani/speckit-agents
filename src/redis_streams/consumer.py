@@ -291,11 +291,13 @@ class StreamConsumer:
             List of PendingMessage objects
         """
         try:
-            pending = self.client.xpending_ext(
+            # Use xpending_range to get pending messages
+            # min and max are stream IDs, "-" and "+" mean oldest and newest
+            pending = self.client.xpending_range(
                 self.stream,
                 self.group,
-                start="-",
-                end="+",
+                min="-",
+                max="+",
                 count=100,
             )
             return [

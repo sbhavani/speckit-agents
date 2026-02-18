@@ -123,11 +123,12 @@ def test_multiple_consumers_independent_receipt(cleanup):
     manager.create_group(TEST_STREAM, TEST_GROUP, start_id="$")
     manager.close()
 
-    # Start consumers
+    # Start consumers - use DIFFERENT groups so both get the same event
+    # (consumer groups split work - each message goes to one consumer)
     c1 = StreamConsumer(
         redis_url=TEST_REDIS_URL,
         stream=TEST_STREAM,
-        group=TEST_GROUP,
+        group="group_1",  # Different group
         consumer="consumer_1",
         block_ms=5000,
     )
@@ -135,7 +136,7 @@ def test_multiple_consumers_independent_receipt(cleanup):
     c2 = StreamConsumer(
         redis_url=TEST_REDIS_URL,
         stream=TEST_STREAM,
-        group=TEST_GROUP,
+        group="group_2",  # Different group
         consumer="consumer_2",
         block_ms=5000,
     )
