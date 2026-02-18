@@ -242,6 +242,27 @@ class TestFmtDuration:
         assert Orchestrator._fmt_duration(2.4) == "2s"
         assert Orchestrator._fmt_duration(2.6) == "3s"
 
+    def test_hours_only(self):
+        assert Orchestrator._fmt_duration(3600) == "1h"
+        assert Orchestrator._fmt_duration(7200) == "2h"
+        assert Orchestrator._fmt_duration(3600 * 10) == "10h"
+
+    def test_hours_and_minutes(self):
+        assert Orchestrator._fmt_duration(3660) == "1h 1m"
+        assert Orchestrator._fmt_duration(3661) == "1h 1m 1s"
+        assert Orchestrator._fmt_duration(7200 + 60) == "2h 1m"
+
+    def test_days_only(self):
+        assert Orchestrator._fmt_duration(86400) == "1d"
+        assert Orchestrator._fmt_duration(172800) == "2d"
+
+    def test_days_and_hours(self):
+        assert Orchestrator._fmt_duration(86400 + 3600) == "1d 1h"
+        assert Orchestrator._fmt_duration(86400 * 2 + 3600 * 3) == "2d 3h"
+
+    def test_days_hours_minutes(self):
+        assert Orchestrator._fmt_duration(86400 + 3600 + 60) == "1d 1h 1m"
+
 
 # ---------------------------------------------------------------------------
 # Phase timing tracking

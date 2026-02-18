@@ -628,6 +628,7 @@ class Orchestrator:
             "thread_root_id": self.msg.root_id,  # Save thread ID for resume
             "started_at": self._started_at,
             "updated_at": now,
+            "phase_timings": self._phase_timings,
         }
 
         # Save to Redis if available, otherwise use file
@@ -1488,6 +1489,28 @@ Be specific about:
         s = int(round(seconds))
         if s < 60:
             return f"{s}s"
+        # Days
+        if s >= 86400:
+            d, s = divmod(s, 86400)
+            h, s = divmod(s, 3600)
+            m, s = divmod(s, 60)
+            parts = [f"{d}d"]
+            if h:
+                parts.append(f"{h}h")
+            if m:
+                parts.append(f"{m}m")
+            return " ".join(parts)
+        # Hours
+        if s >= 3600:
+            h, s = divmod(s, 3600)
+            m, s = divmod(s, 60)
+            parts = [f"{h}h"]
+            if m:
+                parts.append(f"{m}m")
+            if s:
+                parts.append(f"{s}s")
+            return " ".join(parts)
+        # Minutes
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
@@ -1506,7 +1529,11 @@ Be specific about:
         # Build timing table
         rows = []
         for phase_name, dur in self._phase_timings:
-            rows.append(f"| {phase_name} | {self._fmt_duration(dur)} |")
+            if dur is None or not isinstance(dur, (int, float)):
+                phase_duration = "N/A"
+            else:
+                phase_duration = self._fmt_duration(dur)
+            rows.append(f"| {phase_name} | {phase_duration} |")
         table = (
             "| Phase | Duration |\n"
             "|:------|:---------|\n"
@@ -1663,6 +1690,9 @@ def main() -> None:
         if saved.get("thread_root_id"):
             orchestrator.msg._root_id = saved["thread_root_id"]
             logger.info("Restored thread: %s", saved["thread_root_id"])
+        # Restore phase timings from saved state
+        orchestrator._phase_timings = saved.get("phase_timings", [])
+        logger.info("Restored phase_timings: %s", len(orchestrator._phase_timings))
         orchestrator._resuming = True
         # If --approve is set, skip to implementation
         if args.approve:
