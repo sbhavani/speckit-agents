@@ -1,8 +1,58 @@
 """Redis connection management with connection pooling."""
 
-from typing import Optional
+import time
+import logging
+from typing import Optional, Callable, Any, TypeVar
 import redis
 from redis.connection import ConnectionPool
+from redis.exceptions import ConnectionError, TimeoutError
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+def with_retry(
+    func: Callable[..., T],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exponential_base: float = 2.0,
+) -> T:
+    """Execute a function with exponential backoff retry.
+
+    Args:
+        func: Function to execute
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds
+        exponential_base: Base for exponential backoff
+
+    Returns:
+        Result of func
+
+    Raises:
+        The last exception if all retries fail
+    """
+    last_exception = None
+    delay = base_delay
+
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except (ConnectionError, TimeoutError) as e:
+            last_exception = e
+            if attempt < max_retries:
+                logger.warning(
+                    f"Redis operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+                delay = min(delay * exponential_base, max_delay)
+            else:
+                logger.error(f"Redis operation failed after {max_retries + 1} attempts: {e}")
+
+    raise last_exception
 
 
 class RedisConnection:

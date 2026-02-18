@@ -9,6 +9,7 @@ import redis
 from redis.exceptions import ResponseError
 
 from redis_streams.connection import RedisConnection
+from redis_streams.checkpoint import CheckpointStore, InMemoryCheckpointStore
 from redis_streams.exceptions import (
     GroupNotFoundError,
     StreamNotFoundError,
@@ -154,6 +155,8 @@ class StreamConsumer:
         block_ms: int = 5000,
         count: int = 10,
         auto_ack: bool = False,
+        checkpoint_store: Optional[Any] = None,
+        use_redis_checkpoint: bool = True,
     ):
         """Initialize StreamConsumer.
 
@@ -165,6 +168,8 @@ class StreamConsumer:
             block_ms: Blocking timeout in milliseconds
             count: Max messages to fetch at once
             auto_ack: Automatically acknowledge messages after callback
+            checkpoint_store: Custom checkpoint store (optional)
+            use_redis_checkpoint: Use Redis-backed checkpoint store (default True)
         """
         self._connection = RedisConnection(redis_url)
         self.stream = stream
@@ -173,6 +178,19 @@ class StreamConsumer:
         self.block_ms = block_ms
         self.count = count
         self.auto_ack = auto_ack
+        self.use_redis_checkpoint = use_redis_checkpoint
+
+        # Initialize checkpoint store
+        if checkpoint_store is not None:
+            self._checkpoint_store = checkpoint_store
+        elif use_redis_checkpoint:
+            self._checkpoint_store = CheckpointStore(redis_url)
+        else:
+            self._checkpoint_store = InMemoryCheckpointStore()
+
+        # Reclaim interval (seconds)
+        self._reclaim_interval = 30
+        self._reclaim_thread: Optional[threading.Thread] = None
 
         self._running = False
         self._stop_event = threading.Event()
@@ -182,16 +200,42 @@ class StreamConsumer:
         """Get Redis client."""
         return self._connection.client
 
-    def _ensure_group_exists(self):
-        """Ensure consumer group exists."""
+    def _ensure_group_exists(self, start_id: str = "$"):
+        """Ensure consumer group exists.
+
+        Args:
+            start_id: Starting ID for new consumers ("0" for all, "$" for new only)
+        """
         manager = ConsumerGroupManager(self._connection.url)
-        manager.create_group(self.stream, self.group, start_id="$")
+        manager.create_group(self.stream, self.group, start_id=start_id)
         manager.close()
+
+    def _resume_from_checkpoint(self) -> str:
+        """Resume consumer from saved checkpoint.
+
+        Returns:
+            Starting ID for consumer ("0" if no checkpoint)
+        """
+        checkpoint = self._checkpoint_store.load(self.stream, self.group, self.consumer)
+        if checkpoint:
+            logger.info(f"Resuming from checkpoint: {checkpoint}")
+            # Resume from after the checkpointed message
+            parts = checkpoint.split("-")
+            if len(parts) == 2:
+                # Increment sequence number to start after checkpoint
+                try:
+                    seq = int(parts[1]) + 1
+                    return f"{parts[0]}-{seq}"
+                except ValueError:
+                    return checkpoint
+            return checkpoint
+        return "$"
 
     def subscribe(
         self,
         callback: Callable[[EventMessage], bool],
         event_types: Optional[List[str]] = None,
+        resume_from_checkpoint: bool = True,
     ):
         """Start consuming messages from the stream.
 
@@ -201,13 +245,22 @@ class StreamConsumer:
             callback: Function to call with each message.
                      Should return True to acknowledge, False to keep pending.
             event_types: Optional list of event types to filter (not yet implemented)
+            resume_from_checkpoint: Whether to resume from saved checkpoint
 
         Raises:
             GroupNotFoundError: If consumer group doesn't exist
         """
-        self._ensure_group_exists()
+        # Determine starting position
+        start_id = "$"
+        if resume_from_checkpoint:
+            start_id = self._resume_from_checkpoint()
+
+        self._ensure_group_exists(start_id=start_id)
         self._running = True
         self._stop_event.clear()
+
+        # Start reclaim thread
+        self._start_reclaim_thread()
 
         logger.info(
             f"Starting consumer {self.consumer} in group {self.group} "
@@ -279,6 +332,11 @@ class StreamConsumer:
         """
         try:
             result = self.client.xack(self.stream, self.group, message_id)
+
+            # Persist checkpoint after successful acknowledgment
+            self._checkpoint_store.save(
+                self.stream, self.group, self.consumer, message_id
+            )
             logger.debug(f"Acknowledged message {message_id}")
             return result
         except ResponseError as e:
@@ -339,15 +397,57 @@ class StreamConsumer:
                 min_idle_time=min_idle_ms,
                 messages=stale,
             )
+            logger.info(f"Claimed {len(claimed)} stale messages")
             return [msg[0] for msg in claimed]
         except ResponseError as e:
             logger.error(f"Failed to claim stale messages: {e}")
             return []
 
+    def set_reclaim_interval(self, interval_seconds: int):
+        """Set the interval for reclaiming stale messages.
+
+        Args:
+            interval_seconds: Interval in seconds (default 30)
+        """
+        self._reclaim_interval = max(1, interval_seconds)
+        logger.debug(f"Reclaim interval set to {self._reclaim_interval}s")
+
+    def _start_reclaim_thread(self):
+        """Start background thread for reclaiming stale messages."""
+        if self._reclaim_thread is not None and self._reclaim_thread.is_alive():
+            return
+
+        self._reclaim_thread = threading.Thread(
+            target=self._reclaim_loop,
+            daemon=True,
+            name=f"reclaim-{self.consumer}",
+        )
+        self._reclaim_thread.start()
+        logger.debug(f"Reclaim thread started for {self.consumer}")
+
+    def _reclaim_loop(self):
+        """Background loop for reclaiming stale messages."""
+        while self._running and not self._stop_event.is_set():
+            try:
+                time.sleep(self._reclaim_interval)
+                if self._running:
+                    self.claim_stale_messages(min_idle_ms=30000)
+            except Exception as e:
+                logger.error(f"Error in reclaim loop: {e}")
+
     def close(self):
         """Gracefully stop consuming and close connection."""
         self._running = False
         self._stop_event.set()
+
+        # Wait for reclaim thread to finish
+        if self._reclaim_thread is not None and self._reclaim_thread.is_alive():
+            self._reclaim_thread.join(timeout=5)
+
+        # Close checkpoint store
+        if hasattr(self._checkpoint_store, 'close'):
+            self._checkpoint_store.close()
+
         self._connection.close()
         logger.info(f"Consumer {self.consumer} closed")
 
