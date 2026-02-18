@@ -209,6 +209,8 @@ class Worker:
             if feature:
                 # Use = syntax to avoid issues with features starting with --
                 cmd.extend([f"--feature={feature}"])
+            if payload.get("tools") == "enabled":
+                cmd.append("--tools")
             if command == "resume":
                 cmd.extend(["--resume", "--approve"])
 
