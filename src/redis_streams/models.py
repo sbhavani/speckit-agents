@@ -77,7 +77,7 @@ class PendingMessage:
             id=pending["message_id"],
             consumer=pending["consumer"],
             idle_ms=pending["time_since_delivered"],
-            delivered=pending["times_delivered"],
+            delivered=pending["delivery_counter"],
             stream=stream,
             group=group,
         )

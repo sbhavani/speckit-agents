@@ -1,0 +1,1 @@
+"""Checkpoint persistence contracts."""
