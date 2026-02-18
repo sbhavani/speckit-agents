@@ -133,6 +133,14 @@ PHASE_SEQUENCE_FEATURE: list[tuple[Phase, str, bool]] = [
     (Phase.DONE, "_phase_done", False),
 ]
 
+# Simple mode: skip specify/plan/tasks, go straight to implement
+PHASE_SEQUENCE_SIMPLE: list[tuple[Phase, str, bool]] = [
+    (Phase.DEV_IMPLEMENT, "_phase_dev_implement", False),
+    (Phase.CREATE_PR, "_phase_create_pr", False),
+    (Phase.PM_LEARN, "_phase_pm_learn", False),
+    (Phase.DONE, "_phase_done", False),
+]
+
 
 # ---------------------------------------------------------------------------
 # Config
@@ -735,6 +743,8 @@ class Orchestrator:
         sequence = (
             PHASE_SEQUENCE_FEATURE
             if self._workflow_type == "feature"
+            else PHASE_SEQUENCE_SIMPLE
+            if self._workflow_type == "simple"
             else PHASE_SEQUENCE_NORMAL
         )
 
@@ -1587,6 +1597,8 @@ def main() -> None:
     parser.add_argument("--loop", action="store_true", help="Keep running for multiple features")
     parser.add_argument("--feature", type=str, default=None,
                         help="Skip PM agent and directly implement this feature description")
+    parser.add_argument("--simple", action="store_true",
+                        help="Simple mode: skip specify/plan/tasks, go straight to implement")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from last saved state (.agent-team-state.json)")
     parser.add_argument("--approve", action="store_true",
@@ -1780,8 +1792,12 @@ def main() -> None:
             )
         orchestrator.run(loop=False)
     elif args.feature:
-        # Skip PM — inject the feature directly and use the feature sequence
-        orchestrator._workflow_type = "feature"
+        # Skip PM — inject the feature directly
+        # Use simple mode if --simple flag is set, otherwise feature mode
+        if args.simple:
+            orchestrator._workflow_type = "simple"
+        else:
+            orchestrator._workflow_type = "feature"
         orchestrator.state.feature = {
             "feature": args.feature[:60],
             "description": args.feature,
