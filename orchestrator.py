@@ -33,15 +33,33 @@ from state_redis import RedisState
 logger = logging.getLogger(__name__)
 
 
+# ANSI color codes
+class ColoredFormatter(logging.Formatter):
+    """Colored formatter for console output."""
+    COLORS = {
+        "DEBUG": "\033[36m",    # Cyan
+        "INFO": "\033[32m",     # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",    # Red
+        "CRITICAL": "\033[35m", # Magenta
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelname, "")
+        record.levelname = f"{color}{record.levelname}{self.RESET}"
+        return super().format(record)
+
+
 def _setup_logging() -> None:
     """Configure console (INFO) and file (DEBUG) logging handlers."""
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
-    # Console handler — same format as before
+    # Console handler — colored output
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    console.setFormatter(logging.Formatter(
+    console.setFormatter(ColoredFormatter(
         "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S",
     ))
     root.addHandler(console)
