@@ -105,28 +105,6 @@ uv run python orchestrator.py --project finance-agent
 
 ![Architecture diagram](docs/architecture.jpeg)
 
-```
-┌─────────────────────────────────────────────┐
-│              Mattermost Channel               │
-│  Human (approve/reject/intervene)            │
-│  PM Bot    ← PM Agent answers                │
-│  Dev Bot   ← Dev Agent implements            │
-└────────────────────┬────────────────────────┘
-                     │ API
-┌────────────────────▼────────────────────────┐
-│              Orchestrator                    │
-│  State machine: PM → Review → Spec →       │
-│  Plan → Tasks → Implement → PR → Learn     │
-└────────────────────┬────────────────────────┘
-                     │
-        ┌────────────┼────────────┐
-        ▼            ▼            ▼
-   ┌─────────┐ ┌─────────┐ ┌──────────┐
-   │ Claude   │ │  Git    │ │  Mattermost │
-   │ CLI      │ │ Worktree│ │   Bridge   │
-   └─────────┘ └─────────┘ └──────────┘
-```
-
 ## Configuration
 
 ```yaml
