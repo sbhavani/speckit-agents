@@ -25,6 +25,8 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import yaml
 
 from mattermost_bridge import MattermostBridge
@@ -1254,18 +1256,78 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         return callback
 
+    def _parse_tasks_for_parallel(self) -> tuple[list[dict], list[list[dict]]]:
+        """Parse tasks.md to find parallelizable tasks.
+
+        Returns:
+            of (sequential Tuple_tasks, parallel_batches)
+            - sequential_tasks: List of task dicts without [P] marker
+            - parallel_batches: List of parallel task batches (each batch is a list of task dicts)
+        """
+        tasks_path = Path(self.project_path) / "tasks.md"
+        if not tasks_path.exists():
+            logger.debug("No tasks.md found, running in single-task mode")
+            return [], []
+
+        try:
+            content = tasks_path.read_text()
+        except Exception as e:
+            logger.warning("Could not read tasks.md: %s", e)
+            return [], []
+
+        # Parse tasks: - [ ] T001 [P] [US1] Description
+        # Pattern: optional checkbox, TaskID, [P] marker, [Story] label, description
+        task_pattern = r'^- \[ \] (\w+)(?:\s+\[P\])?(?:\s+\[\w+\])?\s+(.+)$'
+
+        sequential_tasks = []
+        parallel_tasks = []
+
+        for line in content.split('\n'):
+            match = re.match(task_pattern, line)
+            if match:
+                task_id = match.group(1)
+                description = match.group(2).strip()
+
+                # Check if task has [P] marker
+                if '[P]' in line:
+                    parallel_tasks.append({'id': task_id, 'description': description})
+                else:
+                    sequential_tasks.append({'id': task_id, 'description': description})
+
+        if not sequential_tasks and not parallel_tasks:
+            logger.debug("No parseable tasks found in tasks.md")
+            return [], []
+
+        # Group parallel tasks into batches (consecutive [P] tasks form a batch)
+        parallel_batches = []
+        current_batch = []
+
+        for task in parallel_tasks:
+            current_batch.append(task)
+            # End batch if next task is not parallel or we hit end of parallel tasks
+            # For simplicity, batch all parallel tasks together
+        if current_batch:
+            parallel_batches.append(current_batch)
+
+        logger.info("Parsed tasks.md: %d sequential, %d parallel (in %d batch(es))",
+                    len(sequential_tasks), len(parallel_tasks), len(parallel_batches))
+
+        return sequential_tasks, parallel_batches
+
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
         logger.info("Phase: DEV_IMPLEMENT")
 
         # Clean up any stale spec/plan/tasks files from previous features
         # This prevents implementing the wrong feature in simple mode
-        stale_files = ["SPEC.md", "plan.md", "tasks.md"]
-        for f in stale_files:
-            fpath = Path(self.project_path) / f
-            if fpath.exists():
-                fpath.unlink()
-                logger.info("Removed stale file: %s", fpath)
+        # Only clean in simple mode - in feature mode, these files were just created
+        if self._workflow_type == "simple":
+            stale_files = ["SPEC.md", "plan.md", "tasks.md"]
+            for f in stale_files:
+                fpath = Path(self.project_path) / f
+                if fpath.exists():
+                    fpath.unlink()
+                    logger.info("Removed stale file: %s", fpath)
 
         self.msg.send(
             "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
@@ -1276,9 +1338,29 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         # Get feature description
         feature_desc = self.state.feature.get("description", self.state.feature.get("feature", ""))
 
+        # Check for parallel tasks in feature mode (skip in simple mode)
+        parallel_enabled = self._workflow_type != "simple"
+        sequential_tasks = []
+        parallel_batches = []
+
+        if parallel_enabled:
+            sequential_tasks, parallel_batches = self._parse_tasks_for_parallel()
+
+        # Determine if we should use parallel execution
+        use_parallel = parallel_enabled and (sequential_tasks or parallel_batches)
+
+        if use_parallel:
+            self._execute_parallel_implementation(sequential_tasks, parallel_batches, feature_desc)
+        else:
+            # Original single-command implementation
+            self._execute_single_implementation(feature_desc)
+
+        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+
+    def _execute_single_implementation(self, feature_desc: str) -> None:
+        """Execute implementation as a single command (original behavior)."""
         # Use simpler prompt for simple mode, speckit for feature mode
         if self._workflow_type == "simple":
-            # Simple mode: direct implementation without speckit workflow
             prompt = f"""Implement the following feature in this codebase:
 
 {feature_desc}
@@ -1293,7 +1375,6 @@ If you need clarification, ask a question in JSON format:
 
 Otherwise, implement the feature completely."""
         else:
-            # Feature mode: use full speckit workflow
             prompt = f"""/speckit.implement {feature_desc}
 
 IMPORTANT: If no SPEC.md, plan.md, or tasks.md files exist, create them based on the feature description above, then implement all tasks to completion.
@@ -1311,8 +1392,18 @@ Otherwise, implement all tasks to completion."""
                 f"Use this to understand the current state before implementing.\n\n{prompt}"
             )
 
-        # Run dev agent in a background thread so we can poll Mattermost
-        # for human questions while it works.
+        self._run_dev_with_polling(prompt)
+
+        # Process result
+        # Note: _run_dev_with_polling already updates state.dev_session
+        # Check for dev questions in the accumulated result
+
+    def _run_dev_with_polling(self, prompt: str, timeout: int = 3600) -> dict:
+        """Run dev agent with Mattermost polling for human questions.
+
+        Returns:
+            Result dict from Claude
+        """
         dev_result_holder: list[dict] = []
 
         def _run_dev():
@@ -1321,7 +1412,7 @@ Otherwise, implement all tasks to completion."""
                 cwd=self.project_path,
                 session_id=self.state.dev_session,
                 allowed_tools=DEV_TOOLS,
-                timeout=3600,
+                timeout=timeout,
             )
             dev_result_holder.append(result)
 
@@ -1348,7 +1439,124 @@ Otherwise, implement all tasks to completion."""
             if '"type": "question"' in raw or '"type":"question"' in raw:
                 self._handle_dev_question(raw)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+            return result
+
+        return {}
+
+    def _execute_parallel_implementation(
+        self,
+        sequential_tasks: list[dict],
+        parallel_batches: list[list[dict]],
+        feature_desc: str,
+    ) -> None:
+        """Execute implementation with parallel task support.
+
+        Args:
+            sequential_tasks: List of tasks to run sequentially
+            parallel_batches: List of parallel task batches (each batch runs in parallel)
+            feature_desc: Feature description
+        """
+        logger.info("Running parallel implementation: %d sequential, %d parallel batches",
+                   len(sequential_tasks), len(parallel_batches))
+
+        # Pre-augment context for all task runs
+        pre = self._augment_context.get(Phase.DEV_IMPLEMENT)
+
+        # Run sequential tasks first
+        if sequential_tasks:
+            self.msg.send(
+                f"📋 Running {len(sequential_tasks)} sequential task(s)...",
+                sender="Dev Agent",
+            )
+
+            for task in sequential_tasks:
+                logger.info("Running sequential task: %s", task['id'])
+                prompt = self._build_task_prompt(task, feature_desc, pre)
+                self._run_dev_with_polling(prompt, timeout=1800)
+
+        # Run parallel batches
+        for batch_idx, batch in enumerate(parallel_batches):
+            self.msg.send(
+                f"⚡ Running {len(batch)} parallel task(s) (batch {batch_idx + 1})...",
+                sender="Dev Agent",
+            )
+            logger.info("Running parallel batch %d with %d tasks", batch_idx + 1, len(batch))
+
+            # Run tasks in parallel using ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=len(batch)) as executor:
+                future_to_task = {
+                    executor.submit(
+                        self._run_task_implementation_sync,
+                        task,
+                        feature_desc,
+                        pre,
+                    ): task
+                    for task in batch
+                }
+
+                # Wait for all to complete and check for errors
+                for future in as_completed(future_to_task):
+                    task = future_to_task[future]
+                    try:
+                        future.result()  # Raise any exceptions
+                        logger.info("Parallel task completed: %s", task['id'])
+                    except Exception as e:
+                        logger.error("Parallel task failed: %s - %s", task['id'], e)
+                        self.msg.send(
+                            f"⚠️ Task {task['id']} failed: {e}",
+                            sender="Dev Agent",
+                        )
+                        raise
+
+        self.msg.send("✅ All tasks complete", sender="Dev Agent")
+
+    def _build_task_prompt(self, task: dict, feature_desc: str, pre: dict | None) -> str:
+        """Build the prompt for a specific task implementation."""
+        prompt = f"""/speckit.implement {feature_desc}
+
+The tasks.md file has already been generated. Your current specific task is:
+
+**Task {task['id']}:** {task['description']}
+
+Focus ONLY on completing this specific task. Check off the task in tasks.md when complete.
+If you need clarification for this task, ask a question in JSON format.
+Otherwise, complete this task completely."""
+
+        if pre:
+            prompt = (
+                f"CODEBASE CONTEXT (pre-flight checks):\n"
+                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                f"Use this to understand the current state before implementing.\n\n{prompt}"
+            )
+
+        return prompt
+
+    def _run_task_implementation_sync(
+        self,
+        task: dict,
+        feature_desc: str,
+        pre: dict | None,
+    ) -> dict:
+        """Run implementation for a single task (synchronous wrapper for thread pool).
+
+        This method creates a new Claude session for each parallel task.
+        """
+        prompt = self._build_task_prompt(task, feature_desc, pre)
+
+        # Run in a new session for parallel execution
+        result = run_claude_stream(
+            prompt=prompt,
+            cwd=self.project_path,
+            session_id=None,  # New session for parallel task
+            allowed_tools=DEV_TOOLS,
+            timeout=1800,
+        )
+
+        # Update session if successful
+        if result and self.state.dev_session is None:
+            self.state.dev_session = result.get("session_id")
+
+        return result
 
     def _check_for_human_questions(self) -> None:
         """Check Mattermost for human messages and route them appropriately.
