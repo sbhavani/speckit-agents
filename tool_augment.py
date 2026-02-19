@@ -30,6 +30,8 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable
 
+import redis
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,6 +67,7 @@ class ToolAugmentConfig:
     run_tests_after_impl: bool = True
     timeout_per_hook: int = 120
     log_dir: str = "logs/augment"
+    redis_url: str | None = None  # Redis for logging (faster than JSONL)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "ToolAugmentConfig":
@@ -78,36 +81,61 @@ class ToolAugmentConfig:
             run_tests_after_impl=d.get("run_tests_after_impl", True),
             timeout_per_hook=d.get("timeout_per_hook", 120),
             log_dir=d.get("log_dir", "logs/augment"),
+            redis_url=d.get("redis_url"),
         )
 
 
 # ---------------------------------------------------------------------------
-# JSONL Logger
+# Redis/JSONL Logger
 # ---------------------------------------------------------------------------
 
 class ToolAugmentLog:
-    """Append-only JSONL logger for augmentation records."""
+    """Logger for augmentation records - uses Redis if available, falls back to JSONL."""
 
-    def __init__(self, log_dir: str, run_id: str):
+    def __init__(self, log_dir: str, run_id: str, redis_url: str | None = None):
         self.log_dir = Path(log_dir)
         self.run_id = run_id
+        self.redis_url = redis_url
         self._path = self.log_dir / f"run_{run_id}.jsonl"
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self._redis: redis.Redis | None = None
+
+        # Try to connect to Redis if URL provided
+        if redis_url:
+            try:
+                self._redis = redis.from_url(redis_url, decode_responses=True)
+                self._redis.ping()
+                logger.info("Using Redis for augmentation logging: %s", redis_url)
+            except Exception as e:
+                logger.warning("Failed to connect to Redis: %s, falling back to JSONL", e)
+                self._redis = None
+
+        # Ensure log directory exists for JSONL fallback
+        if not self._redis:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def path(self) -> Path:
         return self._path
 
     def write(self, record_type: str, **kwargs: Any) -> None:
-        """Append a single JSONL record."""
+        """Write a single record - to Redis if available, otherwise JSONL."""
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "run_id": self.run_id,
             "record_type": record_type,
             **kwargs,
         }
-        with open(self._path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, default=str) + "\n")
+
+        if self._redis:
+            # Push to Redis list (FIFO queue per run)
+            key = f"augment:run:{self.run_id}"
+            self._redis.rpush(key, json.dumps(record, default=str))
+            # Set TTL of 7 days for retention
+            self._redis.expire(key, 7 * 24 * 60 * 60)
+        else:
+            # Fallback to JSONL
+            with open(self._path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, default=str) + "\n")
 
     def write_tool_call(self, phase: str, hook_type: str, prompt: str, duration_ms: float, findings: dict) -> None:
         self.write(
@@ -278,7 +306,7 @@ class ToolAugmentor:
         self.config = config
         self.run_id = run_id
         self._run_claude = run_claude_fn
-        self._log = ToolAugmentLog(config.log_dir, run_id)
+        self._log = ToolAugmentLog(config.log_dir, run_id, config.redis_url)
         self._phases_augmented: list[str] = []
         self._total_hooks = 0
         self._total_duration_ms = 0.0

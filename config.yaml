@@ -94,3 +94,4 @@ workflow:
     run_tests_after_impl: true
     timeout_per_hook: 120
     log_dir: "logs/augment"
+    redis_url: "redis://localhost:6379"  # Use Redis for faster logging (optional)
