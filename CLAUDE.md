@@ -2,15 +2,16 @@
 
 ## Project Overview
 
-Agent Team — A multi-agent orchestration system where a Product Manager agent and Developer agent collaborate to ship features. Communication happens through Mattermost via OpenClaw. Human operator can intervene at any time.
+Agent Team — A multi-agent orchestration system where a Product Manager agent and Developer agent collaborate to ship features. Communication happens through Mattermost. Human operator can intervene at any time.
 
 ## Architecture
 
 - `orchestrator.py` — Main workflow state machine (PM suggest → Review → Dev specify/plan/tasks/implement → PR)
-- `mattermost_bridge.py` — OpenClaw CLI wrapper for Mattermost messaging (over SSH)
+- `mattermost_bridge.py` — Mattermost API bridge for messaging
 - `.claude/agents/pm-agent.md` — PM Agent subagent definition
 - `.claude/agents/dev-agent.md` — Developer Agent subagent definition
-- `config.yaml` — Configuration (project path, OpenClaw settings, timeouts)
+- `config.yaml` — Configuration (project path, Mattermost, timeouts)
+- `docs/SETUP.md` — Setup guide (Mattermost, Redis, bots)
 - `docs/PRD.md` — Product requirements (user stories, acceptance criteria)
 - `docs/WORKFLOW.md` — End-to-end workflow details
 - `docs/ARCHITECTURE.md` — System components and design
