@@ -45,11 +45,11 @@ uv run python orchestrator.py --feature "Add user authentication"
 
 ## How It Works
 
-🤔 **PM Agent** reads the project's PRD and suggests the highest-priority unimplemented feature.
+🦉 **PM Agent** reads the project's PRD and suggests the highest-priority unimplemented feature.
 
 👀 **Human** approves or rejects the suggestion in Mattermost.
 
-📋 **Dev Agent** runs the Spec Kit workflow:
+🦊 **Dev Agent** runs the Spec Kit workflow:
 1. `/speckit.specify` → creates SPEC.md
 2. `/speckit.plan` → creates PLAN.md
 3. `/speckit.tasks` → creates TASKS.md
