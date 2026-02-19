@@ -75,6 +75,61 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 - tasks.md `[P]` markers trigger concurrent execution
 - `--simple` flag bypasses speckit phases
 
+## Architecture: Orchestrator + Worker Handoff
+
+The system uses a distributed architecture where the orchestrator coordinates workflow while workers handle implementation:
+
+### Orchestrator Responsibilities
+1. **PM_SUGGEST**: PM Agent reads PRD, suggests highest-priority unimplemented feature
+2. **REVIEW**: Human approves/rejects feature (or auto-approve after timeout)
+3. **Publish**: After approval, publish feature to Redis stream (`feature-requests`)
+4. **Loop**: Skip dev phases, return to PM_SUGGEST for next feature
+
+### Worker Responsibilities
+Workers listen on the Redis stream and pick up approved features:
+
+1. **DEV_SPECIFY**: Run `/speckit.specify` to create SPEC.md
+2. **DEV_PLAN**: Run `/speckit.plan` to create plan.md
+3. **DEV_TASKS**: Run `/speckit.tasks` to create tasks.md
+4. **PLAN_REVIEW**: Human reviews plan (or auto-proceed after timeout)
+5. **DEV_IMPLEMENT**: Run `/speckit.implement` for all tasks
+6. **CREATE_PR**: Create branch, commit, open PR via `gh pr create`
+
+### Redis Stream Configuration
+```yaml
+redis_streams:
+  url: "redis://localhost:6379"
+  stream: "feature-requests"
+  consumer_group: "orchestrator-workers"
+```
+
+### Running with Workers
+```bash
+# Start orchestrator (coordinates, publishes to stream)
+uv run python orchestrator.py --loop --project agent-team
+
+# Start workers (consume from stream, run implementation)
+uv run python worker.py --consumer worker-1
+uv run python worker.py --consumer worker-2
+```
+
+### Message Format
+When orchestrator publishes to stream:
+```json
+{
+  "feature": "Feature description",
+  "project": "agent-team",
+  "rationale": "Why this feature",
+  "priority": "P1"
+}
+```
+
+### Benefits
+- Orchestrator is lightweight (just coordinates)
+- Workers do heavy lifting (run Claude Code)
+- Multiple features can run in parallel
+- Each worker has independent state
+
 ### P3: Resilience (Could Have)
 
 **As a** operator,

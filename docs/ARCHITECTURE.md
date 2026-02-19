@@ -6,6 +6,7 @@ System components, technical decisions, and dependencies.
 
 ## High-Level Architecture
 
+### Standalone Mode (Single Process)
 ```
 +-------------------+     Mattermost API     +-------------------+
 |   Mattermost      | <---------------------> |   Orchestrator    |
@@ -17,24 +18,54 @@ System components, technical decisions, and dependencies.
                                                   |
                                                   v
                                          +--------+--------+
-                                         | Claude Code  |
-                                         | CLI (claude) |
-                                         +--------+----+
+                                         | Claude Code      |
+                                         | CLI (claude)    |
+                                         +--------+--------+
                                                   |
                                                   v
                                          +--------+--------+
-                                         | Target Repo   |
-                                         | (git worktree)|
-                                         +---------------+
+                                         | Target Repo     |
+                                         | (git worktree)  |
+                                         +-----------------+
+```
+
+### Worker Pool Mode (Distributed)
+```
++-------------------+     Mattermost API     +-------------------+
+|   Mattermost      | <---------------------> |   Orchestrator    |
+|   Channel         |                        |   (Coordinator)   |
+|   - Human         |                        +----------+--------+
+|   - PM Bot        |                                 |
+|   - Dev Bot       |                                 | Redis Stream
++-------------------+                                 | (feature-requests)
+                                                      |
+                                                      v
+                                         +------------+-----------+
+                                         |                        |
+                                         v                        v
+                                  +------+-------+         +------+-------+
+                                  | Worker-1   |         | Worker-N   |
+                                  | (Consumer) |         | (Consumer) |
+                                  +------+-------+         +------+-------+
+                                         |                        |
+                                         v                        v
+                                  +------+-------+         +------+-------+
+                                  | Claude Code|         | Claude Code |
+                                  | CLI        |         | CLI         |
+                                  +------+-------+         +------+-------+
 ```
 
 ## Components
 
 ### 1. Orchestrator (`orchestrator.py`)
 
-Central script managing workflow state machine.
+Central script managing workflow state machine. Can run in two modes:
 
-**State machine phases:**
+**Standalone Mode:** Runs all phases sequentially (PM_SUGGEST → REVIEW → DEV_SPECIFY → DEV_PLAN → DEV_TASKS → PLAN_REVIEW → DEV_IMPLEMENT → CREATE_PR → PM_LEARN)
+
+**Coordinator Mode (--loop):** After REVIEW approval, publishes feature to Redis stream and skips to next PM_SUGGEST. Enables workers to handle implementation in parallel.
+
+**State machine phases (standalone):**
 | Phase | Description | Agent | Checkpoint? |
 |-------|-------------|-------|--------------|
 | INIT | Load config, verify connectivity | -- | No |
@@ -48,6 +79,15 @@ Central script managing workflow state machine.
 | CREATE_PR | Dev creates PR | Dev | No |
 | PM_LEARN | PM writes learnings | PM | No |
 | DONE | Post PR URL | -- | No |
+
+**State machine phases (coordinator mode):**
+| Phase | Description | Agent | Checkpoint? |
+|-------|-------------|-------|--------------|
+| INIT | Load config, verify connectivity | -- | No |
+| PM_SUGGEST | PM reads PRD, suggests feature | PM | No |
+| REVIEW | Human approves/rejects | -- | **Yes** |
+| *(publish to stream)* | Feature published to Redis | -- | -- |
+| *(skip to PM_SUGGEST)* | Loop for next feature | -- | -- |
 
 ### 2. Mattermost Bridge (`mattermost_bridge.py`)
 
@@ -67,10 +107,18 @@ Daemon that listens for commands:
 - `/suggest` - Start workflow
 - `/suggest "Feature"` - Implement specific feature
 - `@product-manager <question>` - Ask PM questions
+- `@dev-agent <question>` - Ask Dev questions (during implementation)
 
 ### 4. Worker (`worker.py`)
 
-Redis Streams consumer for parallel execution.
+Redis Streams consumer that picks up approved features from the stream and runs implementation:
+
+1. Listens on `feature-requests` stream
+2. Picks up message when available
+3. Runs orchestrator in feature mode: `orchestrator.py --feature "..."`
+4. Executes: DEV_SPECIFY → DEV_PLAN → DEV_TASKS → PLAN_REVIEW → DEV_IMPLEMENT → CREATE_PR
+
+Multiple workers can run in parallel for throughput.
 
 ### 5. Agent Definitions
 
@@ -89,10 +137,11 @@ Redis Streams consumer for parallel execution.
 - Full control over API features
 - Two bot identities for clear attribution
 
-### Why one orchestrator?
-- Coordinated state machine ensures correct ordering
-- Human checkpoints centrally managed
-- Session IDs shared between agents
+### Why Orchestrator + Workers?
+- **Orchestrator** is lightweight (just coordinates)
+- **Workers** do heavy lifting (run Claude Code)
+- Multiple features can run in parallel
+- Each worker has independent state
 
 ### Why Spec Kit?
 - Structured output (spec.md, plan.md, tasks.md)
@@ -102,7 +151,7 @@ Redis Streams consumer for parallel execution.
 ## Dependencies
 
 - **uv**: Dependency management
-- **Redis**: Cache and session state
+- **Redis**: Stream distribution and state persistence
 - **Claude Code CLI**: AI agent execution
 - **GitHub CLI**: PR creation
 - **Python 3.10+**: Runtime
