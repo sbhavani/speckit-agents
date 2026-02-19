@@ -79,6 +79,8 @@ The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (confi
 ## Active Technologies
 - Redis 5.0+ (for Streams API), redis-py or equivalent client library (004-redis-streams)
 - Redis (stream storage), optional: metadata store for consumer offsets (004-redis-streams)
+- Python 3.10+ + pytest (for test execution), standard library (unicodedata, emoji handling) (006-test-emoji)
+- N/A (no persistent storage required for test feature) (006-test-emoji)
 
 ## Recent Changes
 - 004-redis-streams: Added Redis 5.0+ (for Streams API), redis-py or equivalent client library
