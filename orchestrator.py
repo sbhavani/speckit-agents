@@ -55,6 +55,12 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
+# Progress emoji markers for phase and task status
+IN_PROGRESS_EMOJI = "🔄"
+COMPLETED_EMOJI = "✅"
+FAILED_EMOJI = "❌"
+
+
 def _setup_logging() -> None:
     """Configure console (INFO) and file (DEBUG) logging handlers."""
     root = logging.getLogger()
@@ -800,25 +806,39 @@ class Orchestrator:
                 if pre:
                     self._augment_context[phase] = pre
 
-            if is_checkpoint:
-                if not method():
-                    # Post-hook even on rejection (for logging)
-                    if self._augmentor:
-                        post = self._augmentor.run_post_hook(phase, self.state)
-                        if post:
-                            self._augment_context[f"{phase}_post"] = post
-                    self._phase_timings.append((phase.name, time.time() - t0))
-                    return  # rejected
-            else:
-                method()
+            try:
+                if is_checkpoint:
+                    if not method():
+                        # Post-hook even on rejection (for logging)
+                        if self._augmentor:
+                            post = self._augmentor.run_post_hook(phase, self.state)
+                            if post:
+                                self._augment_context[f"{phase}_post"] = post
+                        self._phase_timings.append((phase.name, time.time() - t0))
+                        return  # rejected
+                else:
+                    method()
 
-            # Post-stage validation hook
-            if self._augmentor:
-                post = self._augmentor.run_post_hook(phase, self.state)
-                if post:
-                    self._augment_context[f"{phase}_post"] = post
+                # Post-stage validation hook
+                if self._augmentor:
+                    post = self._augmentor.run_post_hook(phase, self.state)
+                    if post:
+                        self._augment_context[f"{phase}_post"] = post
+            except Exception as e:
+                # Display failure emoji when phase fails
+                error_msg = self._truncate_error(str(e))
+                failure_msg = f"📋 {phase.name.replace('_', ' ').title()} — {FAILED_EMOJI} Failed: {error_msg}"
+                logger.error(f"Phase {phase.name} failed: {e}")
+                self.msg.send(failure_msg, sender="Orchestrator")
+                raise
 
             self._phase_timings.append((phase.name, time.time() - t0))
+
+            # Display completion message with emoji
+            display_name = phase.name.replace('_', ' ').title()
+            completion_msg = f"📋 {display_name} — {COMPLETED_EMOJI} Complete"
+            logger.info(f"Phase {phase.name} complete")
+            self.msg.send(completion_msg, sender="Orchestrator")
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -1476,7 +1496,16 @@ Otherwise, implement all tasks to completion."""
                 f"Use this to understand the current state before implementing.\n\n{prompt}"
             )
 
-        self._run_dev_with_polling(prompt)
+        try:
+            self._run_dev_with_polling(prompt)
+        except Exception as e:
+            error_msg = self._truncate_error(str(e))
+            logger.error("Implementation failed: %s", e)
+            self.msg.send(
+                f"{FAILED_EMOJI} Implementation failed: {error_msg}",
+                sender="Dev Agent",
+            )
+            raise
 
         # Process result
         # Note: _run_dev_with_polling already updates state.dev_session
@@ -1555,8 +1584,27 @@ Otherwise, implement all tasks to completion."""
 
             for task in sequential_tasks:
                 logger.info("Running sequential task: %s", task['id'])
-                prompt = self._build_task_prompt(task, feature_desc, pre)
-                self._run_dev_with_polling(prompt, timeout=1800)
+                # Send task start message
+                self.msg.send(
+                    f"[{task['id']}] {task['description']} — {IN_PROGRESS_EMOJI} Starting...",
+                    sender="Dev Agent",
+                )
+                try:
+                    prompt = self._build_task_prompt(task, feature_desc, pre)
+                    self._run_dev_with_polling(prompt, timeout=1800)
+                    # Send task completion message
+                    self.msg.send(
+                        f"[{task['id']}] {task['description']} — {COMPLETED_EMOJI} Complete",
+                        sender="Dev Agent",
+                    )
+                except Exception as e:
+                    error_msg = self._truncate_error(str(e))
+                    logger.error("Sequential task failed: %s - %s", task['id'], e)
+                    self.msg.send(
+                        f"[{task['id']}] {task['description']} — {FAILED_EMOJI} Failed: {error_msg}",
+                        sender="Dev Agent",
+                    )
+                    raise
 
         # Run parallel batches
         for batch_idx, batch in enumerate(parallel_batches):
@@ -1565,6 +1613,13 @@ Otherwise, implement all tasks to completion."""
                 sender="Dev Agent",
             )
             logger.info("Running parallel batch %d with %d tasks", batch_idx + 1, len(batch))
+
+            # Send start messages for all tasks in batch
+            for task in batch:
+                self.msg.send(
+                    f"[{task['id']}] {task['description']} — {IN_PROGRESS_EMOJI} Starting...",
+                    sender="Dev Agent",
+                )
 
             # Run tasks in parallel using ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=len(batch)) as executor:
@@ -1584,15 +1639,21 @@ Otherwise, implement all tasks to completion."""
                     try:
                         future.result()  # Raise any exceptions
                         logger.info("Parallel task completed: %s", task['id'])
+                        # Send task completion message
+                        self.msg.send(
+                            f"[{task['id']}] {task['description']} — {COMPLETED_EMOJI} Complete",
+                            sender="Dev Agent",
+                        )
                     except Exception as e:
+                        error_msg = self._truncate_error(str(e))
                         logger.error("Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"⚠️ Task {task['id']} failed: {e}",
+                            f"[{task['id']}] {task['description']} — {FAILED_EMOJI} Failed: {error_msg}",
                             sender="Dev Agent",
                         )
                         raise
 
-        self.msg.send("✅ All tasks complete", sender="Dev Agent")
+        self.msg.send(f"{COMPLETED_EMOJI} All tasks complete", sender="Dev Agent")
 
     def _build_task_prompt(self, task: dict, feature_desc: str, pre: dict | None) -> str:
         """Build the prompt for a specific task implementation."""
@@ -1937,20 +1998,28 @@ Be specific about:
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
+    def _truncate_error(self, error: str, max_length: int = 200) -> str:
+        """Truncate error message to specified length."""
+        if len(error) <= max_length:
+            return error
+        return error[:max_length] + "..."
+
     def _display_phase_status(self, phase_name: str) -> None:
-        """Display current phase status with elapsed time."""
+        """Display current phase status with elapsed time and emoji."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
 
         total_elapsed = time.time() - self._run_start_time
         phase_elapsed = time.time() - self._phase_start_time
 
+        # Format phase name for display (e.g., DEV_SPECIFY -> Specify)
+        display_name = phase_name.replace('_', ' ').title()
+
         status_msg = (
-            f"Phase: {phase_name} | "
-            f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
-            f"Total: {self._fmt_duration(total_elapsed)}"
+            f"📋 {display_name} — {IN_PROGRESS_EMOJI} Starting... "
+            f"(Phase: {self._fmt_duration(phase_elapsed)}, Total: {self._fmt_duration(total_elapsed)})"
         )
-        logger.info(status_msg)
+        logger.info(f"Phase: {phase_name} - Starting")
         self.msg.send(status_msg, sender="Orchestrator")
 
     def _post_summary(self, error: str | None = None) -> None:
