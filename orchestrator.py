@@ -800,14 +800,18 @@ class Orchestrator:
                 if pre:
                     self._augment_context[phase] = pre
 
+            phase_status = "success"
             if is_checkpoint:
                 if not method():
+                    # Phase was rejected (human denied)
+                    phase_status = "failure"
                     # Post-hook even on rejection (for logging)
                     if self._augmentor:
                         post = self._augmentor.run_post_hook(phase, self.state)
                         if post:
                             self._augment_context[f"{phase}_post"] = post
                     self._phase_timings.append((phase.name, time.time() - t0))
+                    self._display_phase_completion(phase.name, phase_status)
                     return  # rejected
             else:
                 method()
@@ -819,6 +823,7 @@ class Orchestrator:
                     self._augment_context[f"{phase}_post"] = post
 
             self._phase_timings.append((phase.name, time.time() - t0))
+            self._display_phase_completion(phase.name, phase_status)
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -1952,6 +1957,31 @@ Be specific about:
         )
         logger.info(status_msg)
         self.msg.send(status_msg, sender="Orchestrator")
+
+    def _display_phase_completion(self, phase_name: str, status: str) -> None:
+        """Display emoji marker indicating phase completion status.
+
+        Args:
+            phase_name: Name of the phase that completed
+            status: One of 'success', 'failure', or 'in_progress'
+        """
+        emoji_map = {
+            "success": "✅",
+            "failure": "❌",
+            "in_progress": "🔄",
+        }
+        status_text_map = {
+            "success": "complete",
+            "failure": "failed",
+            "in_progress": "in progress",
+        }
+
+        emoji = emoji_map.get(status, "✅")
+        status_text = status_text_map.get(status, "complete")
+
+        completion_msg = f"{emoji} {phase_name} {status_text}"
+        logger.info(completion_msg)
+        self.msg.send(completion_msg, sender="Orchestrator")
 
     def _post_summary(self, error: str | None = None) -> None:
         """Format and send a workflow summary to Mattermost."""

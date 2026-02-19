@@ -79,6 +79,8 @@ The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (confi
 ## Active Technologies
 - Redis 5.0+ (for Streams API), redis-py or equivalent client library (004-redis-streams)
 - Redis (stream storage), optional: metadata store for consumer offsets (004-redis-streams)
+- Python 3.10+ (from CLAUDE.md requirement) + mattermost_bridge (Mattermost API), state_redis (Redis state), tool_augment (context augmentation), yaml (config) (001-emoji-markers)
+- Redis for workflow state persistence, YAML for configuration (001-emoji-markers)
 
 ## Recent Changes
 - 004-redis-streams: Added Redis 5.0+ (for Streams API), redis-py or equivalent client library
