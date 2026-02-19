@@ -12,3 +12,5 @@ config.local.yaml
 .agent-team-state.json
 specs/
 .agent/
+experiments/results/
+experiments/swebench/
