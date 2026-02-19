@@ -329,6 +329,9 @@ Redis is used for caching to improve performance:
 - [x] Handle `claude -p` timeout/crash gracefully (retry with backoff)
 - [x] Handle SSH connection failures (retry, alert to Mattermost)
 - [x] Validate config on startup (check SSH connectivity, channel exists, bot token works)
+- [x] Tool-augmented discovery and validation layer (pre/post phase hooks)
+- [x] Phase duration tracking and display
+- [x] Simple mode for fast feature implementation (--simple flag)
 - [ ] Rate limiting / cost tracking for Claude API calls (won't do)
 
 ### Phase 7: Polish
@@ -406,9 +409,9 @@ Redis is used for caching to improve performance:
 #### Should Have (Important)
 - **Slash commands + Webhooks**: Trigger workflows from Mattermost (`/agent start --project live-set-revival`) via slash command that hits a webhook. Eliminates polling.
 - **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
-- **Redis Streams integration**: Replace HTTP polling with Redis Streams Pub/Sub (see below)
 
 #### Could Have (Nice to Have)
+- **Redis Streams integration**: Replace HTTP polling with Redis Streams Pub/Sub (partially implemented - parallel workflows work, polling replacement not done)
 - **Multiple Dev Agents**: Fan out parallel Spec Kit phases to separate sessions
 - **Code Review Agent**: Third agent that reviews Dev's PR before posting
 - **Hatchet integration**: Background task queue for non-blocking orchestrator
@@ -433,13 +436,13 @@ The following features are organized by priority for incremental development and
 
 ### P2: UX Improvements
 
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| **Phase duration display** | Show time per phase in summary | Tiny |
-| **Progress emoji** | Add ✅ ❌ 🔄 to phase completions | Tiny |
-| **Color output** | Add ANSI colors to console output | Tiny |
-| **Verbose mode** | `--verbose` flag for detailed logging | Small |
-| **Config doctor** | `python orchestrator.py --doctor` to validate setup | Small |
+| Feature | Description | Effort | Status |
+|---------|-------------|--------|--------|
+| **Phase duration display** | Show time per phase in summary | Tiny | ✅ Done |
+| **Progress emoji** | Add ✅ ❌ 🔄 to phase completions | Tiny | |
+| **Color output** | Add ANSI colors to console output | Tiny | |
+| **Verbose mode** | `--verbose` flag for detailed logging | Small | ✅ Done |
+| **Config doctor** | `python orchestrator.py --doctor` to validate setup | Small | ✅ Done |
 
 ### P3: Developer Experience
 
@@ -505,6 +508,16 @@ The redis_streams library has been added via PR #1, and parallel workflows are n
 - ✅ 8/9 integration tests passing (1 skipped - checkpoint resume)
 - ✅ Redis state storage in orchestrator (optional, via config)
 - ✅ Parallel feature execution (worker pool) - **NEW in PR #5**
+
+#### Tool Augmentation (Implemented)
+Added in PR #17 and merged into main:
+
+- ✅ Pre-phase discovery hooks (probe codebase before each phase)
+- ✅ Post-phase validation hooks (validate artifacts after each phase)
+- ✅ Context injection into prompts (findings fed to agents)
+- ✅ JSONL logging for research/analysis
+
+This helps agents make more informed decisions with fresh codebase context.
 
 **Current state**: Full parallel workflow support is now available:
 - Responder publishes to Redis stream

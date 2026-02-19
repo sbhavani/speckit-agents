@@ -151,6 +151,23 @@ Override locally with `config.local.yaml` (gitignored).
 8. **CREATE_PR**: Dev Agent creates a branch, commits changes, and opens a PR
 9. **PM_LEARN**: PM Agent writes learnings to `.agent/product-manager.md` journal
 
+### Simple Mode
+
+Use `--simple` flag to skip spec/plan/tasks phases and go straight to implementation:
+```bash
+uv run python orchestrator.py --feature "Add X" --simple
+```
+
+This uses a simpler prompt that doesn't rely on spec files, making it faster for quick features.
+
+### Tool Augmentation
+
+The orchestrator includes pre/post phase hooks that:
+- Probe the codebase before each phase (discovery)
+- Validate artifacts after each phase (validation)
+- Inject findings as context into prompts
+- Log to JSONL for research analysis
+
 ### Worktree Isolation
 
 Each workflow runs in an isolated **git worktree** (in `/tmp/`) with its own **feature branch**:
@@ -208,6 +225,8 @@ Services:
 - `worker_pool.py` — Spawns multiple worker processes
 - `mattermost_bridge.py` — Mattermost communication (OpenClaw CLI + API)
 - `state_redis.py` — Redis-backed state storage
+- `tool_augment.py` — Pre/post phase discovery and validation hooks
+- `analyze_augment.py` — Analyze augmentation logs for research
 - `docker-compose.yml` — Docker services (redis, responder, orchestrator)
 - `.claude/agents/pm-agent.md` — PM Agent definition
 - `.claude/agents/dev-agent.md` — Developer Agent definition
