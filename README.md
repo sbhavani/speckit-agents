@@ -1,234 +1,186 @@
-# Spec Kit Agent Team
+# Agent Team
 
-A multi-agent orchestration system where a **Product Manager agent** and **Developer agent** collaborate to ship features autonomously. Communication happens through Mattermost via OpenClaw, with a human operator able to observe and intervene at any time.
+> Autonomous feature delivery using Spec Kit — PM + Dev agents collaborate through Mattermost
 
-Both agents are powered by Claude Code CLI (`claude -p`) running in headless mode. The Developer agent uses **[Spec Kit](https://github.com/github/spec-kit)** for structured feature specification and implementation.
+A multi-agent orchestration system where a **Product Manager agent** and a **Developer agent** collaborate to ship features autonomously. Human operator can observe and intervene at any time.
 
-## Architecture
+Both agents are powered by Claude Code CLI. The Developer agent uses **[Spec Kit](https://github.com/github/spec-kit)** for structured specification and implementation.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Mattermost Channel                        │
-│                                                              │
-│   Human           PM Agent            Dev Agent              │
-│   (intervene)     (answer Qs)         (spec, build,        │
-│                                            create PR)        │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-              Mattermost API (http://localhost:8065)
-                           │
-┌──────────────────────────┴──────────────────────────────────┐
-│              Local Services (uv)                             │
-│                                                           │
-│  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐   │
-│  │  Responder  │───▶│ Orchestrator │───▶│   Claude   │   │
-│  │ (listens)  │    │  (workflow)  │    │   CLI       │   │
-│  └─────────────┘    └──────────────┘    └─────────────┘   │
-│        │                   │                   │              │
-│        ▼                   ▼                   ▼              │
-│  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐   │
-│  │   Redis     │    │  Worktree    │    │ Target Repo │   │
-│  │  (docker)  │    │  /tmp/       │    │  (branch)   │   │
-│  └─────────────┘    └──────────────┘    └─────────────┘   │
-│                          │                                  │
-│                          └── Each workflow gets:             │
-│                              • Isolated worktree in /tmp/   │
-│                              • Feature branch for PR        │
-│                              • Cleaned up after PR          │
-└─────────────────────────────────────────────────────────────┘
+## Status
 
-State Machine (Orchestrator):
-INIT → PM_SUGGEST → REVIEW → DEV_SPECIFY → DEV_PLAN → DEV_TASKS
-→ PLAN_REVIEW → DEV_IMPLEMENT → CREATE_PR → PM_LEARN → DONE
-```
+[![CI](https://github.com/sbhavani/speckit-agents/actions/workflows/test.yml/badge.svg)](https://github.com/sbhavani/speckit-agents/actions)
+
+## Relationship to Spec Kit
+
+**Spec Kit** provides the structured workflow:
+- `/speckit.specify` → creates `SPEC.md`
+- `/speckit.plan` → creates `PLAN.md`
+- `/speckit.tasks` → creates `TASKS.md`
+- `/speckit.implement` → executes tasks
+
+**Agent Team** wraps Spec Kit with:
+- PM Agent that reads PRD and prioritizes features
+- Orchestrator that drives the workflow state machine
+- Mattermost integration for human-in-the-loop
+- Worktree isolation for clean PRs
 
 ## Quick Start
 
 ```bash
-# Setup
+# 1. Clone and setup
+git clone https://github.com/sbhavani/speckit-agents.git
+cd speckit-agents
 uv sync --dev
 
-# Start Redis (for caching)
-docker compose up -d redis
+# 2. Configure
+cp config.yaml config.local.yaml
+# Edit config.local.yaml with your Mattermost and API tokens
 
-# Run the responder (listens for /suggest and @mentions)
-uv run python responder.py
+# 3. Validate setup
+uv run python orchestrator.py --doctor
 
-# In another terminal: run the orchestrator (usually spawned by responder)
-uv run python orchestrator.py --project live-set-revival
+# 4. Run a feature
+uv run python orchestrator.py --feature "Add user authentication"
+```
+
+## How It Works
+
+🤔 **PM Agent** reads the project's PRD and suggests the highest-priority unimplemented feature.
+
+👀 **Human** approves or rejects the suggestion in Mattermost.
+
+📋 **Dev Agent** runs the Spec Kit workflow:
+1. `/speckit.specify` → creates SPEC.md
+2. `/speckit.plan` → creates PLAN.md
+3. `/speckit.tasks` → creates TASKS.md
+4. `/speckit.implement` → executes all tasks
+
+❓ During implementation, the Dev Agent can ask questions. PM Agent answers based on PRD context.
+
+✅ Human can intervene, ask questions, or approve/reject at any checkpoint.
+
+🔀 Dev Agent creates a PR from an isolated worktree.
+
+📖 PM Agent records learnings to `.agent/product-manager.md`.
+
+## CLI Reference
+
+```bash
+# Normal workflow (PM suggests feature)
+uv run python orchestrator.py
 
 # Dry run (prints to stdout, no Mattermost)
 uv run python orchestrator.py --dry-run
 
-# Skip PM, implement a specific feature
+# Skip PM, implement specific feature
 uv run python orchestrator.py --feature "Add user authentication"
 
-# Resume after crash/interrupt
+# Simple mode (skip spec/plan/tasks phases)
+uv run python orchestrator.py --feature "Add fix" --simple
+
+# Resume from last state
 uv run python orchestrator.py --resume
 
-# Loop mode (keeps suggesting features after each PR)
+# Loop mode (run multiple features)
 uv run python orchestrator.py --loop
 
-# Run tests
-uv run pytest tests/
+# Target specific project
+uv run python orchestrator.py --project finance-agent
+```
 
-# New CLI Flags
-uv run python orchestrator.py --version                    # Print version
-uv run python orchestrator.py --show-state                 # Show saved state
-uv run python orchestrator.py --log-level DEBUG           # Set log level
-uv run python orchestrator.py --verbose                   # Verbose output (DEBUG)
-uv run python orchestrator.py --doctor                    # Validate config
-uv run python orchestrator.py --feature "Add X" --simple # Simple mode (skip spec/plan)
+### Flags
 
-# Parallel Workflows (via Redis Streams)
-uv run python worker.py --consumer worker1                # Run a worker
-uv run python worker_pool.py --workers 3                  # Run 3 workers
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print to stdout, no Mattermost |
+| `--feature "X"` | Skip PM, implement feature X |
+| `--simple` | Skip spec/plan/tasks phases |
+| `--resume` | Resume from last phase |
+| `--loop` | Run multiple features |
+| `--project X` | Target project from config |
+| `--doctor` | Validate setup |
+| `--verbose` | Debug logging |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│              Mattermost Channel               │
+│  Human (approve/reject/intervene)            │
+│  PM Bot    ← PM Agent answers                │
+│  Dev Bot   ← Dev Agent implements            │
+└────────────────────┬────────────────────────┘
+                     │ API
+┌────────────────────▼────────────────────────┐
+│              Orchestrator                    │
+│  State machine: PM → Review → Spec →       │
+│  Plan → Tasks → Implement → PR → Learn     │
+└────────────────────┬────────────────────────┘
+                     │
+        ┌────────────┼────────────┐
+        ▼            ▼            ▼
+   ┌─────────┐ ┌─────────┐ ┌──────────┐
+   │ Claude   │ │  Git    │ │  Mattermost │
+   │ CLI      │ │ Worktree│ │   Bridge   │
+   └─────────┘ └─────────┘ └──────────┘
 ```
 
 ## Configuration
 
-All configuration lives in `config.yaml`:
-
 ```yaml
 projects:
   finance-agent:
-    path: /Users/sb/code/finance-agent
+    path: /path/to/finance-agent
     prd_path: docs/PRD.md
-    channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br
-  live-set-revival:
-    path: /Users/sb/code/live-set-revival
-    prd_path: docs/SPEC.md
-    channel_id: bxkopjqjntntd89978uhb8wg7y
-
-openclaw:
-  ssh_host: localhost
-  openclaw_account: productManager
-  anthropic_api_key: sk-cp-...  # Minimax API key for responder PM questions
-  anthropic_base_url: https://api.minimax.io/anthropic
-  anthropic_model: MiniMax-M2.1
 
 mattermost:
-  channel_id: bhpbt6h4xtnem8int5ccmbo4dw
   url: "http://localhost:8065"
-  dev_bot_token: ...
-  dev_bot_user_id: ...
-  pm_bot_token: ...
-  pm_bot_user_id: ...
+  channel_id: <channel-id>
+  dev_bot_token: <token>
+  pm_bot_token: <token>
 
 workflow:
   approval_timeout: 300
-  question_timeout: 120
-  plan_review_timeout: 60
   auto_approve: false
-  loop: false
-  impl_poll_interval: 15
-  user_mention: ""
 ```
 
 Override locally with `config.local.yaml` (gitignored).
 
-## Mattermost Commands
-
-**Orchestrator (during workflow):**
-- **approve** / **reject** — Approve or reject feature suggestions
-- **yolo** — Skip plan review and start implementation immediately
-- **/feature "Feature name"** — Skip PM and directly implement a feature
-
-**Responder (always listening):**
-- **/suggest** — Start feature suggestion workflow
-- **/suggest "Feature name"** — Start implementation of specific feature
-- **@product-manager <question>** — Ask PM questions (includes PRD context)
-
-## How It Works
-
-1. **PM_SUGGEST**: PM Agent reads the project's PRD, analyzes what's already implemented, and suggests the highest-priority feature
-2. **REVIEW**: Feature suggestion is posted to Mattermost for human approval
-3. **DEV_SPECIFY**: Dev Agent runs `/speckit.specify` to create SPEC.md
-4. **DEV_PLAN**: Dev Agent runs `/speckit.plan` to create PLAN.md
-5. **DEV_TASKS**: Dev Agent runs `/speckit.tasks` to create TASKS.md
-6. **PLAN_REVIEW**: Human can ask questions or reject before implementation (60s yolo window)
-7. **DEV_IMPLEMENT**: Dev Agent runs `/speckit.implement`. If questions arise, PM Agent answers them
-8. **CREATE_PR**: Dev Agent creates a branch, commits changes, and opens a PR
-9. **PM_LEARN**: PM Agent writes learnings to `.agent/product-manager.md` journal
-
-### Simple Mode
-
-Use `--simple` flag to skip spec/plan/tasks phases and go straight to implementation:
-```bash
-uv run python orchestrator.py --feature "Add X" --simple
-```
-
-This uses a simpler prompt that doesn't rely on spec files, making it faster for quick features.
-
-### Tool Augmentation
-
-The orchestrator includes pre/post phase hooks that:
-- Probe the codebase before each phase (discovery)
-- Validate artifacts after each phase (validation)
-- Inject findings as context into prompts
-- Log to JSONL for research analysis
-
-### Worktree Isolation
-
-Each workflow runs in an isolated **git worktree** (in `/tmp/`) with its own **feature branch**:
-
-```
-/tmp/agent-team-live-set-revival-20260217-120000/
-├── src/          # Copy of the repo (worktree)
-├── .git          # Points to main repo's .git (shared objects)
-└── (worktree files)
-
-Branch: agent-worktree-20260217-120000  ← PR created from this branch
-```
-
-- **Worktree**: Isolated working directory (doesn't touch your main repo)
-- **Branch**: Feature branch for the PR (created fresh each workflow)
-- **Fast**: Worktrees share `.git` objects with main repo (no full clone)
-- **Cleanup**: Worktree and branch deleted after PR is created
-
 ## Prerequisites
 
-- **[uv](https://github.com/astral-sh/uv)** — Python dependency management
-- **[Docker](https://www.docker.com/)** — For Redis service
-- **[Redis](https://redis.io/)** — Cache and session state (via Docker)
-- **[Claude Code CLI](https://claude.com/claude-code)** — AI assistant, must be installed and authenticated
-- **[GitHub CLI](https://cli.github.com/)** (`gh`) — For PR creation
-- **[Python 3.10+](https://www.python.org/)**
-- **[Mattermost](https://mattermost.com/)** — Running at http://localhost:8065
-- **[Spec Kit](https://github.com/github/spec-kit)** — Installed in target project's `.claude/commands/`
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv)
+- [Claude Code CLI](https://claude.com/claude-code) — authenticated
+- [GitHub CLI](https://cli.github.com/) (`gh`)
+- Mattermost server
+- Redis (optional, for state persistence)
 
 ## Docker Deployment
 
-For production, run as docker-compose services:
-
 ```bash
-# Start all services
-docker compose up -d
-
-# Start just the responder (listens for /suggest)
-docker compose up -d responder
-
-# Manually trigger orchestrator
-docker compose run --rm orchestrator --project live-set-revival
+# Start services
+docker compose -f deploy/docker-compose.yml up -d
 ```
-
-Services:
-- **redis** — Cache and session state
-- **responder** — Listens for `/suggest` and @mentions, spawns workflows
-- **orchestrator** — Runs the feature workflow (spawned by responder)
 
 ## Files
 
-- `orchestrator.py` — Main workflow state machine
-- `responder.py` — Listens for /suggest and @mentions, spawns workflows
-- `worker.py` — Redis Streams consumer for parallel workflows
-- `worker_pool.py` — Spawns multiple worker processes
-- `mattermost_bridge.py` — Mattermost communication (OpenClaw CLI + API)
-- `state_redis.py` — Redis-backed state storage
-- `tool_augment.py` — Pre/post phase discovery and validation hooks
-- `analyze_augment.py` — Analyze augmentation logs for research
-- `docker-compose.yml` — Docker services (redis, responder, orchestrator)
-- `.claude/agents/pm-agent.md` — PM Agent definition
-- `.claude/agents/dev-agent.md` — Developer Agent definition
-- `config.yaml` — Configuration
-- `docs/PRD.md` — Full product requirements document
+| File | Description |
+|------|-------------|
+| `orchestrator.py` | Main workflow state machine |
+| `responder.py` | Listens for /suggest commands |
+| `worker.py` | Redis Streams consumer |
+| `worker_pool.py` | Parallel worker spawner |
+| `mattermost_bridge.py` | Mattermost API client |
+| `.claude/agents/pm-agent.md` | PM Agent definition |
+| `.claude/agents/dev-agent.md` | Dev Agent definition |
+| `docs/SETUP.md` | Setup guide |
+| `docs/PRD.md` | Product requirements |
+| `deploy/` | Docker deployment files |
+
+## Documentation
+
+- [Setup Guide](docs/SETUP.md) — Full setup walkthrough
+- [PRD](docs/PRD.md) — Product requirements (user stories)
+- [Workflow](docs/WORKFLOW.md) — Phase details
+- [Architecture](docs/ARCHITECTURE.md) — System design
+- [Config Reference](docs/CONFIG.md) — Configuration options
