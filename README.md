@@ -184,3 +184,12 @@ docker compose -f deploy/docker-compose.yml up -d
 - [Workflow](docs/WORKFLOW.md) — Phase details
 - [Architecture](docs/ARCHITECTURE.md) — System design
 - [Config Reference](docs/CONFIG.md) — Configuration options
+
+## Maintainers
+
+- [Santosh Bhavani](https://github.com/sbhavani)
+- [Pardis Taghavi](https://github.com/PardisTaghavi)
+
+## License
+
+[MIT](LICENSE)
