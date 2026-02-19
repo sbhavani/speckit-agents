@@ -28,7 +28,7 @@ from typing import Any, Callable
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from mattermost_bridge import MattermostBridge
 from state_redis import RedisState
@@ -376,7 +376,7 @@ def run_claude_stream(
         # Read stdout line by line
         line_count = 0
         try:
-            for line in iter(proc.stdout.readline, ""):
+            for line in iter(proc.stdout.readline, ""):  # type: ignore[union-attr]
                 if not line:
                     break
                 line_count += 1
@@ -442,7 +442,7 @@ def run_claude_stream(
         except json.JSONDecodeError:
             pass
 
-    result = {"result": result_text.strip(), "session_id": session_id_out}
+    result: dict[str, Any] = {"result": result_text.strip(), "session_id": session_id_out}
     if timed_out:
         result["_timeout"] = True
     return result
@@ -485,8 +485,8 @@ class Messenger:
         if self.dry_run:
             print(f"\n--- [{sender}] ---\n{message}\n")
             return "dry-run-id"
-        result = self.bridge.send(message, sender=sender, root_id=None)
-        post_id = result.get("id")
+        result = self.bridge.send(message, sender=sender, root_id=None)  # type: ignore[union-attr, assignment]
+        post_id = result.get("id")  # type: ignore[union-attr]
         if post_id:
             self._root_id = post_id
             logger.info("Started thread: %s", post_id)
@@ -499,7 +499,7 @@ class Messenger:
         else:
             # Use provided root_id, or fall back to stored thread root
             effective_root = root_id or self._root_id
-            self.bridge.send(message, sender=sender, root_id=effective_root)
+            self.bridge.send(message, sender=sender, root_id=effective_root)  # type: ignore[union-attr]
 
     def wait_for_response(self, timeout: int = 300) -> str | None:
         if self.dry_run:

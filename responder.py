@@ -229,7 +229,7 @@ class Responder:
                 return proj.get("path", ""), proj.get("prd_path", "docs/PRD.md")
         return None
 
-    def _read_prd(self, project_path: str, prd_path: str, channel_id: str = None) -> str:
+    def _read_prd(self, project_path: str, prd_path: str, channel_id: str | None = None) -> str:
         """Read PRD file content, using Redis cache if available."""
         # Create cache key from project + prd path
         cache_key = f"prd:{project_path}:{prd_path}"

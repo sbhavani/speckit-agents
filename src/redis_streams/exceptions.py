@@ -15,7 +15,7 @@ class StreamNotFoundError(RedisStreamsError):
 
 class GroupNotFoundError(RedisStreamsError):
     """Raised when a consumer group does not exist."""
-    def __init__(self, group: str, stream: str = None):
+    def __init__(self, group: str, stream: str | None = None):
         self.group = group
         self.stream = stream
         msg = f"Consumer group not found: {group}"
@@ -68,7 +68,7 @@ class StreamExistsError(RedisStreamsError):
 
 class GroupExistsError(RedisStreamsError):
     """Raised when attempting to create an existing group."""
-    def __init__(self, group: str, stream: str = None):
+    def __init__(self, group: str, stream: str | None = None):
         self.group = group
         self.stream = stream
         msg = f"Consumer group already exists: {group}"

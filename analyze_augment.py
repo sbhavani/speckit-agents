@@ -38,12 +38,12 @@ def analyze_run(records: list[dict]) -> dict:
     run_summaries = [r for r in records if r["record_type"] == "run_summary"]
 
     # Tool calls per phase
-    calls_by_phase = defaultdict(int)
+    calls_by_phase: defaultdict = defaultdict(int)
     for tc in tool_calls:
         calls_by_phase[tc["phase"]] += 1
 
     # Time per hook
-    time_by_hook = defaultdict(float)
+    time_by_hook: defaultdict = defaultdict(float)
     for hs in hook_summaries:
         key = f"{hs['phase']}/{hs['hook_type']}"
         time_by_hook[key] += hs["duration_ms"]
