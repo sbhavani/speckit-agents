@@ -99,6 +99,12 @@ class Phase(Enum):
     DONE = auto()
 
 
+# Emoji markers for phase status
+EMOJI_SUCCESS = "✅"
+EMOJI_REJECTED = "❌"
+EMOJI_IN_PROGRESS = "🔄"
+
+
 @dataclass
 class WorkflowState:
     phase: Phase = Phase.INIT
@@ -907,6 +913,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
     def _phase_review(self) -> bool:
         self.state.phase = Phase.REVIEW
         logger.info("Phase: REVIEW")
+        self.msg.send(f"{EMOJI_IN_PROGRESS} Starting REVIEW phase...", sender="Orchestrator")
 
         f = self.state.feature
         # Start thread with feature name
@@ -924,7 +931,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
         if auto:
             logger.info("Auto-approve enabled, proceeding")
-            self.msg.send("Auto-approved (config: auto_approve=true)", sender="Orchestrator")
+            self.msg.send(f"{EMOJI_SUCCESS} Auto-approved (config: auto_approve=true)", sender="Orchestrator")
             return True
 
         timeout = self.cfg.get("workflow", {}).get("approval_timeout", 300)
@@ -932,14 +939,14 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         if response is None:
             self.msg.send(
-                f"No response after {timeout}s — auto-approving.",
+                f"{EMOJI_SUCCESS} No response after {timeout}s — auto-approving.",
                 sender="Orchestrator",
             )
             return True
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send(f"{EMOJI_REJECTED} Feature rejected. Stopping.", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -953,11 +960,13 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             self.state.feature["description"] = response
             self.state.feature["feature"] = response[:60]
 
+        self.msg.send(f"{EMOJI_SUCCESS} Feature approved. Starting specification.", sender="Orchestrator")
         return True
 
     def _phase_dev_specify(self) -> None:
         self.state.phase = Phase.DEV_SPECIFY
         logger.info("Phase: DEV_SPECIFY")
+        self.msg.send(f"{EMOJI_IN_PROGRESS} Starting DEV_SPECIFY phase...", sender="Orchestrator")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
@@ -1100,6 +1109,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         """
         self.state.phase = Phase.PLAN_REVIEW
         logger.info("Phase: PLAN_REVIEW")
+        self.msg.send(f"{EMOJI_IN_PROGRESS} Starting PLAN_REVIEW phase...", sender="Orchestrator")
 
         # Mark position BEFORE posting the review message so we capture
         # any human messages that arrived during earlier phases too.
@@ -1121,7 +1131,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
         if auto or self._auto_approve:
             logger.info("Auto-approve enabled, proceeding to implementation")
-            self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator")
+            self.msg.send(f"{EMOJI_SUCCESS} Auto-approved — starting implementation.", sender="Orchestrator")
             return True
 
         poll_interval = 5
@@ -1156,10 +1166,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             logger.info(f"Plan review response: '{response[:50]}...' (lower: '{lower}')")
 
             if lower in APPROVE_WORDS:
-                self.msg.send("Approved — starting implementation.", sender="Orchestrator")
+                self.msg.send(f"{EMOJI_SUCCESS} Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send(f"{EMOJI_REJECTED} Plan rejected. Stopping.", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1177,7 +1187,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         # Timeout — auto-approve (yolo mode)
         self.msg.send(
-            f"No objection after {review_timeout}s — proceeding with implementation.",
+            f"{EMOJI_SUCCESS} No objection after {review_timeout}s — proceeding with implementation.",
             sender="Orchestrator",
         )
         return True

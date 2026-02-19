@@ -79,6 +79,8 @@ The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (confi
 ## Active Technologies
 - Redis 5.0+ (for Streams API), redis-py or equivalent client library (004-redis-streams)
 - Redis (stream storage), optional: metadata store for consumer offsets (004-redis-streams)
+- Python 3.10+ + mattermost_bridge.py (existing), orchestrator.py (existing), Redis (optional for state persistence) (001-emoji-phase-markers)
+- N/A (no new data storage - just message output enhancement) (001-emoji-phase-markers)
 
 ## Recent Changes
 - 004-redis-streams: Added Redis 5.0+ (for Streams API), redis-py or equivalent client library
