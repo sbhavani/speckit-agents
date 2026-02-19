@@ -546,6 +546,7 @@ class Orchestrator:
         self._phase_timings: list[tuple[str, float]] = []
         self._run_start_time: float | None = None
         self._phase_start_time: float | None = None  # Track current phase start
+        self._in_progress_emoji_sent: bool = False  # Track if 🔄 was sent for current phase
         self._augmentor: ToolAugmentor | None = None
         self._augment_context: dict = {}
 
@@ -788,10 +789,26 @@ class Orchestrator:
                     break
             self._resuming = False
 
+        # Phases that are typically long-running (>30 seconds)
+        long_running_phases = {Phase.DEV_IMPLEMENT, Phase.DEV_TASKS, Phase.PM_SUGGEST}
+
         for phase, method_name, is_checkpoint in sequence[start_idx:]:
             method = getattr(self, method_name)
             t0 = time.time()
             self._phase_start_time = time.time()
+            self._in_progress_emoji_sent = False
+
+            # Send 🔄 for long-running phases at start
+            if phase in long_running_phases:
+                in_progress_msg = (
+                    f"🔄 Phase: {phase.name} | "
+                    f"Phase duration: 0s | "
+                    f"Total: {self._fmt_duration(time.time() - self._run_start_time) if self._run_start_time else '0s'}"
+                )
+                logger.info(in_progress_msg)
+                self.msg.send(in_progress_msg, sender="Orchestrator")
+                self._in_progress_emoji_sent = True
+
             self._display_phase_status(phase.name)
 
             # Pre-stage discovery hook
@@ -800,17 +817,30 @@ class Orchestrator:
                 if pre:
                     self._augment_context[phase] = pre
 
-            if is_checkpoint:
-                if not method():
-                    # Post-hook even on rejection (for logging)
-                    if self._augmentor:
-                        post = self._augmentor.run_post_hook(phase, self.state)
-                        if post:
-                            self._augment_context[f"{phase}_post"] = post
-                    self._phase_timings.append((phase.name, time.time() - t0))
-                    return  # rejected
-            else:
-                method()
+            try:
+                if is_checkpoint:
+                    if not method():
+                        # Post-hook even on rejection (for logging)
+                        if self._augmentor:
+                            post = self._augmentor.run_post_hook(phase, self.state)
+                            if post:
+                                self._augment_context[f"{phase}_post"] = post
+                        self._phase_timings.append((phase.name, time.time() - t0))
+                        return  # rejected
+                else:
+                    method()
+            except Exception as e:
+                # If we sent 🔄 at start for long-running phase, send ❌ to replace it on failure
+                if self._in_progress_emoji_sent:
+                    phase_duration = time.time() - t0
+                    failed_msg = (
+                        f"❌ Phase: {phase.name} | "
+                        f"Phase duration: {self._fmt_duration(phase_duration)} | "
+                        f"Total: {self._fmt_duration(time.time() - self._run_start_time) if self._run_start_time else '0s'}"
+                    )
+                    logger.info(failed_msg)
+                    self.msg.send(failed_msg, sender="Orchestrator")
+                raise  # Re-raise to be caught by outer handler
 
             # Post-stage validation hook
             if self._augmentor:
@@ -819,6 +849,17 @@ class Orchestrator:
                     self._augment_context[f"{phase}_post"] = post
 
             self._phase_timings.append((phase.name, time.time() - t0))
+
+            # If we sent 🔄 at start, send ✅ to replace it on completion
+            if self._in_progress_emoji_sent:
+                phase_duration = time.time() - t0
+                complete_msg = (
+                    f"✅ Phase: {phase.name} | "
+                    f"Phase duration: {self._fmt_duration(phase_duration)} | "
+                    f"Total: {self._fmt_duration(time.time() - self._run_start_time) if self._run_start_time else '0s'}"
+                )
+                logger.info(complete_msg)
+                self.msg.send(complete_msg, sender="Orchestrator")
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -1946,7 +1987,7 @@ Be specific about:
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"✅ Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
@@ -1961,7 +2002,7 @@ Be specific about:
         duration_str = self._fmt_duration(total)
 
         if error:
-            status = f"Failed at {self.state.phase.name}"
+            status = f"❌ Failed at {self.state.phase.name}"
         else:
             status = "Complete"
 
