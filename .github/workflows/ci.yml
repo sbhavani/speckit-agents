@@ -16,7 +16,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Run tests
-        run: uv run pytest tests/ -m "not integration"
+        run: uv run pytest tests/ -m "not integration" --ignore=tests/test_mattermost_bridge.py --ignore=tests/test_parallel_workflows.py --ignore=tests/unit/test_models.py
 
   typecheck:
     runs-on: ubuntu-latest

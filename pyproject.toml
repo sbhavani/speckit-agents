@@ -9,6 +9,9 @@ dependencies = [
     "anthropic>=0.25.0",
 ]
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
