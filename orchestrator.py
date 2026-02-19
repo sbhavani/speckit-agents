@@ -751,6 +751,7 @@ class Orchestrator:
             except Exception as e:
                 self._save_state()
                 logger.exception("Workflow error")
+                self._display_phase_status(self.state.phase.name, "failed")
                 self._post_summary(error=str(e))
                 break
 
@@ -808,6 +809,7 @@ class Orchestrator:
                         if post:
                             self._augment_context[f"{phase}_post"] = post
                     self._phase_timings.append((phase.name, time.time() - t0))
+                    self._display_phase_status(phase.name, "rejected")
                     return  # rejected
             else:
                 method()
@@ -819,6 +821,7 @@ class Orchestrator:
                     self._augment_context[f"{phase}_post"] = post
 
             self._phase_timings.append((phase.name, time.time() - t0))
+            self._display_phase_status(phase.name, "success")
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -1937,7 +1940,15 @@ Be specific about:
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
-    def _display_phase_status(self, phase_name: str) -> None:
+    # Emoji mapping for phase status
+    PHASE_STATUS_MAP = {
+        "in_progress": "\U0001F504",  # 🔄
+        "success": "\U00002705",      # ✅
+        "rejected": "\U0000274C",     # ❌
+        "failed": "\U0000274C",       # ❌
+    }
+
+    def _display_phase_status(self, phase_name: str, status: str = "in_progress") -> None:
         """Display current phase status with elapsed time."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
@@ -1945,8 +1956,9 @@ Be specific about:
         total_elapsed = time.time() - self._run_start_time
         phase_elapsed = time.time() - self._phase_start_time
 
+        emoji = self.PHASE_STATUS_MAP.get(status, "")
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"{emoji} Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
