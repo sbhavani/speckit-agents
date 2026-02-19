@@ -544,6 +544,7 @@ class Orchestrator:
         self._started_at: str | None = None
         self._phase_timings: list[tuple[str, float]] = []
         self._run_start_time: float | None = None
+        self._phase_start_time: float | None = None  # Track current phase start
         self._augmentor: ToolAugmentor | None = None
         self._augment_context: dict = {}
 
@@ -788,6 +789,8 @@ class Orchestrator:
         for phase, method_name, is_checkpoint in sequence[start_idx:]:
             method = getattr(self, method_name)
             t0 = time.time()
+            self._phase_start_time = time.time()
+            self._display_phase_status(phase.name)
 
             # Pre-stage discovery hook
             if self._augmentor:
@@ -1641,6 +1644,22 @@ Be specific about:
             return f"{s}s"
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
+
+    def _display_phase_status(self, phase_name: str) -> None:
+        """Display current phase status with elapsed time."""
+        if self._run_start_time is None or self._phase_start_time is None:
+            return
+
+        total_elapsed = time.time() - self._run_start_time
+        phase_elapsed = time.time() - self._phase_start_time
+
+        status_msg = (
+            f"Phase: {phase_name} | "
+            f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
+            f"Total: {self._fmt_duration(total_elapsed)}"
+        )
+        logger.info(status_msg)
+        self.msg.send(status_msg, sender="Orchestrator")
 
     def _post_summary(self, error: str | None = None) -> None:
         """Format and send a workflow summary to Mattermost."""
