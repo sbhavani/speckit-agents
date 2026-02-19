@@ -40,6 +40,23 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 - Questions routed correctly (product → PM, implementation → Dev)
 - Human override takes precedence over PM answer
 
+### P1: UX Improvements (Should Have)
+
+**As a** operator,
+**I want** better visual feedback during workflow execution,
+**So that** I can quickly understand what's happening.
+
+- [P1-US5] Phase status shows elapsed time in real-time
+- [P1-US6] Progress emoji added to phase completions (✅ ❌ 🔄)
+- [P1-US7] ANSI color coding for console output (green=info, yellow=warn, red=error)
+- [P1-US8] Config doctor command validates setup (`--doctor`)
+
+**Acceptance Criteria:**
+- Each phase shows "Phase: X | Duration: Ym Zs | Total: Am Bs"
+- Phase completions show emoji markers
+- Console output uses colors for readability
+- Running `--doctor` shows validation results
+
 ### P2: Parallel Execution (Should Have)
 
 **As a** operator,
@@ -49,10 +66,14 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 - [P2-US1] Worker pool spawns N parallel workers
 - [P2-US2] Each worker runs independent orchestrator
 - [P2-US3] Redis Streams distributes work to available workers
+- [P2-US4] Parallel task execution within a feature (tasks marked `[P]` run concurrently)
+- [P2-US5] `--simple` flag skips specify/plan/tasks phases for quick fixes
 
 **Acceptance Criteria:**
 - Multiple workers can run simultaneously without conflicts
 - Each worker maintains independent state
+- tasks.md `[P]` markers trigger concurrent execution
+- `--simple` flag bypasses speckit phases
 
 ### P3: Resilience (Could Have)
 
@@ -67,15 +88,15 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 **Acceptance Criteria:**
 - Workflow resumes at correct phase with preserved context
 
-### P4: Observability (Could Have)
+### P3: Observability (Could Have)
 
 **As a** operator,
 **I want** visibility into workflow progress and metrics,
 **So that** I can monitor system health.
 
-- [P4-US1] Phase durations tracked and displayed in summary
-- [P4-US2] Tool augmentation logs pre/post phase state
-- [P4-US3] JSONL logs for post-mortem analysis
+- [P3-US4] Phase durations tracked and displayed in summary
+- [P3-US5] Tool augmentation logs pre/post phase state
+- [P3-US6] JSONL logs for post-mortem analysis
 
 **Acceptance Criteria:**
 - Summary shows time per phase
@@ -105,3 +126,5 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 3. **Question**: During impl, ask @product-manager question, verify answer
 4. **Resume**: Kill mid-implementation, resume with --resume, verify continuation
 5. **Parallel**: Start 3 workers, queue 3 features, verify all complete
+6. **Simple mode**: Run with --simple, verify no speckit phases run
+7. **Doctor**: Run --doctor, verify validation output
