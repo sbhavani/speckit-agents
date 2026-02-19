@@ -276,12 +276,12 @@ def run_claude(
             )
         except subprocess.TimeoutExpired as e:
             logger.warning(
-                "claude -p timed out after %ds (attempt %d/%d)",
+                "🔄 claude -p timed out after %ds (attempt %d/%d)",
                 timeout, attempt, max_retries,
             )
             if attempt < max_retries:
                 backoff = 5 * (4 ** (attempt - 1))
-                logger.info("Retrying in %ds...", backoff)
+                logger.info("🔄 Retrying in %ds...", backoff)
                 time.sleep(backoff)
                 last_error = e
                 continue
@@ -296,12 +296,12 @@ def run_claude(
         if result.returncode != 0:
             last_error = RuntimeError(f"claude -p failed: {result.stderr[:500]}")
             logger.error(
-                "claude -p returned %d (attempt %d/%d): %s",
+                "🔄 claude -p returned %d (attempt %d/%d): %s",
                 result.returncode, attempt, max_retries, result.stderr[:200],
             )
             if attempt < max_retries:
                 backoff = 5 * (4 ** (attempt - 1))
-                logger.info("Retrying in %ds...", backoff)
+                logger.info("🔄 Retrying in %ds...", backoff)
                 time.sleep(backoff)
                 continue
             raise last_error
@@ -939,7 +939,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send("❌ Feature rejected. Stopping.", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -1159,7 +1159,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 self.msg.send("Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send("❌ Plan rejected. Stopping.", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1587,7 +1587,7 @@ Otherwise, implement all tasks to completion."""
                     except Exception as e:
                         logger.error("Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"⚠️ Task {task['id']} failed: {e}",
+                            f"❌ Task {task['id']} failed: {e}",
                             sender="Dev Agent",
                         )
                         raise
@@ -1961,9 +1961,9 @@ Be specific about:
         duration_str = self._fmt_duration(total)
 
         if error:
-            status = f"Failed at {self.state.phase.name}"
+            status = f"❌ Failed at {self.state.phase.name}"
         else:
-            status = "Complete"
+            status = "✅ Complete"
 
         # Build timing table
         rows = []
