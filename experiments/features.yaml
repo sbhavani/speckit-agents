@@ -1,0 +1,129 @@
+# Curated feature set for tool-augmented multi-agent experiment
+# 15 features: 5 per project, across 5 categories and 3 complexity levels
+#
+# Categories: api_endpoint, config_change, refactor, test, new_module
+# Complexity: low, medium, high
+
+features:
+  # ── finance-agent ──────────────────────────────────────────
+  - id: fin-01
+    project: finance-agent
+    category: api_endpoint
+    expected_complexity: medium
+    description: >-
+      Add a GET /api/portfolio/summary endpoint that returns aggregated
+      portfolio value, top holdings, and daily change percentage.
+
+  - id: fin-02
+    project: finance-agent
+    category: config_change
+    expected_complexity: low
+    description: >-
+      Add configurable rate-limit settings for external market data API calls,
+      with defaults of 5 requests/second and 1000 requests/day.
+
+  - id: fin-03
+    project: finance-agent
+    category: refactor
+    expected_complexity: high
+    description: >-
+      Refactor the transaction processing module to use the Strategy pattern,
+      extracting buy, sell, and dividend handlers into separate classes.
+
+  - id: fin-04
+    project: finance-agent
+    category: test
+    expected_complexity: medium
+    description: >-
+      Add integration tests for the portfolio rebalancing workflow covering
+      edge cases: empty portfolio, single-asset portfolio, and rounding errors.
+
+  - id: fin-05
+    project: finance-agent
+    category: new_module
+    expected_complexity: high
+    description: >-
+      Create a tax-lot tracking module that records cost basis per purchase
+      and supports FIFO, LIFO, and specific-identification methods.
+
+  # ── live-set-revival ───────────────────────────────────────
+  - id: lsr-01
+    project: live-set-revival
+    category: api_endpoint
+    expected_complexity: medium
+    description: >-
+      Add a POST /api/setlists/import endpoint that accepts a JSON setlist
+      and creates songs, cues, and transitions in the correct order.
+
+  - id: lsr-02
+    project: live-set-revival
+    category: config_change
+    expected_complexity: low
+    description: >-
+      Add a user-configurable default BPM and time signature that apply
+      when creating new songs without explicit tempo information.
+
+  - id: lsr-03
+    project: live-set-revival
+    category: refactor
+    expected_complexity: high
+    description: >-
+      Refactor the audio routing logic to decouple channel assignment from
+      song loading, allowing channels to be pre-configured independently.
+
+  - id: lsr-04
+    project: live-set-revival
+    category: test
+    expected_complexity: medium
+    description: >-
+      Add unit tests for the MIDI mapping engine covering velocity curves,
+      CC message routing, and program change handling.
+
+  - id: lsr-05
+    project: live-set-revival
+    category: new_module
+    expected_complexity: high
+    description: >-
+      Create a rehearsal-mode module that logs timing deviations from the
+      click track and generates a per-song accuracy report.
+
+  # ── agent-team ─────────────────────────────────────────────
+  - id: at-01
+    project: agent-team
+    category: api_endpoint
+    expected_complexity: medium
+    description: >-
+      Add a /api/runs/status endpoint that returns current orchestrator
+      state, active phase, elapsed time, and recent log entries.
+
+  - id: at-02
+    project: agent-team
+    category: config_change
+    expected_complexity: low
+    description: >-
+      Add configurable retry backoff settings for Claude API calls with
+      initial delay, multiplier, and max retries parameters.
+
+  - id: at-03
+    project: agent-team
+    category: refactor
+    expected_complexity: high
+    description: >-
+      Extract the Mattermost message formatting logic from orchestrator.py
+      into a dedicated MessageFormatter class with unit-testable methods.
+
+  - id: at-04
+    project: agent-team
+    category: test
+    expected_complexity: medium
+    description: >-
+      Add tests for the state persistence layer covering save, load, resume,
+      and corruption-recovery scenarios.
+
+  - id: at-05
+    project: agent-team
+    category: new_module
+    expected_complexity: high
+    description: >-
+      Create a metrics-collection module that tracks per-phase duration,
+      token usage, and tool-call counts, exporting to a JSONL log.
