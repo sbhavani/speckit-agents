@@ -559,3 +559,265 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Emoji preservation in feature descriptions
+# ---------------------------------------------------------------------------
+
+class TestEmojiPreservation:
+    """Test emoji preservation in orchestrator feature descriptions."""
+
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        msg.root_id = None
+        return Orchestrator(config, msg)
+
+    def test_feature_description_with_basic_emoji(self, tmp_path):
+        """Test that basic emojis are preserved in feature description."""
+        orch = self._make_orchestrator(tmp_path)
+
+        # Set feature with emoji description
+        orch.state.feature = {
+            "feature": "Add 🎉 feature",
+            "description": "Add a new feature with celebration 🎉 and success ✅",
+        }
+
+        # Verify emoji preserved in state
+        assert "🎉" in orch.state.feature["feature"]
+        assert "🎉" in orch.state.feature["description"]
+        assert "✅" in orch.state.feature["description"]
+
+    def test_feature_description_with_complex_emoji(self, tmp_path):
+        """Test that complex emoji sequences (family, flags) are preserved."""
+        orch = self._make_orchestrator(tmp_path)
+
+        # Set feature with complex emoji sequences
+        orch.state.feature = {
+            "feature": "Team 🎉",
+            "description": "Update family emoji: 👨‍👩‍👧‍👦 and celebration: 🎊",
+        }
+
+        # Verify complex emoji preserved
+        assert "👨‍👩‍👧‍👦" in orch.state.feature["description"]
+        assert "🎊" in orch.state.feature["description"]
+
+    def test_feature_description_with_mixed_emoji_categories(self, tmp_path):
+        """Test that mixed emoji categories are preserved."""
+        orch = self._make_orchestrator(tmp_path)
+
+        # Set feature with all emoji categories
+        orch.state.feature = {
+            "feature": "Feature 😀",
+            "description": "Hello 😀! Flag: 🇺🇸, Check: ✅, Family: 👨‍👩‍👧‍👦",
+        }
+
+        # Verify all categories preserved
+        assert "😀" in orch.state.feature["description"]
+        assert "🇺🇸" in orch.state.feature["description"]
+        assert "✅" in orch.state.feature["description"]
+        assert "👨‍👩‍👧‍👦" in orch.state.feature["description"]
+
+    def test_save_state_preserves_emoji(self, tmp_path):
+        """Test that saving state preserves emojis."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        msg.root_id = None
+        orch = Orchestrator(config, msg)
+
+        # Set feature with emojis
+        orch.state.feature = {
+            "feature": "Test 🎉",
+            "description": "Testing emoji preservation: ✅💯🔥",
+        }
+
+        # Save state
+        orch._save_state()
+
+        # Verify saved file contains emojis
+        data = json.loads((tmp_path / ".agent-team-state.json").read_text())
+        assert "🎉" in data["feature"]["feature"]
+        assert "✅" in data["feature"]["description"]
+        assert "💯" in data["feature"]["description"]
+        assert "🔥" in data["feature"]["description"]
+
+    def test_load_state_preserves_emoji(self, tmp_path):
+        """Test that loading state preserves emojis."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        msg.root_id = None
+
+        # Create state file with emojis directly
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps({
+            "version": 1,
+            "phase": "PM_SUGGEST",
+            "feature": {
+                "feature": "Emoji test 🎉",
+                "description": "Test with emoji ✅ and 🔥",
+            },
+            "pm_session": None,
+            "dev_session": None,
+            "pr_url": None,
+            "thread_root_id": None,
+            "branch_name": None,
+            "started_at": "2026-02-18T00:00:00",
+            "updated_at": "2026-02-18T00:00:00",
+        }))
+
+        # Load state
+        orch = Orchestrator(config, msg)
+        saved = orch._load_state()
+
+        # Verify emojis preserved after load
+        assert "🎉" in saved["feature"]["feature"]
+        assert "✅" in saved["feature"]["description"]
+        assert "🔥" in saved["feature"]["description"]
+
+    def test_feature_description_getter_preserves_emoji(self, tmp_path):
+        """Test that feature description getter preserves emojis."""
+        orch = self._make_orchestrator(tmp_path)
+
+        # Set feature with emojis
+        orch.state.feature = {
+            "feature": "Basic feature",
+            "description": "Priority: ✅, Status: 💯, Fire: 🔥",
+        }
+
+        # Get description (as done in _phase_dev_specify)
+        desc = orch.state.feature.get("description", orch.state.feature.get("feature"))
+
+        # Verify emojis preserved
+        assert "✅" in desc
+        assert "💯" in desc
+        assert "🔥" in desc
+
+
+# ---------------------------------------------------------------------------
+# Emoji preservation in orchestrator messages (T005)
+# ---------------------------------------------------------------------------
+
+class TestEmojiInOrchestratorMessages:
+    """Test emoji preservation in messages sent by the orchestrator."""
+
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        msg.root_id = None
+        return Orchestrator(config, msg)
+
+    @patch("orchestrator.time")
+    def test_post_summary_preserves_basic_emoji(self, mock_time, tmp_path):
+        """Test that _post_summary preserves basic emojis in messages."""
+        mock_time.time.return_value = 60.0  # 1m from epoch 0
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Add 🎉 feature"}
+        orch.state.phase = Phase.DONE
+        orch.state.pr_url = "https://github.com/example/repo/pull/42"
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 10.0), ("PM_SUGGEST", 50.0)]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        # Verify basic emojis are preserved in the summary
+        assert "🎉" in text
+        assert "Add 🎉 feature" in text
+        assert "Complete" in text
+
+    @patch("orchestrator.time")
+    def test_post_summary_preserves_multiple_emoji(self, mock_time, tmp_path):
+        """Test that _post_summary preserves multiple emoji types."""
+        mock_time.time.return_value = 120.0  # 2m
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Priority: 🔥 Status: ✅ Progress: 💯"}
+        orch.state.phase = Phase.DONE
+        orch.state.pr_url = "https://github.com/example/repo/pull/100"
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 20.0), ("DEV_IMPLEMENT", 100.0)]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        # Verify multiple emoji types are preserved
+        assert "🔥" in text
+        assert "✅" in text
+        assert "💯" in text
+
+    @patch("orchestrator.time")
+    def test_post_summary_preserves_flag_emoji(self, mock_time, tmp_path):
+        """Test that _post_summary preserves flag emojis."""
+        mock_time.time.return_value = 90.0  # 1m 30s
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "US 🇺🇸 Feature"}
+        orch.state.phase = Phase.DONE
+        orch.state.pr_url = "https://github.com/example/repo/pull/50"
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 15.0), ("PM_SUGGEST", 75.0)]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        # Verify flag emoji is preserved
+        assert "🇺🇸" in text
+
+    @patch("orchestrator.time")
+    def test_post_summary_preserves_complex_emoji_sequence(self, mock_time, tmp_path):
+        """Test that _post_summary preserves complex emoji sequences."""
+        mock_time.time.return_value = 180.0  # 3m
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Team: 👨‍👩‍👧‍👦 Feature 🎊"}
+        orch.state.phase = Phase.DONE
+        orch.state.pr_url = "https://github.com/example/repo/pull/75"
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 30.0), ("PM_SUGGEST", 150.0)]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        # Verify complex emoji sequence is preserved
+        assert "👨‍👩‍👧‍👦" in text
+        assert "🎊" in text
+
+    def test_start_thread_preserves_emoji(self, tmp_path):
+        """Test that emoji are preserved when starting a thread."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        msg.start_thread = MagicMock(return_value="test-post-id")
+        orch = Orchestrator(config, msg)
+
+        # Send a message with emojis
+        emoji_message = "Starting 🎉 feature: Add 🚀 support ✅"
+        orch.msg.start_thread(emoji_message, sender="Test")
+
+        # Verify the message was passed through with emoji preserved
+        call_args = orch.msg.start_thread.call_args
+        sent_message = call_args[0][0]
+        assert sent_message == emoji_message
+        assert "🎉" in sent_message
+        assert "🚀" in sent_message
+        assert "✅" in sent_message

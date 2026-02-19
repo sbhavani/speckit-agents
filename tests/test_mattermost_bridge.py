@@ -128,6 +128,43 @@ class TestSend:
         call_args = " ".join(mock_ssh.call_args[0][0])
         assert "openclaw" in call_args
 
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_with_emoji_basic(self, mock_ssh, mock_bridge):
+        """Messages with basic emojis should be preserved via Unicode escapes."""
+        mock_ssh.return_value = "{}"
+        emoji_message = "Feature: 🎉 Priority: ✅ Status: 💯"
+        mock_bridge.send(emoji_message, sender="PM Agent")
+        # Verify the emoji message is encoded as Unicode escapes in the JSON payload
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        # Emojis are converted to \\\\uXXXX format by json.dumps + shell quoting
+        assert "\\\\ud83c\\\\udf89" in call_args  # 🎉
+        assert "\\\\u2705" in call_args            # ✅
+        assert "\\\\ud83d\\\\udcaf" in call_args   # 💯
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_with_emoji_complex_sequence(self, mock_ssh, mock_bridge):
+        """Messages with complex emoji sequences should be preserved."""
+        mock_ssh.return_value = "{}"
+        complex_message = "Team: 👨‍👩‍👧‍👦 Celebration: 🎉"
+        mock_bridge.send(complex_message, sender="Dev Agent")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        # Complex emoji sequences use zero-width joiners encoded as \\u200d
+        assert "\\\\ud83d\\\\udc68\\\\u200d\\\\ud83d\\\\udc69\\\\u200d\\\\ud83d\\\\udc67\\\\u200d\\\\ud83d\\\\udc66" in call_args
+        assert "\\\\ud83c\\\\udf89" in call_args
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_with_emoji_mixed_categories(self, mock_ssh, mock_bridge):
+        """Messages with mixed emoji categories should be preserved."""
+        mock_ssh.return_value = "{}"
+        mixed_message = "Hello 😀! Flag: 🇺🇸, Check: ✅, Family: 👨‍👩‍👧‍👦"
+        mock_bridge.send(mixed_message, sender="PM Agent")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        # Verify various emoji categories are encoded
+        assert "\\\\ud83d\\\\ude00" in call_args    # 😀
+        assert "\\\\ud83c\\\\uddfa\\\\ud83c\\\\uddf8" in call_args  # 🇺🇸
+        assert "\\\\u2705" in call_args            # ✅
+        assert "\\\\ud83d\\\\udc68\\\\u200d\\\\ud83d\\\\udc69\\\\u200d\\\\ud83d\\\\udc67\\\\u200d\\\\ud83d\\\\udc66" in call_args  # 👨‍👩‍👧‍👦
+
 
 class TestReadPosts:
     @patch("mattermost_bridge.MattermostBridge._ssh")
