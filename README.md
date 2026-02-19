@@ -103,7 +103,7 @@ uv run python orchestrator.py --project finance-agent
 
 ## Architecture
 
-![Architecture diagram](docs/architecture.jpeg)
+![Overview](docs/overview.png)
 
 ## Configuration
 

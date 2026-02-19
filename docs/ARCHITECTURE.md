@@ -2,6 +2,8 @@
 
 System components, technical decisions, and dependencies.
 
+![Architecture](architecture.jpeg)
+
 ## High-Level Architecture
 
 ```
