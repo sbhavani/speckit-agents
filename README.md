@@ -187,8 +187,8 @@ docker compose -f deploy/docker-compose.yml up -d
 
 ## Maintainers
 
-- [Santosh Bhavani](https://github.com/sbhavani)
-- [Pardis Taghavi](https://github.com/PardisTaghavi)
+- [@PardisTaghavi](https://github.com/PardisTaghavi)
+- [@sbhavani](https://github.com/sbhavani)
 
 ## License
 
