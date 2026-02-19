@@ -13,3 +13,4 @@ config.local.yaml
 specs/
 .agent/
 experiments/results/
+experiments/swebench/
