@@ -55,12 +55,6 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-# Progress emoji markers for phase and task status
-IN_PROGRESS_EMOJI = "🔄"
-COMPLETED_EMOJI = "✅"
-FAILED_EMOJI = "❌"
-
-
 def _setup_logging() -> None:
     """Configure console (INFO) and file (DEBUG) logging handlers."""
     root = logging.getLogger()
@@ -114,6 +108,7 @@ class WorkflowState:
     pr_url: str | None = None
     root_post_id: str | None = None  # For Mattermost thread
     branch_name: str | None = None   # Feature branch name (e.g., "5-add-user-auth")
+    worker_handoff: bool = False      # True if published to stream for workers
 
 
 STATE_FILE = ".agent-team-state.json"
@@ -534,11 +529,14 @@ class Orchestrator:
         messenger: Messenger,
         project_path: str | None = None,
         prd_path: str | None = None,
+        project_name: str | None = None,
     ):
         self.cfg = config
         self.msg = messenger
         # Original repo path from config
         self.original_path = project_path or config.get("project", {}).get("path", ".")
+        # Project name (key in config projects, or from --project flag)
+        self.project_name = project_name
         # Worktree path (created on start)
         self.worktree_path: str | None = None
         # Current working path (original or worktree)
@@ -688,6 +686,7 @@ class Orchestrator:
             "dev_session": self.state.dev_session,
             "pr_url": self.state.pr_url,
             "branch_name": self.state.branch_name,
+            "worker_handoff": self.state.worker_handoff,
             "original_path": self.original_path,
             "worktree_path": self.worktree_path,
             "thread_root_id": self.msg.root_id,  # Save thread ID for resume
@@ -806,39 +805,39 @@ class Orchestrator:
                 if pre:
                     self._augment_context[phase] = pre
 
-            try:
-                if is_checkpoint:
-                    if not method():
-                        # Post-hook even on rejection (for logging)
-                        if self._augmentor:
-                            post = self._augmentor.run_post_hook(phase, self.state)
-                            if post:
-                                self._augment_context[f"{phase}_post"] = post
-                        self._phase_timings.append((phase.name, time.time() - t0))
-                        return  # rejected
-                else:
-                    method()
+            if is_checkpoint:
+                if not method():
+                    # Post-hook even on rejection (for logging)
+                    if self._augmentor:
+                        post = self._augmentor.run_post_hook(phase, self.state)
+                        if post:
+                            self._augment_context[f"{phase}_post"] = post
+                    self._phase_timings.append((phase.name, time.time() - t0))
+                    return  # rejected
+            else:
+                method()
 
-                # Post-stage validation hook
-                if self._augmentor:
-                    post = self._augmentor.run_post_hook(phase, self.state)
-                    if post:
-                        self._augment_context[f"{phase}_post"] = post
-            except Exception as e:
-                # Display failure emoji when phase fails
-                error_msg = self._truncate_error(str(e))
-                failure_msg = f"📋 {phase.name.replace('_', ' ').title()} — {FAILED_EMOJI} Failed: {error_msg}"
-                logger.error(f"Phase {phase.name} failed: {e}")
-                self.msg.send(failure_msg, sender="Orchestrator")
-                raise
+            # If worker handoff complete, skip remaining dev phases
+            # The worker will pick up from the stream and run them
+            logger.info(f"Phase {phase.name}: worker_handoff={self.state.worker_handoff}")
+            if self.state.worker_handoff and phase == Phase.REVIEW:
+                logger.info("Worker handoff complete - orchestrator skipping dev phases")
+                self.msg.send(
+                    "✅ Feature published to work queue. Workers will handle implementation.",
+                    sender="Orchestrator",
+                )
+                # Reset for next cycle in loop mode
+                self.state.worker_handoff = False
+                self._clear_state()
+                return
+
+            # Post-stage validation hook
+            if self._augmentor:
+                post = self._augmentor.run_post_hook(phase, self.state)
+                if post:
+                    self._augment_context[f"{phase}_post"] = post
 
             self._phase_timings.append((phase.name, time.time() - t0))
-
-            # Display completion message with emoji
-            display_name = phase.name.replace('_', ' ').title()
-            completion_msg = f"📋 {display_name} — {COMPLETED_EMOJI} Complete"
-            logger.info(f"Phase {phase.name} complete")
-            self.msg.send(completion_msg, sender="Orchestrator")
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -945,6 +944,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         if auto:
             logger.info("Auto-approve enabled, proceeding")
             self.msg.send("Auto-approved (config: auto_approve=true)", sender="Orchestrator")
+            # Publish to stream for workers
+            self._publish_feature_to_stream()
+            self.state.worker_handoff = True
+            logger.info(f"Set worker_handoff=True (auto-approve), feature={self.state.feature.get('feature')}")
             return True
 
         timeout = self.cfg.get("workflow", {}).get("approval_timeout", 300)
@@ -955,6 +958,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 f"No response after {timeout}s — auto-approving.",
                 sender="Orchestrator",
             )
+            # Publish to stream for workers
+            self._publish_feature_to_stream()
+            self.state.worker_handoff = True
+            logger.info(f"Set worker_handoff=True (timeout), feature={self.state.feature.get('feature')}")
             return True
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
@@ -973,7 +980,58 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             self.state.feature["description"] = response
             self.state.feature["feature"] = response[:60]
 
+        # Publish feature to Redis stream for workers to pick up
+        self._publish_feature_to_stream()
+
+        # Mark that we handed off to workers - orchestrator should skip dev phases
+        self.state.worker_handoff = True
+        logger.info(f"Set worker_handoff=True, feature={self.state.feature.get('feature')}")
+
         return True
+
+    def _publish_feature_to_stream(self) -> None:
+        """Publish approved feature to Redis stream for worker pickup."""
+        import redis
+
+        redis_config = self.cfg.get("redis_streams", {})
+        if not redis_config:
+            logger.info("No redis_streams config, skipping stream publish")
+            return
+
+        stream_name = redis_config.get("stream", "feature-requests")
+        redis_url = redis_config.get("url", "redis://localhost:6379")
+
+        try:
+            r = redis.from_url(redis_url)
+            feature = self.state.feature
+            # Use project_name if set, otherwise try to determine from config
+            project = self.project_name or self.cfg.get("project", {}).get("path", "")
+            if not project and "projects" in self.cfg:
+                # Multi-project mode - find current project (use original_path to match config)
+                for proj_name, proj_cfg in self.cfg.get("projects", {}).items():
+                    if proj_cfg.get("path") == self.original_path:
+                        project = proj_name
+                        break
+
+            message = {
+                "feature": feature.get("description", feature.get("feature", "")),
+                "project": project,
+                "rationale": feature.get("rationale", ""),
+                "priority": feature.get("priority", ""),
+            }
+
+            msg_id = r.xadd(stream_name, message)
+            logger.info(f"Published feature to stream {stream_name}: {msg_id}")
+            self.msg.send(
+                f"📎 Published to work queue (worker will pick up shortly)",
+                sender="Orchestrator",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish to stream: {e}")
+            self.msg.send(
+                f"⚠️ Could not publish to work queue: {e}",
+                sender="Orchestrator",
+            )
 
     def _phase_dev_specify(self) -> None:
         self.state.phase = Phase.DEV_SPECIFY
@@ -1496,16 +1554,7 @@ Otherwise, implement all tasks to completion."""
                 f"Use this to understand the current state before implementing.\n\n{prompt}"
             )
 
-        try:
-            self._run_dev_with_polling(prompt)
-        except Exception as e:
-            error_msg = self._truncate_error(str(e))
-            logger.error("Implementation failed: %s", e)
-            self.msg.send(
-                f"{FAILED_EMOJI} Implementation failed: {error_msg}",
-                sender="Dev Agent",
-            )
-            raise
+        self._run_dev_with_polling(prompt)
 
         # Process result
         # Note: _run_dev_with_polling already updates state.dev_session
@@ -1584,27 +1633,8 @@ Otherwise, implement all tasks to completion."""
 
             for task in sequential_tasks:
                 logger.info("Running sequential task: %s", task['id'])
-                # Send task start message
-                self.msg.send(
-                    f"[{task['id']}] {task['description']} — {IN_PROGRESS_EMOJI} Starting...",
-                    sender="Dev Agent",
-                )
-                try:
-                    prompt = self._build_task_prompt(task, feature_desc, pre)
-                    self._run_dev_with_polling(prompt, timeout=1800)
-                    # Send task completion message
-                    self.msg.send(
-                        f"[{task['id']}] {task['description']} — {COMPLETED_EMOJI} Complete",
-                        sender="Dev Agent",
-                    )
-                except Exception as e:
-                    error_msg = self._truncate_error(str(e))
-                    logger.error("Sequential task failed: %s - %s", task['id'], e)
-                    self.msg.send(
-                        f"[{task['id']}] {task['description']} — {FAILED_EMOJI} Failed: {error_msg}",
-                        sender="Dev Agent",
-                    )
-                    raise
+                prompt = self._build_task_prompt(task, feature_desc, pre)
+                self._run_dev_with_polling(prompt, timeout=1800)
 
         # Run parallel batches
         for batch_idx, batch in enumerate(parallel_batches):
@@ -1613,13 +1643,6 @@ Otherwise, implement all tasks to completion."""
                 sender="Dev Agent",
             )
             logger.info("Running parallel batch %d with %d tasks", batch_idx + 1, len(batch))
-
-            # Send start messages for all tasks in batch
-            for task in batch:
-                self.msg.send(
-                    f"[{task['id']}] {task['description']} — {IN_PROGRESS_EMOJI} Starting...",
-                    sender="Dev Agent",
-                )
 
             # Run tasks in parallel using ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=len(batch)) as executor:
@@ -1639,21 +1662,15 @@ Otherwise, implement all tasks to completion."""
                     try:
                         future.result()  # Raise any exceptions
                         logger.info("Parallel task completed: %s", task['id'])
-                        # Send task completion message
-                        self.msg.send(
-                            f"[{task['id']}] {task['description']} — {COMPLETED_EMOJI} Complete",
-                            sender="Dev Agent",
-                        )
                     except Exception as e:
-                        error_msg = self._truncate_error(str(e))
                         logger.error("Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"[{task['id']}] {task['description']} — {FAILED_EMOJI} Failed: {error_msg}",
+                            f"⚠️ Task {task['id']} failed: {e}",
                             sender="Dev Agent",
                         )
                         raise
 
-        self.msg.send(f"{COMPLETED_EMOJI} All tasks complete", sender="Dev Agent")
+        self.msg.send("✅ All tasks complete", sender="Dev Agent")
 
     def _build_task_prompt(self, task: dict, feature_desc: str, pre: dict | None) -> str:
         """Build the prompt for a specific task implementation."""
@@ -1998,28 +2015,20 @@ Be specific about:
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
-    def _truncate_error(self, error: str, max_length: int = 200) -> str:
-        """Truncate error message to specified length."""
-        if len(error) <= max_length:
-            return error
-        return error[:max_length] + "..."
-
     def _display_phase_status(self, phase_name: str) -> None:
-        """Display current phase status with elapsed time and emoji."""
+        """Display current phase status with elapsed time."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
 
         total_elapsed = time.time() - self._run_start_time
         phase_elapsed = time.time() - self._phase_start_time
 
-        # Format phase name for display (e.g., DEV_SPECIFY -> Specify)
-        display_name = phase_name.replace('_', ' ').title()
-
         status_msg = (
-            f"📋 {display_name} — {IN_PROGRESS_EMOJI} Starting... "
-            f"(Phase: {self._fmt_duration(phase_elapsed)}, Total: {self._fmt_duration(total_elapsed)})"
+            f"Phase: {phase_name} | "
+            f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
+            f"Total: {self._fmt_duration(total_elapsed)}"
         )
-        logger.info(f"Phase: {phase_name} - Starting")
+        logger.info(status_msg)
         self.msg.send(status_msg, sender="Orchestrator")
 
     def _post_summary(self, error: str | None = None) -> None:
@@ -2266,7 +2275,7 @@ def main() -> None:
         )
         messenger = Messenger(bridge=bridge)
 
-    orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path)
+    orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path, project_name=args.project)
 
     # Resolve tool augmentation: --no-tools > --tools > config > default (disabled)
     if args.no_tools:
@@ -2289,6 +2298,7 @@ def main() -> None:
         orchestrator.state.dev_session = saved.get("dev_session")
         orchestrator.state.pr_url = saved.get("pr_url")
         orchestrator.state.branch_name = saved.get("branch_name")
+        orchestrator.state.worker_handoff = saved.get("worker_handoff", False)
         orchestrator._workflow_type = saved.get("workflow_type", "normal")
         orchestrator._started_at = saved.get("started_at")
         # Restore paths from saved state

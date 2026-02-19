@@ -183,10 +183,12 @@ class Worker:
 
         logger.info(f"Received message {msg_id}: {payload}")
 
-        project_name = payload.get("project_name", "")
+        # Support both "project" (orchestrator) and "project_name" (legacy)
+        project_name = payload.get("project") or payload.get("project_name", "")
         channel_id = payload.get("channel_id", "")
         feature = payload.get("feature", "")
         command = payload.get("command", "suggest")
+        use_simple = payload.get("simple", False)  # Optional: run with --simple flag
 
         if self.dry_run:
             logger.info("[DRY RUN] Would run orchestrator with:")
@@ -200,7 +202,11 @@ class Worker:
 
         try:
             # Build the orchestrator command
-            cmd = ["uv", "run", "python", "orchestrator.py", "--simple"]
+            # Default: --feature runs full dev cycle (DEV_SPECIFY → DEV_PLAN → DEV_TASKS → PLAN_REVIEW → DEV_IMPLEMENT → CREATE_PR)
+            # With --simple: skips specify/plan/tasks, goes straight to implement
+            cmd = ["uv", "run", "python", "orchestrator.py"]
+            if use_simple:
+                cmd.append("--simple")
             if project_name:
                 cmd.extend(["--project", project_name])
             if channel_id:
