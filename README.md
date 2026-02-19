@@ -8,7 +8,7 @@ Both agents are powered by Claude Code CLI. The Developer agent uses **[Spec Kit
 
 ## Status
 
-[![CI](https://github.com/sbhavani/speckit-agents/actions/workflows/test.yml/badge.svg)](https://github.com/sbhavani/speckit-agents/actions)
+[![CI](https://github.com/sbhavani/speckit-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/sbhavani/speckit-agents/actions)
 
 ## Relationship to Spec Kit
 
