@@ -99,6 +99,12 @@ class Phase(Enum):
     DONE = auto()
 
 
+# Emoji constants for phase status indicators
+IN_PROGRESS_EMOJI = "🔄"
+COMPLETED_EMOJI = "✅"
+FAILED_EMOJI = "❌"
+
+
 @dataclass
 class WorkflowState:
     phase: Phase = Phase.INIT
@@ -750,7 +756,7 @@ class Orchestrator:
                 break
             except Exception as e:
                 self._save_state()
-                logger.exception("Workflow error")
+                logger.exception(f"{FAILED_EMOJI} Workflow error")
                 self._post_summary(error=str(e))
                 break
 
@@ -801,22 +807,33 @@ class Orchestrator:
                     self._augment_context[phase] = pre
 
             if is_checkpoint:
-                if not method():
-                    # Post-hook even on rejection (for logging)
-                    if self._augmentor:
-                        post = self._augmentor.run_post_hook(phase, self.state)
-                        if post:
-                            self._augment_context[f"{phase}_post"] = post
-                    self._phase_timings.append((phase.name, time.time() - t0))
-                    return  # rejected
+                try:
+                    if not method():
+                        # Post-hook even on rejection (for logging)
+                        if self._augmentor:
+                            post = self._augmentor.run_post_hook(phase, self.state)
+                            if post:
+                                self._augment_context[f"{phase}_post"] = post
+                        self._phase_timings.append((phase.name, time.time() - t0))
+                        return  # rejected
+                except Exception as e:
+                    logger.error(f"{FAILED_EMOJI} Phase {phase.name} failed: {e}")
+                    raise
             else:
-                method()
+                try:
+                    method()
+                except Exception as e:
+                    logger.error(f"{FAILED_EMOJI} Phase {phase.name} failed: {e}")
+                    raise
 
             # Post-stage validation hook
             if self._augmentor:
                 post = self._augmentor.run_post_hook(phase, self.state)
                 if post:
                     self._augment_context[f"{phase}_post"] = post
+
+            # Log successful phase completion
+            logger.info(f"{COMPLETED_EMOJI} Phase: {phase.name} completed")
 
             self._phase_timings.append((phase.name, time.time() - t0))
 
@@ -830,14 +847,14 @@ class Orchestrator:
 
     def _phase_init(self) -> None:
         self.state.phase = Phase.INIT
-        logger.info("Phase: INIT")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: INIT")
 
         # Validate config and connectivity (skip in dry-run)
         if not self.msg.dry_run and self.msg.bridge:
             logger.info("Validating configuration...")
             valid, errors = self.msg.bridge.validate()
             if not valid:
-                error_msg = "Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors)
+                error_msg = f"{FAILED_EMOJI} Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors)
                 logger.error(error_msg)
                 self.msg.send(error_msg, sender="Orchestrator")
                 raise RuntimeError(f"Configuration validation failed: {errors}")
@@ -866,7 +883,7 @@ class Orchestrator:
 
     def _phase_pm_suggest(self) -> None:
         self.state.phase = Phase.PM_SUGGEST
-        logger.info("Phase: PM_SUGGEST")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: PM_SUGGEST")
 
         prompt = f"""Read {self.prd_path} thoroughly. Then scan the codebase and git log to understand what features are already implemented.
 
@@ -906,7 +923,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_review(self) -> bool:
         self.state.phase = Phase.REVIEW
-        logger.info("Phase: REVIEW")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: REVIEW")
 
         f = self.state.feature
         # Start thread with feature name
@@ -957,7 +974,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_specify(self) -> None:
         self.state.phase = Phase.DEV_SPECIFY
-        logger.info("Phase: DEV_SPECIFY")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
@@ -997,7 +1014,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
-        logger.info("Phase: DEV_PLAN")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: DEV_PLAN")
         self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
         prompt = "/speckit.plan"
@@ -1031,7 +1048,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
-        logger.info("Phase: DEV_TASKS")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: DEV_TASKS")
         self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
 
         prompt = "/speckit.tasks"
@@ -1099,7 +1116,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         Returns True to proceed, False to abort.
         """
         self.state.phase = Phase.PLAN_REVIEW
-        logger.info("Phase: PLAN_REVIEW")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: PLAN_REVIEW")
 
         # Mark position BEFORE posting the review message so we capture
         # any human messages that arrived during earlier phases too.
@@ -1400,7 +1417,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
-        logger.info("Phase: DEV_IMPLEMENT")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: DEV_IMPLEMENT")
 
         # Clean up any stale spec/plan/tasks files from previous features
         # This prevents implementing the wrong feature in simple mode
@@ -1585,9 +1602,9 @@ Otherwise, implement all tasks to completion."""
                         future.result()  # Raise any exceptions
                         logger.info("Parallel task completed: %s", task['id'])
                     except Exception as e:
-                        logger.error("Parallel task failed: %s - %s", task['id'], e)
+                        logger.error(f"{FAILED_EMOJI} Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"⚠️ Task {task['id']} failed: {e}",
+                            f"{FAILED_EMOJI} Task {task['id']} failed: {e}",
                             sender="Dev Agent",
                         )
                         raise
@@ -1831,7 +1848,7 @@ Otherwise, complete this task completely."""
 
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
-        logger.info("Phase: CREATE_PR")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: CREATE_PR")
         self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent")
 
         prompt = """Create a pull request for all the changes on this branch.
@@ -1855,7 +1872,7 @@ Otherwise, complete this task completely."""
     def _phase_pm_learn(self) -> None:
         """Have PM agent write a learning entry to .agent/product-manager.md journal."""
         self.state.phase = Phase.PM_LEARN
-        logger.info("Phase: PM_LEARN")
+        logger.info(f"{IN_PROGRESS_EMOJI} Phase: PM_LEARN")
         self.msg.send("📖 **Learn** — Recording learnings...", sender="PM Agent")
 
         feature_name = self.state.feature.get("feature", "Unknown")
@@ -1904,7 +1921,7 @@ Be specific about:
 
     def _phase_done(self) -> None:
         self.state.phase = Phase.DONE
-        logger.info("Phase: DONE")
+        logger.info(f"{COMPLETED_EMOJI} Phase: DONE")
 
         # Finalize augmentation logging
         if self._augmentor:
@@ -1961,7 +1978,7 @@ Be specific about:
         duration_str = self._fmt_duration(total)
 
         if error:
-            status = f"Failed at {self.state.phase.name}"
+            status = f"{FAILED_EMOJI} Failed at {self.state.phase.name}"
         else:
             status = "Complete"
 
@@ -1990,7 +2007,7 @@ Be specific about:
                 f"Feature: {feature_name}\n"
                 f"Status: {status} | Duration: {duration_str}\n\n"
                 f"{table}{aug_line}\n\n"
-                f"Error: {error}\n"
+                f"{FAILED_EMOJI} Error: {error}\n"
                 f"Run with `--resume` to continue."
             )
         else:
