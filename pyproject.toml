@@ -7,6 +7,10 @@ dependencies = [
     "pyyaml>=6.0",
     "redis>=5.0",
     "anthropic>=0.25.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "httpx>=0.24.0",
+    "python-multipart>=0.0.6",
 ]
 
 [tool.setuptools.packages.find]
@@ -15,11 +19,13 @@ where = ["src"]
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.21.0",
     "mypy>=1.0",
     "ruff>=0.1",
 ]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 markers = [
     "integration: tests that require SSH access to mac-mini-i7.local and live Mattermost",
 ]
@@ -47,6 +53,8 @@ target-version = "py310"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-asyncio>=0.21.0",
     "mypy>=1.0",
     "ruff>=0.1",
+    "httpx>=0.24.0",
 ]

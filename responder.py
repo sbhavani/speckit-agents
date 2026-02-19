@@ -14,6 +14,7 @@ from typing import Optional
 import anthropic
 import redis
 import yaml
+from concurrent.futures import ThreadPoolExecutor
 
 from mattermost_bridge import MattermostBridge
 
@@ -71,9 +72,133 @@ class Responder:
             logger.warning(f"Failed to connect to Redis: {e}. Falling back to subprocess mode.")
             self.redis = None
 
+        # Initialize webhook server config
+        webhook_config = config.get("webhook", {})
+        self.webhook_enabled = webhook_config.get("enabled", False)
+        self.webhook_host = webhook_config.get("host", "0.0.0.0")
+        self.webhook_port = webhook_config.get("port", 8080)
+        self.webhook_secret = webhook_config.get("secret", "")
+        self.webhook_server = None
+        self.webhook_executor = None
+
+        # Slash commands config
+        slash_config = config.get("slash_commands", {})
+        self.command_prefix = slash_config.get("prefix", "/agent-team")
+        self.slash_commands_enabled = slash_config.get("enabled", False)
+        self.callback_url = slash_config.get("callback_url", "")
+
+    def register_slash_commands(self) -> None:
+        """Register slash commands with Mattermost."""
+        if not self.slash_commands_enabled:
+            logger.info("Slash command registration is disabled in config")
+            return
+
+        if not self.callback_url:
+            logger.warning("No callback_url configured, skipping command registration")
+            return
+
+        try:
+            from src.slash_commands.registry import SlashCommandRegistry
+
+            registry = SlashCommandRegistry(
+                mattermost_url=self.cfg.get("mattermost", {}).get("url", "http://localhost:8065"),
+                bot_token=self.cfg.get("mattermost", {}).get("dev_bot_token", ""),
+            )
+
+            # Define commands to register
+            commands = [
+                {
+                    "trigger": "agent-team",
+                    "description": "Agent Team - AI-powered feature development",
+                },
+            ]
+
+            # Get existing commands
+            existing = registry.list_commands()
+            existing_triggers = {cmd.get("trigger") for cmd in existing}
+
+            for cmd in commands:
+                trigger = cmd["trigger"]
+                if trigger in existing_triggers:
+                    logger.info(f"Command /{trigger} already registered")
+                    continue
+
+                result = registry.register_command(
+                    trigger=trigger,
+                    callback_url=self.callback_url,
+                    description=cmd["description"],
+                )
+
+                if "error" in result:
+                    logger.error(f"Failed to register /{trigger}: {result.get('error')}")
+                else:
+                    logger.info(f"Registered command /{trigger}")
+
+        except Exception as e:
+            logger.error(f"Error registering slash commands: {e}")
+
+    def start_webhook_server(self) -> None:
+        """Start the webhook server in a separate thread."""
+        if not self.webhook_enabled:
+            logger.info("Webhook server is disabled in config")
+            return
+
+        try:
+            # Import here to avoid circular imports
+            from src.webhook.server import create_app
+
+            # Create webhook handler config
+            handler_config = {
+                "redis_url": self.redis_url,
+                "stream": self.redis_stream,
+            }
+
+            app = create_app(
+                webhook_secret=self.webhook_secret,
+                command_prefix=self.command_prefix,
+                host=self.webhook_host,
+                port=self.webhook_port,
+                config=handler_config,
+            )
+
+            import uvicorn
+
+            config_uvicorn = uvicorn.Config(
+                app=app,
+                host=self.webhook_host,
+                port=self.webhook_port,
+                log_level="info",
+            )
+            self.webhook_server = uvicorn.Server(config_uvicorn)
+
+            # Run in a separate thread
+            self.webhook_executor = ThreadPoolExecutor(max_workers=1)
+            self.webhook_executor.submit(self.webhook_server.run)
+
+            logger.info(f"Webhook server started on {self.webhook_host}:{self.webhook_port}")
+        except Exception as e:
+            logger.error(f"Failed to start webhook server: {e}")
+            self.webhook_enabled = False
+
+    def stop_webhook_server(self) -> None:
+        """Stop the webhook server."""
+        if self.webhook_server:
+            self.webhook_server.should_exit = True
+            if self.webhook_executor:
+                self.webhook_executor.shutdown(wait=True)
+            logger.info("Webhook server stopped")
+
     def run(self) -> None:
         """Main loop - poll for commands."""
         logger.info("Responder started, listening for commands...")
+
+        # Start webhook server if enabled
+        if self.webhook_enabled:
+            self.start_webhook_server()
+
+        # Register slash commands with Mattermost if enabled
+        if self.slash_commands_enabled:
+            self.register_slash_commands()
 
         # Validate config on startup
         self.bridge.validate()
