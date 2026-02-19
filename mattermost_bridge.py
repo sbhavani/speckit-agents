@@ -96,11 +96,22 @@ class MattermostBridge:
     # Send (dual identity)
     # ------------------------------------------------------------------
 
-    def send(self, message: str, sender: str | None = None, root_id: str | None = None, channel_id: str | None = None) -> dict:
+    def send(self, message: str, sender: str | None = None, root_id: str | None = None, channel_id: str | None = None, emoji: str | None = None) -> dict:
         """Send a message to the channel (optionally as a thread reply).
 
         Uses Mattermost API directly (no OpenClaw dependency).
+
+        Args:
+            message: The message text to send
+            sender: Optional sender name (e.g., "PM Agent", "Dev Agent")
+            root_id: Optional parent message ID for threading
+            channel_id: Optional channel ID override
+            emoji: Optional emoji prefix (e.g., "🔄", "✅", "❌")
         """
+        # Prefix message with emoji if provided
+        if emoji:
+            message = f"{emoji} {message}"
+
         # Use provided channel_id or fall back to default
         target_channel = channel_id or self.channel_id
 
