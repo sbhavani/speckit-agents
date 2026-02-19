@@ -830,7 +830,7 @@ class Orchestrator:
 
     def _phase_init(self) -> None:
         self.state.phase = Phase.INIT
-        logger.info("Phase: INIT")
+        logger.info("🔄 Phase: INIT")
 
         # Validate config and connectivity (skip in dry-run)
         if not self.msg.dry_run and self.msg.bridge:
@@ -866,7 +866,7 @@ class Orchestrator:
 
     def _phase_pm_suggest(self) -> None:
         self.state.phase = Phase.PM_SUGGEST
-        logger.info("Phase: PM_SUGGEST")
+        logger.info("🔄 Phase: PM_SUGGEST")
 
         prompt = f"""Read {self.prd_path} thoroughly. Then scan the codebase and git log to understand what features are already implemented.
 
@@ -906,7 +906,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_review(self) -> bool:
         self.state.phase = Phase.REVIEW
-        logger.info("Phase: REVIEW")
+        logger.info("🔄 Phase: REVIEW")
 
         f = self.state.feature
         # Start thread with feature name
@@ -957,7 +957,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_specify(self) -> None:
         self.state.phase = Phase.DEV_SPECIFY
-        logger.info("Phase: DEV_SPECIFY")
+        logger.info("🔄 Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
@@ -997,7 +997,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
-        logger.info("Phase: DEV_PLAN")
+        logger.info("🔄 Phase: DEV_PLAN")
         self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
         prompt = "/speckit.plan"
@@ -1031,7 +1031,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
-        logger.info("Phase: DEV_TASKS")
+        logger.info("🔄 Phase: DEV_TASKS")
         self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
 
         prompt = "/speckit.tasks"
@@ -1099,7 +1099,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         Returns True to proceed, False to abort.
         """
         self.state.phase = Phase.PLAN_REVIEW
-        logger.info("Phase: PLAN_REVIEW")
+        logger.info("🔄 Phase: PLAN_REVIEW")
 
         # Mark position BEFORE posting the review message so we capture
         # any human messages that arrived during earlier phases too.
@@ -1400,7 +1400,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
-        logger.info("Phase: DEV_IMPLEMENT")
+        logger.info("🔄 Phase: DEV_IMPLEMENT")
 
         # Clean up any stale spec/plan/tasks files from previous features
         # This prevents implementing the wrong feature in simple mode
@@ -1831,7 +1831,7 @@ Otherwise, complete this task completely."""
 
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
-        logger.info("Phase: CREATE_PR")
+        logger.info("🔄 Phase: CREATE_PR")
         self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent")
 
         prompt = """Create a pull request for all the changes on this branch.
@@ -1855,7 +1855,7 @@ Otherwise, complete this task completely."""
     def _phase_pm_learn(self) -> None:
         """Have PM agent write a learning entry to .agent/product-manager.md journal."""
         self.state.phase = Phase.PM_LEARN
-        logger.info("Phase: PM_LEARN")
+        logger.info("🔄 Phase: PM_LEARN")
         self.msg.send("📖 **Learn** — Recording learnings...", sender="PM Agent")
 
         feature_name = self.state.feature.get("feature", "Unknown")
@@ -1904,7 +1904,7 @@ Be specific about:
 
     def _phase_done(self) -> None:
         self.state.phase = Phase.DONE
-        logger.info("Phase: DONE")
+        logger.info("✅ Phase: DONE")
 
         # Finalize augmentation logging
         if self._augmentor:
@@ -1946,7 +1946,7 @@ Be specific about:
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"🔄 Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
