@@ -53,6 +53,32 @@ mattermost:
   # Move to config.local.yaml: pm_bot_token
   pm_bot_user_id: osnrc8yrpffifj56friubo5dxr
 
+webhook:
+  # Webhook server host and port
+  host: "0.0.0.0"
+  port: 8080
+  # HMAC secret for webhook authentication (min 16 chars recommended)
+  # Move to config.local.yaml: webhook_secret
+  secret: "change-me-in-production"
+  # Enable/disable webhook server
+  enabled: true
+
+slash_commands:
+  # Command prefix (default: /agent-team)
+  prefix: "/agent-team"
+  # Callback URL for slash commands (must be reachable from Mattermost server)
+  # Example: "https://your-domain.com/command"
+  callback_url: "http://localhost:8080/command"
+  # Enable/disable slash command handling
+  enabled: true
+  # Commands to register
+  commands:
+    - suggest
+    - resume
+    - cancel
+    - help
+    - status
+
 redis_streams:
   # Redis connection URL
   url: "redis://localhost:6379"

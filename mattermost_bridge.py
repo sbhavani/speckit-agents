@@ -335,6 +335,180 @@ class MattermostBridge:
         return None
 
     # ------------------------------------------------------------------
+    # Slash Command Registration
+    # ------------------------------------------------------------------
+
+    def register_slash_command(
+        self,
+        trigger: str,
+        callback_url: str,
+        description: str = "",
+        team_id: str = "",
+    ) -> dict:
+        """Register a slash command with Mattermost.
+
+        Args:
+            trigger: Command trigger (without leading slash, e.g., "agent-team")
+            callback_url: URL Mattermost calls when command is invoked
+            description: Human-readable description
+            team_id: Optional team ID to register command for
+
+        Returns:
+            Response from Mattermost API
+        """
+        if not self.dev_bot_token:
+            logger.warning("No bot token configured, cannot register slash command")
+            return {"error": "no_token"}
+
+        payload = {
+            "command": f"/{trigger}",
+            "url": callback_url,
+            "method": "POST",
+            "username": "agent-team",
+            "description": description or f"Agent Team {trigger} command",
+        }
+
+        if team_id:
+            payload["team_id"] = team_id
+
+        payload_json = json.dumps(payload)
+        url = f"{self.mattermost_url}/api/v4/commands"
+
+        if self.use_ssh:
+            curl_cmd = [
+                "curl", "-sf",
+                "-X", "POST",
+                f"'{url}'",
+                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
+                "-H", "'Content-Type: application/json'",
+                "-d", self._shell_quote(payload_json),
+            ]
+        else:
+            curl_cmd = [
+                "curl", "-sf",
+                "-X", "POST",
+                url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+                "-H", "Content-Type: application/json",
+                "-d", payload_json,
+            ]
+
+        try:
+            output = self._ssh(curl_cmd, timeout=30)
+            logger.info(f"Registered slash command: /{trigger}")
+            return json.loads(output)
+        except Exception as e:
+            logger.error(f"Failed to register slash command: {e}")
+            return {"error": str(e)}
+
+    def list_slash_commands(self, team_id: str = "") -> list[dict]:
+        """List registered slash commands.
+
+        Args:
+            team_id: Optional team ID to filter by
+
+        Returns:
+            List of registered commands
+        """
+        if not self.dev_bot_token:
+            return []
+
+        url = f"{self.mattermost_url}/api/v4/commands"
+        if team_id:
+            url += f"?team_id={team_id}"
+
+        if self.use_ssh:
+            curl_cmd = [
+                "curl", "-sf",
+                f"'{url}'",
+                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
+            ]
+        else:
+            curl_cmd = [
+                "curl", "-sf",
+                url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ]
+
+        try:
+            output = self._ssh(curl_cmd, timeout=30)
+            return json.loads(output)
+        except Exception as e:
+            logger.warning(f"Failed to list slash commands: {e}")
+            return []
+
+    def delete_slash_command(self, command_id: str) -> bool:
+        """Delete a registered slash command.
+
+        Args:
+            command_id: Command ID to delete
+
+        Returns:
+            True if successful
+        """
+        if not self.dev_bot_token:
+            return False
+
+        url = f"{self.mattermost_url}/api/v4/commands/{command_id}"
+
+        if self.use_ssh:
+            curl_cmd = [
+                "curl", "-sf",
+                "-X", "DELETE",
+                f"'{url}'",
+                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
+            ]
+        else:
+            curl_cmd = [
+                "curl", "-sf",
+                "-X", "DELETE",
+                url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ]
+
+        try:
+            self._ssh(curl_cmd, timeout=15)
+            logger.info(f"Deleted slash command: {command_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete slash command: {e}")
+            return False
+
+    def register_all_commands(
+        self,
+        command_prefix: str = "agent-team",
+        callback_url: str = "",
+    ) -> list[dict]:
+        """Register all agent-team slash commands.
+
+        Args:
+            command_prefix: Command prefix (e.g., "agent-team" for /agent-team)
+            callback_url: Base callback URL
+
+        Returns:
+            List of registration results
+        """
+        commands = [
+            ("suggest", "Start a new feature workflow"),
+            ("resume", "Resume an interrupted workflow"),
+            ("cancel", "Cancel a running workflow"),
+            ("status", "Show current workflow status"),
+            ("help", "Show help message"),
+        ]
+
+        results = []
+        for cmd, desc in commands:
+            trigger = f"{command_prefix} {cmd}" if command_prefix else cmd
+            result = self.register_slash_command(
+                trigger=trigger,
+                callback_url=callback_url,
+                description=desc,
+            )
+            results.append({"command": cmd, "result": result})
+
+        return results
+
+    # ------------------------------------------------------------------
     # SSH helper
     # ------------------------------------------------------------------
 
