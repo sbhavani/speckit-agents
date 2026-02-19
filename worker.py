@@ -9,7 +9,6 @@ Usage:
 """
 
 import argparse
-import json
 import logging
 import os
 import subprocess
@@ -108,7 +107,7 @@ class Worker:
             if "BUSYGROUP" in str(e):
                 logger.info(f"Consumer group already exists: {self.consumer_group}")
             elif "NOSPC" in str(e):
-                logger.warning(f"Stream full, trimming old messages")
+                logger.warning("Stream full, trimming old messages")
                 self.redis.xtrim(self.stream_name, 1000, limit=100)
                 self._ensure_consumer_group()  # Retry
             else:
@@ -129,7 +128,7 @@ class Worker:
                 else:
                     logger.exception("Error in consumer loop")
                     time.sleep(5)
-            except Exception as e:
+            except Exception:
                 logger.exception("Error in consumer loop")
                 time.sleep(5)  # Back off on error
 
@@ -190,7 +189,7 @@ class Worker:
         command = payload.get("command", "suggest")
 
         if self.dry_run:
-            logger.info(f"[DRY RUN] Would run orchestrator with:")
+            logger.info("[DRY RUN] Would run orchestrator with:")
             logger.info(f"  project: {project_name}")
             logger.info(f"  channel: {channel_id}")
             logger.info(f"  feature: {feature}")
@@ -224,7 +223,7 @@ class Worker:
             )
 
             if result.returncode == 0:
-                logger.info(f"Orchestrator completed successfully")
+                logger.info("Orchestrator completed successfully")
                 # Ack the message on success
                 self.redis.xack(self.stream_name, self.consumer_group, msg_id)
             else:
@@ -234,7 +233,7 @@ class Worker:
                 self.redis.xack(self.stream_name, self.consumer_group, msg_id)
 
         except subprocess.TimeoutExpired:
-            logger.error(f"Orchestrator timed out after 2 hours")
+            logger.error("Orchestrator timed out after 2 hours")
             self.redis.xack(self.stream_name, self.consumer_group, msg_id)
         except Exception as e:
             logger.exception(f"Error running orchestrator: {e}")

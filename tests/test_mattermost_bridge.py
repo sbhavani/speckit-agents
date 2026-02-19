@@ -9,7 +9,6 @@ Run all:             pytest tests/test_mattermost_bridge.py
 """
 
 import json
-import subprocess
 import time
 from unittest.mock import MagicMock, patch
 

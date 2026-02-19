@@ -61,7 +61,7 @@ class StreamMonitor:
             pending_info = self.client.xpending(stream, group, count=1)
 
             pending_count = pending_info.get("pending", 0)
-            min_idle = pending_info.get("min", 0)
+            _min_idle = pending_info.get("min", 0)
             max_idle = pending_info.get("max", 0)
 
             # Calculate lag

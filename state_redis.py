@@ -5,7 +5,7 @@ This provides faster state persistence compared to file-based storage.
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 import redis
 

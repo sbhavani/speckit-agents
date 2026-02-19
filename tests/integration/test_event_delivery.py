@@ -5,7 +5,6 @@ Tests User Story 1: Real-Time Event Delivery
 
 import time
 import threading
-from typing import Optional
 
 import pytest
 

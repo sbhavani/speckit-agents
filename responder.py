@@ -3,7 +3,6 @@
 Responder service - Listens for /suggest and @mentions, kicks off workflows.
 """
 
-import json
 import logging
 import os
 import subprocess
@@ -91,7 +90,7 @@ class Responder:
                 if len(self.processed_messages) > 1000:
                     # Keep only the most recent 500
                     self.processed_messages = set(list(self.processed_messages)[-500:])
-            except Exception as e:
+            except Exception:
                 logger.exception("Error checking for commands")
 
             time.sleep(5)  # Poll every 5 seconds

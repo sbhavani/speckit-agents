@@ -152,7 +152,6 @@ PHASE_SEQUENCE_SIMPLE: list[tuple[Phase, str, bool]] = [
 # ---------------------------------------------------------------------------
 
 def load_config(path: str) -> dict:
-    import yaml
 
     with open(path) as f:
         cfg = yaml.safe_load(f)
@@ -222,8 +221,6 @@ def resolve_project_config(config: dict, project_name: str | None = None) -> tup
 
     proj = config["project"]
     return proj.get("path", "."), proj.get("prd_path", "docs/PRD.md"), proj.get("channel_id")
-
-    return path
 
 
 def _deep_merge(base: dict, override: dict) -> None:
@@ -2089,7 +2086,7 @@ def main() -> None:
     if args.show_state:
         try:
             project_path, prd_path, project_channel_id = resolve_project_config(config, args.project)
-        except ValueError as e:
+        except ValueError:
             # Try default path if project not specified
             project_path = config.get("project", {}).get("path", ".")
 

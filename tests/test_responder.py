@@ -3,12 +3,7 @@
 Run: uv run pytest tests/test_responder.py -m "not integration"
 """
 
-import json
-import tempfile
-from pathlib import Path
 
-import pytest
-import yaml
 
 
 class TestConfigLoading:
@@ -99,14 +94,14 @@ class TestQuestionDetection:
 
     def test_question_detects_trailing_question_mark(self):
         """Question with trailing ? should be detected."""
-        r = self._make_responder()
+        _r = self._make_responder()
         text = "What is this?"
         is_question = text.strip().endswith("?")
         assert is_question is True
 
     def test_question_detects_can_you_phrase(self):
         """Question starting with 'can you' should be detected."""
-        r = self._make_responder()
+        _r = self._make_responder()
         text = "Can you help me?"
         question_phrases = ["can you", "could you", "would you", "will you", "how do",
                            "how can", "what is", "what's", "why is", "why does",

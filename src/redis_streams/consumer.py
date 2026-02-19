@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from typing import Optional, Callable, List, Any
+from typing import Optional, Callable, List
 
 import redis
 from redis.exceptions import ResponseError
@@ -13,7 +13,6 @@ from redis_streams.exceptions import (
     GroupNotFoundError,
     StreamNotFoundError,
     RedisStreamsError,
-    ConsumerCrashedError,
 )
 from redis_streams.models import (
     EventMessage,

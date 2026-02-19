@@ -11,7 +11,6 @@ import os
 import signal
 import subprocess
 import sys
-from pathlib import Path
 
 
 def main():

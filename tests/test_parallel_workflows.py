@@ -1,7 +1,5 @@
 """Tests for parallel workflows (Redis Streams)."""
 
-import json
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -297,7 +295,7 @@ class TestWorkerPool:
                     mock_subprocess.Popen.return_value = mock_proc
 
                     # Override the wait loop to exit quickly
-                    original_popen = worker_pool.subprocess.Popen
+                    _original_popen = worker_pool.subprocess.Popen
                     call_count = [0]
 
                     def mock_popen(*args, **kwargs):
@@ -307,13 +305,12 @@ class TestWorkerPool:
                     mock_subprocess.Popen = mock_popen
 
                     # Run with mocked config
-                    with patch.object(worker_pool, "main") as mock_main:
+                    with patch.object(worker_pool, "main") as _mock_main:
                         # Just test the argument parsing
                         pass
 
     def test_worker_pool_args(self):
         """Test worker pool argument parsing."""
-        import argparse
 
         # Test that the parser accepts the expected arguments
         with patch("builtins.open", MagicMock()):

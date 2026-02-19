@@ -71,7 +71,7 @@ class MattermostBridge:
         # 2. Check Mattermost channel exists and bot token works
         try:
             # Try to read from the channel
-            posts = self.read_posts(limit=1)
+            _ = self.read_posts(limit=1)
             # If we got here, the channel exists and token works
             logger.info("Mattermost validation passed")
         except Exception as e:
@@ -403,7 +403,7 @@ class MattermostBridge:
         if result.returncode != 0:
             stderr = result.stderr.strip()
             # Filter out the SSH banner
-            lines = [l for l in stderr.splitlines() if not l.startswith("*") and "UNAUTHORIZED" not in l and "monitored" not in l and "Disconnect" not in l]
+            lines = [line for line in stderr.splitlines() if not line.startswith("*") and "UNAUTHORIZED" not in line and "monitored" not in line and "Disconnect" not in line]
             clean_err = "\n".join(lines).strip()
             if clean_err:
                 logger.error("SSH command error: %s", clean_err)

@@ -6,13 +6,10 @@ Run: uv run pytest tests/test_tool_augment.py -v
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 
 from tool_augment import (
     DISCOVERY_TOOLS,
-    VALIDATION_TOOLS,
     ToolAugmentConfig,
     ToolAugmentLog,
     ToolAugmentor,
@@ -90,7 +87,7 @@ class TestToolAugmentConfig:
 class TestToolAugmentLog:
     def test_creates_log_dir(self, tmp_path):
         log_dir = str(tmp_path / "new_dir" / "logs")
-        log = ToolAugmentLog(log_dir, "run-001")
+        _log = ToolAugmentLog(log_dir, "run-001")
         assert Path(log_dir).exists()
 
     def test_write_creates_jsonl_file(self, tmp_path):
@@ -282,7 +279,7 @@ class TestPostHooks:
             return {"result": '{"tests_green": true, "validation_passed": true}'}
         aug = self._make_augmentor(tmp_path, mock_claude)
 
-        result = aug.run_post_hook(FakePhase("DEV_IMPLEMENT"), FakeState())
+        _result = aug.run_post_hook(FakePhase("DEV_IMPLEMENT"), FakeState())
 
         assert "Bash(pytest *)" in calls[0]["allowed_tools"]
         assert "Bash(ruff *)" in calls[0]["allowed_tools"]
