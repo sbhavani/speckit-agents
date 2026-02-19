@@ -45,6 +45,11 @@ DISCOVERY_TOOLS = [
     "Bash(git log *)", "Bash(git diff *)", "Bash(ls *)",
 ]
 
+IMPLEMENTATION_TOOLS = [
+    "Read", "Glob", "Grep", "Edit", "Write",
+    "Bash(git log *)", "Bash(git diff *)", "Bash(ls *)",
+]
+
 # Prompt for pre-implementation discovery (adapted from tool_augment.py)
 DISCOVERY_PROMPT = """\
 You are a codebase analyst helping fix a bug. Examine this project and return a JSON object with:
@@ -335,6 +340,7 @@ def run_instance(
     impl_result = _run_claude(
         prompt=impl_prompt,
         cwd=str(repo_path),
+        allowed_tools=IMPLEMENTATION_TOOLS,
         timeout=600,
     )
 
