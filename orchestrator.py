@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -106,6 +107,7 @@ class WorkflowState:
     dev_session: str | None = None
     pr_url: str | None = None
     root_post_id: str | None = None  # For Mattermost thread
+    branch_name: str | None = None   # Feature branch name (e.g., "5-add-user-auth")
 
 
 STATE_FILE = ".agent-team-state.json"
@@ -682,6 +684,7 @@ class Orchestrator:
             "pm_session": self.state.pm_session,
             "dev_session": self.state.dev_session,
             "pr_url": self.state.pr_url,
+            "branch_name": self.state.branch_name,
             "original_path": self.original_path,
             "worktree_path": self.worktree_path,
             "thread_root_id": self.msg.root_id,  # Save thread ID for resume
@@ -981,6 +984,9 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         )
         self.state.dev_session = result.get("session_id")
 
+        # Extract branch name from result (speckit.specify outputs JSON with BRANCH_NAME)
+        self._extract_branch_name(result)
+
         # Get a summary to post to the channel
         summary = self._get_phase_summary(
             "Summarize the specification you just created in 2-3 bullet points. "
@@ -1059,6 +1065,36 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
         self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
+
+        # Move artifacts to specs/[branch-name]/ directory
+        self._move_artifacts_to_specs_dir()
+
+    def _move_artifacts_to_specs_dir(self) -> None:
+        """Move SPEC.md, plan.md, tasks.md to specs/[branch-name]/ directory.
+
+        This organizes the spec-driven artifacts into versioned directories.
+        """
+        if not self.state.branch_name:
+            logger.warning("No branch name found, skipping artifact move")
+            return
+
+        specs_dir = Path(self.project_path) / "specs" / self.state.branch_name
+        artifacts_to_move = ["SPEC.md", "plan.md", "tasks.md"]
+
+        # Create specs directory
+        specs_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Created specs directory: %s", specs_dir)
+
+        # Move each artifact
+        for artifact in artifacts_to_move:
+            src = Path(self.project_path) / artifact
+            if src.exists():
+                dst = specs_dir / artifact
+                # Handle potential conflicts
+                if dst.exists():
+                    dst.unlink()
+                shutil.move(str(src), str(dst))
+                logger.info("Moved %s -> %s", src, dst)
 
     def _phase_plan_review(self) -> bool:
         """Checkpoint: let the human review the plan before implementation starts.
@@ -1148,6 +1184,49 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             sender="Orchestrator",
         )
         return True
+
+    def _extract_branch_name(self, result: dict) -> None:
+        """Extract branch name from speckit.specify result.
+
+        The speckit.specify command outputs JSON with BRANCH_NAME.
+        Also check for branch name in the result text.
+        """
+        # Try to parse JSON from result
+        result_text = result.get("result", "")
+
+        # Look for JSON with BRANCH_NAME
+        json_match = re.search(r'\{[^}]*"BRANCH_NAME"[^}]*\}', result_text, re.DOTALL)
+        if json_match:
+            try:
+                data = json.loads(json_match.group(0))
+                if "BRANCH_NAME" in data:
+                    self.state.branch_name = data["BRANCH_NAME"]
+                    logger.info("Extracted branch name: %s", self.state.branch_name)
+                    return
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: look for branch name pattern in text (e.g., "branch: 5-add-user-auth")
+        branch_match = re.search(r'branch[:\s]+([0-9]+-[a-zA-Z0-9-]+)', result_text, re.IGNORECASE)
+        if branch_match:
+            self.state.branch_name = branch_match.group(1)
+            logger.info("Extracted branch name from text: %s", self.state.branch_name)
+            return
+
+        # Check git branch as last resort
+        try:
+            proc = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                self.state.branch_name = proc.stdout.strip()
+                logger.info("Using current git branch: %s", self.state.branch_name)
+        except Exception as e:
+            logger.debug("Could not get git branch: %s", e)
 
     def _get_phase_summary(self, prompt: str) -> str:
         """Ask the dev session for a concise summary of what was just done."""
@@ -1264,10 +1343,18 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             - sequential_tasks: List of task dicts without [P] marker
             - parallel_batches: List of parallel task batches (each batch is a list of task dicts)
         """
-        tasks_path = Path(self.project_path) / "tasks.md"
+        # First check specs/[branch-name]/tasks.md, then fall back to root
+        if self.state.branch_name:
+            tasks_path = Path(self.project_path) / "specs" / self.state.branch_name / "tasks.md"
+        else:
+            tasks_path = Path(self.project_path) / "tasks.md"
+
         if not tasks_path.exists():
-            logger.debug("No tasks.md found, running in single-task mode")
-            return [], []
+            # Fallback to root for backward compatibility
+            tasks_path = Path(self.project_path) / "tasks.md"
+            if not tasks_path.exists():
+                logger.debug("No tasks.md found, running in single-task mode")
+                return [], []
 
         try:
             content = tasks_path.read_text()
@@ -2135,6 +2222,7 @@ def main() -> None:
         orchestrator.state.pm_session = saved.get("pm_session")
         orchestrator.state.dev_session = saved.get("dev_session")
         orchestrator.state.pr_url = saved.get("pr_url")
+        orchestrator.state.branch_name = saved.get("branch_name")
         orchestrator._workflow_type = saved.get("workflow_type", "normal")
         orchestrator._started_at = saved.get("started_at")
         # Restore paths from saved state
