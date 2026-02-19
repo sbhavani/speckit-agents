@@ -1,8 +1,8 @@
 # Agent Team
 
-> Autonomous feature delivery using Spec Kit — PM + Dev agents collaborate through Mattermost
+> Autonomous feature delivery using Spec Kit — PM + Dev agents collaborate through Mattermost (self-hosted chat, like Slack)
 
-A multi-agent orchestration system where a **Product Manager agent** and a **Developer agent** collaborate to ship features autonomously. Human operator can observe and intervene at any time.
+A multi-agent orchestration system where a **Product Manager agent** and a **Developer agent** collaborate to ship features autonomously through a [Mattermost](https://mattermost.com/) chat server. Human operator can observe and intervene at any time.
 
 Both agents are powered by Claude Code CLI. The Developer agent uses **[Spec Kit](https://github.com/github/spec-kit)** for structured specification and implementation.
 
@@ -152,7 +152,7 @@ Override locally with `config.local.yaml` (gitignored).
 - [uv](https://github.com/astral-sh/uv)
 - [Claude Code CLI](https://claude.com/claude-code) — authenticated
 - [GitHub CLI](https://cli.github.com/) (`gh`)
-- Mattermost server
+- [Mattermost](https://mattermost.com/) server (self-hosted chat, like Slack)
 - Redis (optional, for state persistence)
 
 ## Docker Deployment
