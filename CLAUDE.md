@@ -11,7 +11,11 @@ Agent Team — A multi-agent orchestration system where a Product Manager agent 
 - `.claude/agents/pm-agent.md` — PM Agent subagent definition
 - `.claude/agents/dev-agent.md` — Developer Agent subagent definition
 - `config.yaml` — Configuration (project path, OpenClaw settings, timeouts)
-- `docs/PRD.md` — Full product requirements document
+- `docs/PRD.md` — Product requirements (user stories, acceptance criteria)
+- `docs/WORKFLOW.md` — End-to-end workflow details
+- `docs/ARCHITECTURE.md` — System components and design
+- `docs/ROADMAP.md` — Future enhancements
+- `docs/CONFIG.md` — Configuration reference
 
 ## Commands
 
