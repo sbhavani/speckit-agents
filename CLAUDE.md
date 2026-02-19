@@ -81,6 +81,8 @@ The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (confi
 - Redis (stream storage), optional: metadata store for consumer offsets (004-redis-streams)
 - Python 3.10+ + Claude Code CLI (claude), Mattermost API, Redis (optional) (005-progress-emoji-markers)
 - N/A (no new data storage - just message formatting) (005-progress-emoji-markers)
+- Python 3.10+ + Existing codebase (orchestrator.py, mattermost_bridge.py), standard library (logging) (008-phase-emoji-markers)
+- N/A (no data persistence - just message formatting) (008-phase-emoji-markers)
 
 ## Recent Changes
 - 004-redis-streams: Added Redis 5.0+ (for Streams API), redis-py or equivalent client library
