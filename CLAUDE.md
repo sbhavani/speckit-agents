@@ -52,9 +52,13 @@ uv run pytest tests/                          # all tests
 
 - **uv** — dependency management
 - **Claude Code CLI** (`claude`) — must be installed and authenticated
-- **OpenClaw** on `sb@mac-mini-i7.local` — Mattermost bridge
 - **GitHub CLI** (`gh`) — for PR creation
+- **Redis** — for state persistence (optional)
 - Python 3.10+
+
+## Docker Deployment
+
+Dockerfiles and docker-compose for containerized deployment are in `deploy/`.
 
 ## Configuration
 

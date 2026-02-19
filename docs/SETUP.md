@@ -5,7 +5,7 @@ How to set up agent-team from scratch.
 ## Prerequisites
 
 - Python 3.10+
-- Redis (via Docker)
+- Redis (running locally or accessible)
 - Mattermost server
 - Claude Code CLI (`claude`)
 - GitHub CLI (`gh`)
@@ -93,13 +93,33 @@ curl -H "Authorization: Bearer <admin-token>" \
 
 ## Redis Setup
 
-```bash
-# Start Redis via Docker
-docker run -d -p 6379:6379 redis:7-alpine
+### Option 1: Local Redis (Recommended for Development)
 
-# Or use docker-compose
-docker compose up -d redis
+```bash
+# Install Redis via Homebrew
+brew install redis
+brew services start redis
+
+# Or on Linux
+sudo apt install redis-server
+sudo systemctl start redis
 ```
+
+### Option 2: Docker Redis
+
+```bash
+# Run Redis in background
+docker run -d -p 6379:6379 redis:7-alpine
+```
+
+### Verify Redis
+
+```bash
+redis-cli ping
+# Should return: PONG
+```
+
+The orchestrator will use Redis if `redis_url` is configured in config.yaml, otherwise falls back to file-based state storage.
 
 ## Configuration
 
