@@ -960,7 +960,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
-        self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
+        self.msg.send(f"🔄 📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
 
         # Inject pre-hook findings as codebase context
         prompt = f"/speckit.specify {desc}"
@@ -993,12 +993,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"✅ 📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
         logger.info("Phase: DEV_PLAN")
-        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
+        self.msg.send("🔄 📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
         prompt = "/speckit.plan"
         pre = self._augment_context.get(Phase.DEV_PLAN)
@@ -1027,12 +1027,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"✅ 📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
         logger.info("Phase: DEV_TASKS")
-        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
+        self.msg.send("🔄 📝 **Tasks** — Generating task list...", sender="Dev Agent")
 
         prompt = "/speckit.tasks"
         pre = self._augment_context.get(Phase.DEV_TASKS)
@@ -1061,7 +1061,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"✅ 📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
 
         # Move artifacts to specs/[branch-name]/ directory
         self._move_artifacts_to_specs_dir()
@@ -1414,7 +1414,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                     logger.info("Removed stale file: %s", fpath)
 
         self.msg.send(
-            "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
+            "🔄 🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
             "during this phase and the PM will answer.",
             sender="Dev Agent",
         )
@@ -1439,7 +1439,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+        self.msg.send("✅ 🔨 **Implement** — Complete", sender="Dev Agent")
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1946,7 +1946,7 @@ Be specific about:
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"🔄 Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
@@ -1961,7 +1961,7 @@ Be specific about:
         duration_str = self._fmt_duration(total)
 
         if error:
-            status = f"Failed at {self.state.phase.name}"
+            status = f"❌ Failed at {self.state.phase.name}"
         else:
             status = "Complete"
 

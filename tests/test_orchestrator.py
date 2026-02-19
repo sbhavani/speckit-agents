@@ -559,3 +559,129 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Phase emoji status markers
+# ---------------------------------------------------------------------------
+
+class TestPhaseEmojiMarkers:
+    """Tests for emoji markers on phase completion messages."""
+
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        return Orchestrator(config, msg)
+
+    def test_specify_phase_complete_has_success_emoji(self, tmp_path):
+        """SPECIFY phase complete message should start with ✅ emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.phase = Phase.DEV_SPECIFY
+        orch.state.feature = {"feature": "Test feature", "description": "Test description"}
+
+        # Call the method that sends the completion message
+        # Simulate a successful spec summary
+        summary = "Test spec summary"
+        with patch("orchestrator.run_claude_stream") as mock_run:
+            mock_run.return_value = {"session_id": "dev_session"}
+            with patch.object(orch, '_get_phase_summary', return_value=summary):
+                orch._phase_dev_specify()
+
+        # Verify the message was sent with ✅ prefix
+        orch.msg.send.assert_called()
+        # Find the "Complete" message
+        complete_calls = [c for c in orch.msg.send.call_args_list if "Complete" in str(c)]
+        assert len(complete_calls) > 0, "Should have sent a Complete message"
+        message = complete_calls[0][0][0]
+        assert message.startswith("✅"), f"Message should start with ✅ emoji, got: {message[:50]}"
+
+    def test_plan_phase_complete_has_success_emoji(self, tmp_path):
+        """PLAN phase complete message should start with ✅ emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.phase = Phase.DEV_PLAN
+        orch.state.feature = {"feature": "Test feature", "description": "Test description"}
+
+        summary = "Test plan summary"
+        with patch("orchestrator.run_claude_stream") as mock_run:
+            mock_run.return_value = {"session_id": "dev_session"}
+            with patch.object(orch, '_get_phase_summary', return_value=summary):
+                orch._phase_dev_plan()
+
+        # Find the "Complete" message
+        complete_calls = [c for c in orch.msg.send.call_args_list if "Complete" in str(c)]
+        assert len(complete_calls) > 0, "Should have sent a Complete message"
+        message = complete_calls[0][0][0]
+        assert message.startswith("✅"), f"Message should start with ✅ emoji, got: {message[:50]}"
+
+    def test_tasks_phase_complete_has_success_emoji(self, tmp_path):
+        """TASKS phase complete message should start with ✅ emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.phase = Phase.DEV_TASKS
+        orch.state.feature = {"feature": "Test feature", "description": "Test description"}
+
+        summary = "Test tasks summary"
+        with patch("orchestrator.run_claude_stream") as mock_run:
+            mock_run.return_value = {"session_id": "dev_session"}
+            with patch.object(orch, '_get_phase_summary', return_value=summary):
+                orch._phase_dev_tasks()
+
+        # Find the "Complete" message
+        complete_calls = [c for c in orch.msg.send.call_args_list if "Complete" in str(c)]
+        assert len(complete_calls) > 0, "Should have sent a Complete message"
+        message = complete_calls[0][0][0]
+        assert message.startswith("✅"), f"Message should start with ✅ emoji, got: {message[:50]}"
+
+    def test_implement_phase_complete_has_success_emoji(self, tmp_path):
+        """IMPLEMENT phase complete message should start with ✅ emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.phase = Phase.DEV_IMPLEMENT
+        orch.state.feature = {"feature": "Test feature", "description": "Test description"}
+        orch.state.branch_name = "test-branch"
+
+        with patch("orchestrator.run_claude_stream") as mock_run:
+            mock_run.return_value = {"session_id": "dev_session"}
+            with patch.object(orch, '_execute_single_implementation'):
+                orch._phase_dev_implement()
+
+        # Find the "Complete" message
+        complete_calls = [c for c in orch.msg.send.call_args_list if "Complete" in str(c)]
+        assert len(complete_calls) > 0, "Should have sent a Complete message"
+        message = complete_calls[-1][0][0]
+        assert message.startswith("✅"), f"Message should start with ✅ emoji, got: {message[:50]}"
+
+    def test_display_phase_status_has_in_progress_emoji(self, tmp_path):
+        """In-progress status display should start with 🔄 emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch._run_start_time = 1000.0
+        orch._phase_start_time = 1000.0
+        mock_send = MagicMock()
+
+        with patch("time.time", return_value=1005.0):
+            with patch.object(orch.msg, 'send', mock_send):
+                orch._display_phase_status("DEV_SPECIFY")
+
+        # Check that the status message starts with 🔄
+        call_args = mock_send.call_args
+        message = call_args[0][0]
+        assert message.startswith("🔄"), f"Message should start with 🔄 emoji, got: {message[:50]}"
+
+    def test_post_summary_failure_has_failure_emoji(self, tmp_path):
+        """Failure message should contain ❌ emoji near 'Failed' status."""
+        orch = self._make_orchestrator(tmp_path)
+        orch._run_start_time = 1000.0
+
+        with patch.object(orch, '_fmt_duration', return_value="1m30s"):
+            with patch.object(orch, '_phase_timings', []):
+                orch._post_summary(error="Test error")
+
+        # Find the failure message
+        failure_calls = [c for c in orch.msg.send.call_args_list if "Failed" in str(c)]
+        assert len(failure_calls) > 0, "Should have sent a failure message"
+        message = failure_calls[0][0][0]
+        # The status line should contain the failure emoji
+        assert "❌" in message, f"Message should contain ❌ emoji, got: {message[:100]}"
+        assert "Failed at" in message, f"Message should contain 'Failed at', got: {message[:100]}"
