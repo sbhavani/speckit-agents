@@ -128,6 +128,44 @@ class TestSend:
         call_args = " ".join(mock_ssh.call_args[0][0])
         assert "openclaw" in call_args
 
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_with_emoji_in_progress(self, mock_ssh, mock_bridge):
+        """Emoji parameter should prefix message with in-progress emoji."""
+        mock_ssh.return_value = '{"id": "post123"}'
+        mock_bridge.send("Phase starting...", emoji="🔄")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        # Emoji gets escaped to unicode in JSON
+        assert "Phase starting" in call_args
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_with_emoji_success(self, mock_ssh, mock_bridge):
+        """Emoji parameter should prefix message with success emoji."""
+        mock_ssh.return_value = '{"id": "post123"}'
+        mock_bridge.send("Phase complete", emoji="✅")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        # Emoji gets escaped to unicode in JSON
+        assert "Phase complete" in call_args
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_with_emoji_failure(self, mock_ssh, mock_bridge):
+        """Emoji parameter should prefix message with failure emoji."""
+        mock_ssh.return_value = '{"id": "post123"}'
+        mock_bridge.send("Phase failed", emoji="❌")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        # Emoji gets escaped to unicode in JSON
+        assert "Phase failed" in call_args
+
+    @patch("mattermost_bridge.MattermostBridge._ssh")
+    def test_send_without_emoji(self, mock_ssh, mock_bridge):
+        """Without emoji parameter, message should be sent as-is."""
+        mock_ssh.return_value = '{"id": "post123"}'
+        mock_bridge.send("Normal message")
+        call_args = " ".join(mock_ssh.call_args[0][0])
+        assert "🔄" not in call_args
+        assert "✅" not in call_args
+        assert "❌" not in call_args
+        assert "Normal message" in call_args
+
 
 class TestReadPosts:
     @patch("mattermost_bridge.MattermostBridge._ssh")

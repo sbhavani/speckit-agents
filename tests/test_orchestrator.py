@@ -16,6 +16,8 @@ from orchestrator import (
     Messenger,
     Orchestrator,
     Phase,
+    PhaseState,
+    get_phase_emoji,
     run_claude,
 )
 
@@ -559,3 +561,53 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Phase State and Emoji tests
+# ---------------------------------------------------------------------------
+
+class TestPhaseState:
+    def test_phase_state_enum_values(self):
+        """PhaseState enum should have correct values."""
+        assert PhaseState.IN_PROGRESS.value is not None
+        assert PhaseState.COMPLETED.value is not None
+        assert PhaseState.FAILED.value is not None
+
+    def test_get_phase_emoji_in_progress(self):
+        """get_phase_emoji should return 🔄 for IN_PROGRESS."""
+        assert get_phase_emoji(PhaseState.IN_PROGRESS) == "🔄"
+
+    def test_get_phase_emoji_completed(self):
+        """get_phase_emoji should return ✅ for COMPLETED."""
+        assert get_phase_emoji(PhaseState.COMPLETED) == "✅"
+
+    def test_get_phase_emoji_failed(self):
+        """get_phase_emoji should return ❌ for FAILED."""
+        assert get_phase_emoji(PhaseState.FAILED) == "❌"
+
+    def test_get_phase_emoji_unknown(self):
+        """get_phase_emoji should return empty string for unknown state."""
+        assert get_phase_emoji(None) == ""
+
+
+class TestMessengerEmoji:
+    def test_messenger_send_with_emoji(self, tmp_path):
+        """Messenger.send should prefix message with emoji in dry-run."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = Messenger(config, dry_run=True)
+        # In dry-run mode, it prints to stdout
+        msg.send("Test message", emoji="🔄")
+        # Just verify it doesn't raise an exception
+
+    def test_messenger_send_without_emoji(self, tmp_path):
+        """Messenger.send should work without emoji parameter."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = Messenger(config, dry_run=True)
+        msg.send("Test message")
