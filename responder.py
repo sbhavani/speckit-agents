@@ -200,21 +200,34 @@ class Responder:
         """Handle @product-manager or @dev-agent mention."""
         logger.info(f"@mention in channel {channel_id}: {text[:100]}... is_question={is_question}")
 
-        # Determine if it's PM or Dev
-        is_pm = "@product-manager" in text.lower()
-        # @dev-agent not implemented yet - fall through to PM
-        if not is_pm:
-            self.bridge.send(
-                "Use @product-manager for questions for now. @dev-agent coming soon!",
-                sender="Responder",
-                channel_id=channel_id,
-            )
+        # Determine if it's PM or Dev (check in order - first match wins for precedence)
+        text_lower = text.lower()
+        is_pm = "@product-manager" in text_lower
+        is_dev = "@dev-agent" in text_lower
+
+        # Route to appropriate agent
+        if is_dev:
+            # @dev-agent mention - route to Dev Agent
+            logger.info("Routing @dev-agent mention to Dev Agent")
+            if is_question:
+                logger.info("Detected question, answering directly")
+                response = self._generate_response(text, channel_id, is_pm=False)
+                self.bridge.send(response, sender="Dev Agent", channel_id=channel_id)
+                return
+            # Not a question - publish feature request to Redis stream
+            self._publish_feature_request(channel_id=channel_id)
             return
 
-        # If it's a question, just answer it directly (don't spawn orchestrator)
+        if not is_pm:
+            # No recognized mention - shouldn't happen but handle gracefully
+            logger.warning(f"No recognized agent mention in: {text[:50]}...")
+            return
+
+        # @product-manager mention - route to PM Agent
+        logger.info("Routing @product-manager mention to PM Agent")
         if is_question:
             logger.info("Detected question, answering directly")
-            response = self._generate_response(text, channel_id, is_pm)
+            response = self._generate_response(text, channel_id, is_pm=True)
             self.bridge.send(response, sender="PM Agent", channel_id=channel_id)
             return
 
