@@ -99,6 +99,50 @@ class Phase(Enum):
     DONE = auto()
 
 
+# Phase icon mapping
+PHASE_ICONS: dict[Phase, str] = {
+    Phase.INIT: "🎯",
+    Phase.PM_SUGGEST: "💡",
+    Phase.REVIEW: "👀",
+    Phase.DEV_SPECIFY: "📋",
+    Phase.DEV_PLAN: "📐",
+    Phase.DEV_TASKS: "📝",
+    Phase.PLAN_REVIEW: "📋",
+    Phase.DEV_IMPLEMENT: "🔨",
+    Phase.CREATE_PR: "🔀",
+    Phase.PM_LEARN: "📖",
+    Phase.DONE: "✅",
+}
+
+# Status emoji mapping
+STATUS_EMOJI: dict[str, str] = {
+    "completed": "✅",
+    "failed": "❌",
+    "rejected": "❌",
+    "in_progress": "🔄",
+}
+
+
+def format_phase_status(phase: Phase, status_text: str, status: str = "completed") -> str:
+    """Format a phase status message with icon and status emoji.
+
+    Args:
+        phase: The phase enum value
+        status_text: The status text (e.g., "Complete", "Creating technical plan...")
+        status: The status type - "completed", "failed", "rejected", or "in_progress"
+
+    Returns:
+        Formatted message string like "📋 **Specify** — Complete ✅"
+    """
+    icon = PHASE_ICONS.get(phase, "📋")
+    phase_name = phase.name.replace("_", " ").title()
+    status_emoji = STATUS_EMOJI.get(status, "")
+
+    if status_emoji:
+        return f"{icon} **{phase_name}** — {status_text} {status_emoji}"
+    return f"{icon} **{phase_name}** — {status_text}"
+
+
 @dataclass
 class WorkflowState:
     phase: Phase = Phase.INIT
@@ -966,7 +1010,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send(f"{format_phase_status(Phase.REVIEW, 'Rejected', 'rejected')}. Stopping.", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -1071,12 +1115,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"{format_phase_status(Phase.DEV_SPECIFY, 'Complete', 'completed')}\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
         logger.info("Phase: DEV_PLAN")
-        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
+        self.msg.send(format_phase_status(Phase.DEV_PLAN, "Creating technical plan...", "in_progress"), sender="Dev Agent")
 
         prompt = "/speckit.plan"
         pre = self._augment_context.get(Phase.DEV_PLAN)
@@ -1105,12 +1149,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"{format_phase_status(Phase.DEV_PLAN, 'Complete', 'completed')}\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
         logger.info("Phase: DEV_TASKS")
-        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
+        self.msg.send(format_phase_status(Phase.DEV_TASKS, "Generating task list...", "in_progress"), sender="Dev Agent")
 
         prompt = "/speckit.tasks"
         pre = self._augment_context.get(Phase.DEV_TASKS)
@@ -1139,7 +1183,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"{format_phase_status(Phase.DEV_TASKS, 'Complete', 'completed')}\n\n{summary}", sender="Dev Agent")
 
         # Move artifacts to specs/[branch-name]/ directory
         self._move_artifacts_to_specs_dir()
@@ -1237,7 +1281,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 self.msg.send("Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send(f"{format_phase_status(Phase.PLAN_REVIEW, 'Rejected', 'rejected')}. Stopping.", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1492,8 +1536,8 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                     logger.info("Removed stale file: %s", fpath)
 
         self.msg.send(
-            "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
-            "during this phase and the PM will answer.",
+            f"{format_phase_status(Phase.DEV_IMPLEMENT, 'Starting implementation...', 'in_progress')} "
+            "You can ask me product questions anytime during this phase and the PM will answer.",
             sender="Dev Agent",
         )
 
@@ -1517,7 +1561,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+        self.msg.send(format_phase_status(Phase.DEV_IMPLEMENT, "Complete", "completed"), sender="Dev Agent")
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1910,7 +1954,7 @@ Otherwise, complete this task completely."""
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
         logger.info("Phase: CREATE_PR")
-        self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent")
+        self.msg.send(format_phase_status(Phase.CREATE_PR, "Creating pull request...", "in_progress"), sender="Dev Agent")
 
         prompt = """Create a pull request for all the changes on this branch.
 
@@ -2040,8 +2084,10 @@ Be specific about:
 
         if error:
             status = f"Failed at {self.state.phase.name}"
+            status_formatted = format_phase_status(self.state.phase, status, "failed")
         else:
             status = "Complete"
+            status_formatted = format_phase_status(Phase.DONE, status, "completed")
 
         # Build timing table
         rows = []
@@ -2066,7 +2112,7 @@ Be specific about:
             summary = (
                 f"**Workflow Summary**\n"
                 f"Feature: {feature_name}\n"
-                f"Status: {status} | Duration: {duration_str}\n\n"
+                f"Status: {status_formatted} | Duration: {duration_str}\n\n"
                 f"{table}{aug_line}\n\n"
                 f"Error: {error}\n"
                 f"Run with `--resume` to continue."
@@ -2076,7 +2122,7 @@ Be specific about:
             summary = (
                 f"**Workflow Summary**\n"
                 f"Feature: {feature_name}\n"
-                f"Status: {status} | Duration: {duration_str}\n\n"
+                f"Status: {status_formatted} | Duration: {duration_str}\n\n"
                 f"{table}{aug_line}"
                 f"{pr_line}"
             )

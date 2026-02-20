@@ -16,6 +16,7 @@ from orchestrator import (
     Messenger,
     Orchestrator,
     Phase,
+    format_phase_status,
     run_claude,
 )
 
@@ -559,3 +560,58 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Phase Status Formatting
+# ---------------------------------------------------------------------------
+
+
+class TestFormatPhaseStatus:
+    """Tests for the format_phase_status() helper function."""
+
+    def test_completed_status_shows_check_emoji(self):
+        """Completed phases should show ✅ emoji."""
+        result = format_phase_status(Phase.DEV_SPECIFY, "Complete", "completed")
+        assert "✅" in result
+        assert "📋" in result
+        assert "Dev Specify" in result
+
+    def test_failed_status_shows_x_emoji(self):
+        """Failed phases should show ❌ emoji."""
+        result = format_phase_status(Phase.DEV_PLAN, "Failed at DEV_PLAN", "failed")
+        assert "❌" in result
+        assert "📐" in result
+
+    def test_rejected_status_shows_x_emoji(self):
+        """Rejected phases should show ❌ emoji."""
+        result = format_phase_status(Phase.REVIEW, "Rejected", "rejected")
+        assert "❌" in result
+
+    def test_in_progress_status_shows_refresh_emoji(self):
+        """In-progress phases should show 🔄 emoji."""
+        result = format_phase_status(Phase.DEV_PLAN, "Creating technical plan...", "in_progress")
+        assert "🔄" in result
+        assert "Dev Plan" in result
+
+    def test_default_status_has_no_emoji(self):
+        """Unknown status should have no emoji."""
+        result = format_phase_status(Phase.DEV_SPECIFY, "Some status", "unknown")
+        assert "✅" not in result
+        assert "❌" not in result
+        assert "🔄" not in result
+
+    def test_phase_icons_preserved(self):
+        """All phase icons should be preserved from existing implementation."""
+        # DEV_SPECIFY -> 📋
+        assert "📋" in format_phase_status(Phase.DEV_SPECIFY, "Complete", "completed")
+        # DEV_PLAN -> 📐
+        assert "📐" in format_phase_status(Phase.DEV_PLAN, "Complete", "completed")
+        # DEV_TASKS -> 📝
+        assert "📝" in format_phase_status(Phase.DEV_TASKS, "Complete", "completed")
+        # DEV_IMPLEMENT -> 🔨
+        assert "🔨" in format_phase_status(Phase.DEV_IMPLEMENT, "Complete", "completed")
+        # CREATE_PR -> 🔀
+        assert "🔀" in format_phase_status(Phase.CREATE_PR, "Complete", "completed")
+        # PM_LEARN -> 📖
+        assert "📖" in format_phase_status(Phase.PM_LEARN, "Complete", "completed")
