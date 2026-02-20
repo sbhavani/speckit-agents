@@ -248,7 +248,9 @@ def run_claude(
 
     Returns dict with keys: result, session_id, usage, etc.
     """
-    cmd = [CLAUDE_BIN, "-p", prompt, "--output-format", "json"]
+    # Use stream-json and extract final result - more reliable in background
+    # NOTE: stream-json requires --verbose flag
+    cmd = [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"]
     if session_id:
         cmd += ["--resume", session_id]
     if allowed_tools:
@@ -260,14 +262,30 @@ def run_claude(
     logger.debug("Prompt: %s", prompt[:200])
 
     # Clear CLAUDECODE env var so we can spawn from within a Claude Code session
+    # Also ensure ANTHROPIC_AUTH_TOKEN is set for API calls
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    if "ANTHROPIC_AUTH_TOKEN" not in env:
+        # Try to load from config.local.yaml
+        import yaml
+        local_config_path = os.path.join(os.path.dirname(__file__), "config.local.yaml")
+        if os.path.exists(local_config_path):
+            with open(local_config_path) as f:
+                local_config = yaml.safe_load(f)
+                api_key = local_config.get("openclaw", {}).get("anthropic_api_key")
+                if api_key:
+                    env["ANTHROPIC_AUTH_TOKEN"] = api_key
+
+    logger.info(f"Running command: {' '.join(cmd)}")
+    logger.info(f"ANTHROPIC_AUTH_TOKEN present: {'ANTHROPIC_AUTH_TOKEN' in env}")
 
     last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
+        logger.info(f"Attempt {attempt}/{max_retries} - starting subprocess.run")
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, env=env
             )
+            logger.info(f"Attempt {attempt} - subprocess completed, returncode={result.returncode}")
         except subprocess.TimeoutExpired as e:
             logger.warning(
                 "claude -p timed out after %ds (attempt %d/%d)",
@@ -300,10 +318,26 @@ def run_claude(
                 continue
             raise last_error
 
+        # Parse stream-json output - extract final "result" type
+        final_result = {}
+        for line in result.stdout.strip().split('\n'):
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+                if obj.get("type") == "result":
+                    final_result = obj
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        if final_result:
+            return final_result
+
+        # Fallback: try parsing entire output as JSON
         try:
             return json.loads(result.stdout)
         except json.JSONDecodeError:
-            # Sometimes output is plain text even with --output-format json
             return {"result": result.stdout.strip(), "session_id": session_id}
 
     # Should not reach here, but satisfy type checker
@@ -1617,17 +1651,16 @@ Otherwise, implement all tasks to completion."""
         # Pre-augment context for all task runs
         pre = self._augment_context.get(Phase.DEV_IMPLEMENT)
 
-        # Run sequential tasks first
+        # Run sequential tasks - batch ALL of them into one call
         if sequential_tasks:
             self.msg.send(
-                f"📋 Running {len(sequential_tasks)} sequential task(s)...",
+                f"📋 Running {len(sequential_tasks)} sequential task(s) in a single batch...",
                 sender="Dev Agent",
             )
 
-            for task in sequential_tasks:
-                logger.info("Running sequential task: %s", task['id'])
-                prompt = self._build_task_prompt(task, feature_desc, pre)
-                self._run_dev_with_polling(prompt, timeout=1800)
+            logger.info(f"Running all {len(sequential_tasks)} sequential tasks in one batch")
+            prompt = self._build_batch_prompt(sequential_tasks, feature_desc, pre)
+            self._run_dev_with_polling(prompt, timeout=7200)
 
         # Run parallel batches
         for batch_idx, batch in enumerate(parallel_batches):
@@ -1676,6 +1709,30 @@ The tasks.md file has already been generated. Your current specific task is:
 Focus ONLY on completing this specific task. Check off the task in tasks.md when complete.
 If you need clarification for this task, ask a question in JSON format.
 Otherwise, complete this task completely."""
+
+        if pre:
+            prompt = (
+                f"CODEBASE CONTEXT (pre-flight checks):\n"
+                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                f"Use this to understand the current state before implementing.\n\n{prompt}"
+            )
+
+        return prompt
+
+    def _build_batch_prompt(self, tasks: list[dict], feature_desc: str, pre: dict | None) -> str:
+        """Build the prompt for a batch of tasks."""
+        tasks_list = "\n".join([f"- **{t['id']}:** {t['description']}" for t in tasks])
+
+        prompt = f"""/speckit.implement {feature_desc}
+
+The tasks.md file has already been generated. Implement the following batch of tasks:
+
+{tasks_list}
+
+Complete ALL tasks in this batch. Check off each task in tasks.md as you complete it.
+Work through them sequentially within this session.
+If you need clarification for any task, ask a question in JSON format.
+Otherwise, complete all tasks completely."""
 
         if pre:
             prompt = (

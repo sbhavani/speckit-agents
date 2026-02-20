@@ -5,6 +5,9 @@
 ### I. Product-Driven Development
 Every feature MUST originate from a documented product requirement (PRD). Features are prioritized based on user value, business impact, and dependency order. The PM Agent maintains the backlog and suggests features in priority order. No implementation without clear product rationale.
 
+### I.1 Stateless Workers
+Workers should be stateless and side-effect free. All state should be managed externally (Redis stream for pending work, not local state). Workers process messages and hand off to orchestrators without maintaining local state between runs.
+
 ### II. Human-in-the-Loop
 Human approval is REQUIRED at key workflow gates: feature suggestion (REVIEW), plan review (PLAN_REVIEW), and final PR. Humans can intervene, ask questions, reject, or approve at any point. The system supports yolo mode only when explicitly requested by human.
 

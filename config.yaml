@@ -9,7 +9,7 @@
 # Multi-project mode (use --project flag to select)
 projects:
   finance-agent:
-    path: /Users/sb/code/finance_agent
+    path: /Users/sb/code/finance-agent
     prd_path: docs/PRD.md
     channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br  # #agent-team
   live-set-revival:

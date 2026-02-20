@@ -165,6 +165,17 @@ class Worker:
 
     def _process_message(self, msg_id: str, data: dict) -> None:
         """Process a single feature request message."""
+        # Skip stale messages (older than 60 seconds) to prevent duplicate workflows
+        try:
+            msg_time = int(msg_id.split('-')[0])
+            import time
+            if time.time() * 1000 - msg_time > 60000:
+                logger.info(f"Skipping stale message {msg_id}")
+                self.redis.xack(self.stream_name, self.consumer_group, msg_id)
+                return
+        except (ValueError, IndexError):
+            pass  # Process normally if we can't parse the timestamp
+
         # Decode bytes if needed
         if isinstance(data, dict):
             payload = {k.decode() if isinstance(k, bytes) else k:
@@ -172,6 +183,22 @@ class Worker:
                        for k, v in data.items()}
         else:
             payload = data
+
+        # Skip duplicate messages only when feature is specified (not for /suggest)
+        # This allows multiple /suggest commands but dedups --feature requests
+        import hashlib, json
+        feature = payload.get('feature', '')
+        if feature:
+            dedup_key = f"{payload.get('project', '')}:{payload.get('command', '')}:{feature}"
+            msg_hash = hashlib.sha256(dedup_key.encode()).hexdigest()[:16]
+            processed_key = f"processed:{msg_hash}"
+
+            if self.redis.setnx(processed_key, "1"):
+                self.redis.expire(processed_key, 3600)  # Expire after 1 hour
+            else:
+                logger.info(f"Skipping duplicate message {msg_id} (hash: {msg_hash})")
+                self.redis.xack(self.stream_name, self.consumer_group, msg_id)
+                return
 
         logger.info(f"Received message {msg_id}: {payload}")
 
@@ -211,13 +238,25 @@ class Worker:
             if command == "resume":
                 cmd.extend(["--resume", "--approve"])
 
+            # Add --dry-run to avoid Mattermost issues in testing
+            cmd.append("--dry-run")
+
             logger.info(f"Running orchestrator: {' '.join(cmd)}")
 
+            # Clear CLAUDECODE env var so orchestrator can spawn claude -p
+            env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+            logger.info(f"CLAUDECODE in subprocess env: {'CLAUDECODE' in env}")
+
             # Run the orchestrator and wait for completion
+            # Use DEVNULL to avoid TTY issues when run in background
             result = subprocess.run(
                 cmd,
                 cwd=os.getcwd(),
                 timeout=7200,  # 2 hour timeout
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
 
             if result.returncode == 0:
