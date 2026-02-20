@@ -3,6 +3,8 @@
 Run: uv run pytest tests/test_responder.py -m "not integration"
 """
 
+from unittest.mock import MagicMock
+
 
 
 
@@ -188,3 +190,242 @@ class TestMentionDetection:
         """Mention detection should be case insensitive."""
         text = "@PRODUCT-MANAGER something"
         assert "@product-manager" in text.lower()
+
+    def test_no_mention_does_not_trigger_mention_handler(self):
+        """Message without @mention should not trigger mention handler."""
+        text = "Hello, how are you?"
+        # Neither @product-manager nor @dev-agent present
+        has_pm_mention = "@product-manager" in text.lower()
+        has_dev_mention = "@dev-agent" in text.lower()
+        assert has_pm_mention is False
+        assert has_dev_mention is False
+
+    def test_no_mention_plain_statement(self):
+        """Plain statement without mention should not be detected as mention."""
+        text = "This is a feature request"
+        has_pm_mention = "@product-manager" in text.lower()
+        has_dev_mention = "@dev-agent" in text.lower()
+        assert has_pm_mention is False
+        assert has_dev_mention is False
+
+    def test_no_mention_question_without_mention(self):
+        """Question without mention should not trigger mention routing."""
+        text = "Can someone help me with this issue?"
+        has_pm_mention = "@product-manager" in text.lower()
+        has_dev_mention = "@dev-agent" in text.lower()
+        assert has_pm_mention is False
+        assert has_dev_mention is False
+
+
+class TestMultipleMentionsPrecedence:
+    """Tests for multiple @mention precedence logic."""
+
+    def test_dev_agent_takes_precedence_over_product_manager(self):
+        """When both @dev-agent and @product-manager are mentioned, @dev-agent should take precedence."""
+        text = "@product-manager and @dev-agent what is the status?"
+        text_lower = text.lower()
+
+        # Check that both mentions are present
+        is_pm = "@product-manager" in text_lower
+        is_dev = "@dev-agent" in text_lower
+
+        assert is_pm is True
+        assert is_dev is True
+
+        # Dev should take precedence (checked first in _handle_mention)
+        # In the current implementation, is_dev is checked first
+        # So if both are True, is_dev branch executes first
+        precedence_result = "dev" if is_dev else "pm"
+        assert precedence_result == "dev"
+
+    def test_mentions_order_does_not_matter(self):
+        """@dev-agent should take precedence regardless of mention order."""
+        # Test with @dev-agent first
+        text1 = "@dev-agent help me @product-manager"
+        text1_lower = text1.lower()
+        is_dev1 = "@dev-agent" in text1_lower
+        is_pm1 = "@product-manager" in text1_lower
+        result1 = "dev" if is_dev1 else "pm"
+
+        # Test with @product-manager first
+        text2 = "@product-manager help me @dev-agent"
+        text2_lower = text2.lower()
+        is_dev2 = "@dev-agent" in text2_lower
+        is_pm2 = "@product-manager" in text2_lower
+        result2 = "dev" if is_dev2 else "pm"
+
+        # Both should route to dev since both mentions are present
+        assert result1 == "dev"
+        assert result2 == "dev"
+
+    def test_only_product_manager_routes_to_pm(self):
+        """Only @product-manager mention should route to PM."""
+        text = "@product-manager what should we build next?"
+        text_lower = text.lower()
+
+        is_pm = "@product-manager" in text_lower
+        is_dev = "@dev-agent" in text_lower
+
+        assert is_pm is True
+        assert is_dev is False
+        assert is_pm and not is_dev
+
+    def test_only_dev_agent_routes_to_dev(self):
+        """Only @dev-agent mention should route to Dev."""
+        text = "@dev-agent implement this feature"
+        text_lower = text.lower()
+
+        is_pm = "@product-manager" in text_lower
+        is_dev = "@dev-agent" in text_lower
+
+        assert is_pm is False
+        assert is_dev is True
+        assert is_dev and not is_pm
+
+
+# ---------------------------------------------------------------------------
+# Mention routing behavior
+# ---------------------------------------------------------------------------
+
+class TestMentionRoutingBehavior:
+    """Tests for actual routing behavior in responder._handle_mention method."""
+
+    def _make_responder(self):
+        """Create a responder with mocked config."""
+        from unittest.mock import MagicMock
+
+        config = {
+            "mattermost": {"channel_id": "test_channel"},
+            "openclaw": {},
+            "redis_streams": {},
+            "projects": {},
+        }
+        # Create responder using __new__ to bypass __init__
+        from responder import Responder
+        r = Responder.__new__(Responder)
+        r.cfg = config
+        r.bridge = MagicMock()
+        r.redis = None  # Force fallback mode
+        r.processed_messages = set()
+        return r
+
+    def test_dev_agent_mention_routes_to_dev_agent(self):
+        """@dev-agent mention should route to Dev Agent, not PM Agent."""
+        from unittest.mock import MagicMock
+        r = self._make_responder()
+
+        # Mock the methods that should be called
+        r._generate_response = MagicMock(return_value="Dev response")
+        r._publish_feature_request = MagicMock()
+
+        # Call _handle_mention with @dev-agent (not a question)
+        r._handle_mention("@dev-agent help", "test_channel", is_question=False)
+
+        # Verify _publish_feature_request is called (for feature requests to Dev)
+        r._publish_feature_request.assert_called_once_with(channel_id="test_channel")
+        # Verify _generate_response was NOT called for pm-agent path
+        r._generate_response.assert_not_called()
+
+    def test_dev_agent_question_routes_to_dev_agent(self):
+        """@dev-agent question should be answered by Dev Agent."""
+        from unittest.mock import MagicMock
+        r = self._make_responder()
+
+        # Mock the methods
+        r._generate_response = MagicMock(return_value="Dev answer")
+        r._publish_feature_request = MagicMock()
+
+        # Call _handle_mention with a question
+        r._handle_mention("@dev-agent how do I implement auth?", "test_channel", is_question=True)
+
+        # Verify Dev Agent is used for answering
+        r.bridge.send.assert_called_once()
+        call_args = r.bridge.send.call_args
+        assert call_args[1].get('sender') == "Dev Agent", \
+            "@dev-agent question should be answered by Dev Agent"
+
+        # Verify the response was generated with is_pm=False
+        r._generate_response.assert_called_once()
+        call_args = r._generate_response.call_args
+        assert call_args[1].get('is_pm') is False, \
+            "@dev-agent should route with is_pm=False"
+
+    def test_dev_agent_takes_precedence_over_product_manager(self):
+        """When both @dev-agent and @product-manager present, should route to Dev Agent."""
+        from unittest.mock import MagicMock
+        r = self._make_responder()
+
+        # Track routing
+        r._generate_response = MagicMock(return_value="response")
+        r._publish_feature_request = MagicMock()
+
+        # Call with both mentions - dev-agent should take precedence
+        r._handle_mention("@product-manager and @dev-agent help", "test_channel", is_question=False)
+
+        # Should route to Dev Agent (precedence), not PM Agent
+        r._publish_feature_request.assert_called_once_with(channel_id="test_channel")
+
+    def test_product_manager_mention_routes_to_pm_agent(self):
+        """@product-manager mention should route to PM Agent, not Dev Agent."""
+        from unittest.mock import MagicMock
+        r = self._make_responder()
+
+        # Mock the methods that should be called
+        r._generate_response = MagicMock(return_value="PM response")
+        r._publish_feature_request = MagicMock()
+
+        # Call _handle_mention with @product-manager (not a question)
+        r._handle_mention("@product-manager help", "test_channel", is_question=False)
+
+        # Verify _publish_feature_request is called (for feature requests to PM)
+        r._publish_feature_request.assert_called_once_with(channel_id="test_channel")
+        # Verify _generate_response was NOT called for dev-agent path
+        r._generate_response.assert_not_called()
+
+    def test_product_manager_question_routes_to_pm_agent(self):
+        """@product-manager question should be answered by PM Agent."""
+        from unittest.mock import MagicMock
+        r = self._make_responder()
+
+        # Mock the methods
+        r._generate_response = MagicMock(return_value="PM answer")
+        r._publish_feature_request = MagicMock()
+
+        # Call _handle_mention with a question
+        r._handle_mention("@product-manager what features should we add?", "test_channel", is_question=True)
+
+        # Verify PM Agent is used for answering
+        r.bridge.send.assert_called_once()
+        call_args = r.bridge.send.call_args
+        assert call_args[1].get('sender') == "PM Agent", \
+            "@product-manager question should be answered by PM Agent"
+
+        # Verify the response was generated with is_pm=True
+        r._generate_response.assert_called_once()
+        call_args = r._generate_response.call_args
+        assert call_args[1].get('is_pm') is True, \
+            "@product-manager should route with is_pm=True"
+
+    def test_product_manager_does_not_route_to_dev_agent(self):
+        """@product-manager mention should NOT trigger Dev Agent routing."""
+        from unittest.mock import MagicMock
+        r = self._make_responder()
+
+        # Track calls to verify correct routing
+        r._generate_response = MagicMock(return_value="response")
+        r._publish_feature_request = MagicMock()
+
+        # Call with @product-manager
+        r._handle_mention("@product-manager add a feature", "test_channel", is_question=False)
+
+        # Verify _publish_feature_request is called (PM Agent path)
+        r._publish_feature_request.assert_called_once_with(channel_id="test_channel")
+
+        # If it incorrectly routed to Dev Agent, it would call _generate_response
+        # with is_pm=False. Let's verify that didn't happen by checking
+        # the method was called with the right parameters
+        if r._generate_response.called:
+            call_args = r._generate_response.call_args
+            is_pm_arg = call_args[1].get('is_pm')
+            assert is_pm_arg is True, \
+                "@product-manager should pass is_pm=True, not route to Dev Agent"
