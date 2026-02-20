@@ -2015,16 +2015,37 @@ Be specific about:
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
+    @staticmethod
+    def _get_status_marker(is_complete: bool, has_error: bool) -> tuple[str, str]:
+        """Return emoji and text fallback for phase status.
+
+        Args:
+            is_complete: Whether the phase completed successfully
+            has_error: Whether the phase failed with an error
+
+        Returns:
+            Tuple of (emoji, text_fallback) for the status
+        """
+        if has_error:
+            return "❌", "[FAILED]"
+        elif is_complete:
+            return "✅", "[COMPLETE]"
+        else:
+            return "🔄", "[IN PROGRESS]"
+
     def _display_phase_status(self, phase_name: str) -> None:
         """Display current phase status with elapsed time."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
 
+        # Get emoji marker for in-progress phase
+        emoji, _ = self._get_status_marker(is_complete=False, has_error=False)
+
         total_elapsed = time.time() - self._run_start_time
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"{emoji} Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
@@ -2038,10 +2059,12 @@ Be specific about:
         total = time.time() - self._run_start_time if self._run_start_time is not None else 0
         duration_str = self._fmt_duration(total)
 
+        # Get emoji marker based on status
+        emoji, _ = self._get_status_marker(is_complete=(error is None), has_error=(error is not None))
         if error:
-            status = f"Failed at {self.state.phase.name}"
+            status = f"{emoji} Failed at {self.state.phase.name}"
         else:
-            status = "Complete"
+            status = f"{emoji} Complete"
 
         # Build timing table
         rows = []
