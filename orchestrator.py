@@ -55,6 +55,19 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
+# Progress emoji markers for phase and task status
+IN_PROGRESS_EMOJI = "🔄"
+COMPLETED_EMOJI = "✅"
+FAILED_EMOJI = "❌"
+
+
+def _truncate_error(error: str, max_length: int = 200) -> str:
+    """Truncate error messages to prevent overly long Mattermost messages."""
+    if len(error) <= max_length:
+        return error
+    return error[:max_length - 3] + "..."
+
+
 def _setup_logging() -> None:
     """Configure console (INFO) and file (DEBUG) logging handlers."""
     root = logging.getLogger()
@@ -805,17 +818,33 @@ class Orchestrator:
                 if pre:
                     self._augment_context[phase] = pre
 
-            if is_checkpoint:
-                if not method():
-                    # Post-hook even on rejection (for logging)
-                    if self._augmentor:
-                        post = self._augmentor.run_post_hook(phase, self.state)
-                        if post:
-                            self._augment_context[f"{phase}_post"] = post
-                    self._phase_timings.append((phase.name, time.time() - t0))
-                    return  # rejected
-            else:
-                method()
+            try:
+                if is_checkpoint:
+                    if not method():
+                        # Post-hook even on rejection (for logging)
+                        if self._augmentor:
+                            post = self._augmentor.run_post_hook(phase, self.state)
+                            if post:
+                                self._augment_context[f"{phase}_post"] = post
+                        self._phase_timings.append((phase.name, time.time() - t0))
+                        return  # rejected
+                else:
+                    method()
+            except Exception as e:
+                # Display failure emoji when phase fails
+                error_msg = _truncate_error(str(e))
+                display_name = phase.name.replace('_', ' ').title()
+                failure_msg = f"📋 {display_name} — {FAILED_EMOJI} Failed: {error_msg}"
+                logger.error(f"Phase {phase.name} failed: {e}")
+                self.msg.send(failure_msg, sender="Orchestrator")
+                raise
+
+            # Display completion message with emoji (skip for checkpoints - they have explicit approved/rejected messages)
+            if not is_checkpoint:
+                display_name = phase.name.replace('_', ' ').title()
+                completion_msg = f"📋 {display_name} — {COMPLETED_EMOJI} Complete"
+                logger.info(f"Phase {phase.name} complete")
+                self.msg.send(completion_msg, sender="Orchestrator")
 
             # If worker handoff complete, skip remaining dev phases
             # The worker will pick up from the stream and run them
@@ -966,7 +995,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send(f"📋 Review — {FAILED_EMOJI} Rejected", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -986,6 +1015,9 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         # Mark that we handed off to workers - orchestrator should skip dev phases
         self.state.worker_handoff = True
         logger.info(f"Set worker_handoff=True, feature={self.state.feature.get('feature')}")
+
+        # Show approved message (completion message will be skipped for checkpoint phases)
+        self.msg.send(f"📋 Review — {COMPLETED_EMOJI} Approved", sender="Orchestrator")
 
         return True
 
@@ -1199,7 +1231,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
         if auto or self._auto_approve:
             logger.info("Auto-approve enabled, proceeding to implementation")
-            self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator")
+            self.msg.send(f"📋 Plan Review — {COMPLETED_EMOJI} Auto-approved", sender="Orchestrator")
             return True
 
         poll_interval = 5
@@ -1234,10 +1266,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             logger.info(f"Plan review response: '{response[:50]}...' (lower: '{lower}')")
 
             if lower in APPROVE_WORDS:
-                self.msg.send("Approved — starting implementation.", sender="Orchestrator")
+                self.msg.send(f"📋 Plan Review — {COMPLETED_EMOJI} Approved", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send(f"📋 Plan Review — {FAILED_EMOJI} Rejected", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1255,7 +1287,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         # Timeout — auto-approve (yolo mode)
         self.msg.send(
-            f"No objection after {review_timeout}s — proceeding with implementation.",
+            f"📋 Plan Review — {COMPLETED_EMOJI} Auto-approved (no objection after {review_timeout}s)",
             sender="Orchestrator",
         )
         return True
@@ -1633,13 +1665,37 @@ Otherwise, implement all tasks to completion."""
 
             for task in sequential_tasks:
                 logger.info("Running sequential task: %s", task['id'])
-                prompt = self._build_task_prompt(task, feature_desc, pre)
-                self._run_dev_with_polling(prompt, timeout=1800)
+                task_id = task.get('id', 'unknown')
+                task_desc = task.get('description', '')[:50]  # Truncate for display
+
+                # Show in-progress emoji when task starts
+                self.msg.send(
+                    f"📋 Task {task_id} — {IN_PROGRESS_EMOJI} {task_desc}...",
+                    sender="Dev Agent",
+                )
+
+                try:
+                    prompt = self._build_task_prompt(task, feature_desc, pre)
+                    self._run_dev_with_polling(prompt, timeout=1800)
+
+                    # Show completion emoji after successful task
+                    self.msg.send(
+                        f"📋 Task {task_id} — {COMPLETED_EMOJI} Complete",
+                        sender="Dev Agent",
+                    )
+                except Exception as e:
+                    # Show failure emoji on task failure
+                    error_msg = _truncate_error(str(e))
+                    self.msg.send(
+                        f"📋 Task {task_id} — {FAILED_EMOJI} Failed: {error_msg}",
+                        sender="Dev Agent",
+                    )
+                    raise
 
         # Run parallel batches
         for batch_idx, batch in enumerate(parallel_batches):
             self.msg.send(
-                f"⚡ Running {len(batch)} parallel task(s) (batch {batch_idx + 1})...",
+                f"🔄 {IN_PROGRESS_EMOJI} Running {len(batch)} parallel task(s) (batch {batch_idx + 1})...",
                 sender="Dev Agent",
             )
             logger.info("Running parallel batch %d with %d tasks", batch_idx + 1, len(batch))
@@ -1665,12 +1721,18 @@ Otherwise, implement all tasks to completion."""
                     except Exception as e:
                         logger.error("Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"⚠️ Task {task['id']} failed: {e}",
+                            f"{FAILED_EMOJI} Task {task['id']} failed: {e}",
                             sender="Dev Agent",
                         )
                         raise
 
-        self.msg.send("✅ All tasks complete", sender="Dev Agent")
+            # Batch completed successfully
+            self.msg.send(
+                f"✅ {COMPLETED_EMOJI} Batch {batch_idx + 1} complete",
+                sender="Dev Agent",
+            )
+
+        self.msg.send(f"✅ {COMPLETED_EMOJI} All tasks complete", sender="Dev Agent")
 
     def _build_task_prompt(self, task: dict, feature_desc: str, pre: dict | None) -> str:
         """Build the prompt for a specific task implementation."""
