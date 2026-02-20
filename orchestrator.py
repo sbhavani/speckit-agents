@@ -113,6 +113,25 @@ class WorkflowState:
 
 STATE_FILE = ".agent-team-state.json"
 
+# Required fields for state validation (field_name: expected_type)
+# Used by _validate_state() to check state structure integrity
+REQUIRED_STATE_FIELDS: dict[str, type | tuple[type, ...]] = {
+    "version": int,
+    "workflow_type": str,
+    "phase": str,
+    "feature": (dict, type(None)),
+    "pm_session": (str, type(None)),
+    "dev_session": (str, type(None)),
+    "pr_url": (str, type(None)),
+    "branch_name": (str, type(None)),
+    "worker_handoff": bool,
+    "original_path": str,
+    "worktree_path": (str, type(None)),
+    "thread_root_id": (str, type(None)),
+    "started_at": str,
+    "updated_at": str,
+}
+
 # Phase sequence: (Phase, method_name, is_checkpoint)
 # Checkpoint phases return bool — False aborts the workflow.
 PHASE_SEQUENCE_NORMAL: list[tuple[Phase, str, bool]] = [
@@ -595,6 +614,42 @@ class Orchestrator:
     def _state_file_path(self) -> Path:
         return Path(self.project_path) / STATE_FILE
 
+    def _backup_file_path(self) -> Path:
+        """Return path to the backup state file."""
+        return Path(self.project_path) / f"{STATE_FILE}.bak"
+
+    def _create_backup(self) -> bool:
+        """Create backup of current state file before writing new state.
+
+        Returns:
+            True if backup created successfully (or no state to backup)
+            False if backup creation failed (non-fatal, will log warning)
+        """
+        # Check if state file exists (Redis or file)
+        if self._redis_state:
+            # For Redis, backup is handled in RedisState.save()
+            # This method handles file-based backup only
+            data = self._redis_state.load(self.project_path)
+            if data:
+                # Redis backup is automatic in save(), just log
+                logger.debug("State exists in Redis, backup will be created on save")
+            return True
+
+        # File-based backup
+        state_path = self._state_file_path()
+        if not state_path.exists():
+            logger.debug("No state file to backup")
+            return True
+
+        try:
+            backup_path = self._backup_file_path()
+            shutil.copy2(state_path, backup_path)
+            logger.info("State backup created: %s", backup_path)
+            return True
+        except OSError as e:
+            logger.warning("Failed to create state backup: %s", e)
+            return False
+
     # -- Worktree management -----------------------------------------------------
 
     def _create_worktree(self) -> None:
@@ -674,6 +729,9 @@ class Orchestrator:
 
     def _save_state(self) -> None:
         """Serialize workflow state to JSON after each phase completes."""
+        # Create backup before writing new state
+        self._create_backup()
+
         now = datetime.now(timezone.utc).isoformat()
         if self._started_at is None:
             self._started_at = now
@@ -709,8 +767,15 @@ class Orchestrator:
         if self._redis_state:
             data = self._redis_state.load(self.project_path)
             if data:
-                if data.get("version") != 1:
-                    logger.warning("Unknown state version: %s", data.get("version"))
+                # Validate state structure
+                is_valid, error_msg = self._validate_state(data)
+                if not is_valid:
+                    logger.warning("State file corrupted (invalid structure): %s. Attempting recovery...", error_msg)
+                    # Try backup
+                    backup_data = self._load_backup()
+                    if backup_data:
+                        return backup_data
+                    logger.warning("Both state file and backup are corrupted. Starting fresh.")
                     return None
                 logger.info("State loaded from Redis: phase=%s", data.get("phase"))
                 return data
@@ -718,17 +783,105 @@ class Orchestrator:
         # Fall back to file
         path = self._state_file_path()
         if not path.exists():
+            logger.info("No saved state found. Starting fresh workflow.")
             return None
         try:
             data = json.loads(path.read_text())
-            if data.get("version") != 1:
-                logger.warning("Unknown state file version: %s", data.get("version"))
-                return None
-            logger.info("State loaded from file: phase=%s", data.get("phase"))
-            return data
-        except (json.JSONDecodeError, OSError) as e:
+        except json.JSONDecodeError as e:
+            logger.warning("State file corrupted (invalid JSON): %s. Attempting recovery...", e)
+            # Try backup
+            backup_data = self._load_backup()
+            if backup_data:
+                return backup_data
+            logger.warning("Both state file and backup are corrupted. Starting fresh.")
+            return None
+        except OSError as e:
             logger.warning("Could not load state file: %s", e)
             return None
+
+        # Validate state structure
+        is_valid, error_msg = self._validate_state(data)
+        if not is_valid:
+            logger.warning("State file corrupted (missing required fields): %s. Attempting recovery...", error_msg)
+            # Try backup
+            backup_data = self._load_backup()
+            if backup_data:
+                return backup_data
+            logger.warning("Both state file and backup are corrupted. Starting fresh.")
+            return None
+
+        logger.info("State loaded from file: phase=%s", data.get("phase"))
+        return data
+
+    def _validate_state(self, data: dict) -> tuple[bool, str | None]:
+        """Validate state structure before accepting it.
+
+        Returns:
+            (True, None) if valid
+            (False, error_message) if invalid
+        """
+        # Check required fields using module-level constant
+        missing_fields = [f for f in REQUIRED_STATE_FIELDS if f not in data]
+        if missing_fields:
+            return False, f"Missing required fields: {', '.join(missing_fields)}"
+
+        # Check version
+        if data.get("version") != 1:
+            return False, f"Invalid version: {data.get('version')} (expected 1)"
+
+        # Check phase is valid enum
+        try:
+            Phase[data["phase"]]
+        except KeyError:
+            return False, f"Invalid phase: {data['phase']} (not a valid Phase enum)"
+
+        # Check field types
+        for field, expected_types in REQUIRED_STATE_FIELDS.items():
+            value = data.get(field)
+            if not isinstance(expected_types, tuple):
+                expected_types = (expected_types,)
+            if not isinstance(value, expected_types):
+                return False, f"Invalid type for {field}: {type(value).__name__} (expected {expected_types})"
+
+        return True, None
+
+    def _load_backup(self) -> dict | None:
+        """Load state from backup file.
+
+        Returns:
+            Valid state dict from backup, or None if backup is missing/invalid
+        """
+        # Try Redis backup first if available
+        if self._redis_state:
+            data = self._redis_state.load_backup(self.project_path)
+            if data:
+                is_valid, error_msg = self._validate_state(data)
+                if is_valid:
+                    logger.info("Recovered state from Redis backup: phase=%s", data.get("phase"))
+                    return data
+                logger.warning("Redis backup is also corrupted: %s", error_msg)
+                return None
+
+        # Try file-based backup
+        backup_path = self._backup_file_path()
+        if not backup_path.exists():
+            logger.debug("No backup file found")
+            return None
+
+        try:
+            data = json.loads(backup_path.read_text())
+        except json.JSONDecodeError as e:
+            logger.warning("Backup file corrupted (invalid JSON): %s. Cannot resume.", e)
+            return None
+
+        # Validate backup state
+        is_valid, error_msg = self._validate_state(data)
+        if not is_valid:
+            logger.warning("Backup file corrupted (missing required fields): %s. Cannot resume.", error_msg)
+            return None
+
+        logger.info("Recovered state from backup: phase=%s", data.get("phase"))
+        return data
 
     def _clear_state(self) -> None:
         """Delete state on successful completion."""
