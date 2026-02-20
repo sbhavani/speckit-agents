@@ -550,6 +550,8 @@ class Orchestrator:
         self._phase_timings: list[tuple[str, float]] = []
         self._run_start_time: float | None = None
         self._phase_start_time: float | None = None  # Track current phase start
+        self._phase_timer: threading.Timer | None = None  # Periodic status update timer
+        self._phase_timer_fired: bool = False  # Track if timer has fired for current phase
         self._augmentor: ToolAugmentor | None = None
         self._augment_context: dict = {}
 
@@ -750,10 +752,12 @@ class Orchestrator:
             try:
                 self._run_once()
             except KeyboardInterrupt:
+                self._cancel_phase_timer()
                 self._save_state()
                 self._post_summary(error="Interrupted by operator")
                 break
             except Exception as e:
+                self._cancel_phase_timer()
                 self._save_state()
                 logger.exception("Workflow error")
                 self._post_summary(error=str(e))
@@ -798,6 +802,7 @@ class Orchestrator:
             t0 = time.time()
             self._phase_start_time = time.time()
             self._display_phase_status(phase.name)
+            self._start_phase_timer(phase.name)
 
             # Pre-stage discovery hook
             if self._augmentor:
@@ -822,6 +827,7 @@ class Orchestrator:
             logger.info(f"Phase {phase.name}: worker_handoff={self.state.worker_handoff}")
             if self.state.worker_handoff and phase == Phase.REVIEW:
                 logger.info("Worker handoff complete - orchestrator skipping dev phases")
+                self._cancel_phase_timer()
                 self.msg.send(
                     "✅ Feature published to work queue. Workers will handle implementation.",
                     sender="Orchestrator",
@@ -836,6 +842,14 @@ class Orchestrator:
                 post = self._augmentor.run_post_hook(phase, self.state)
                 if post:
                     self._augment_context[f"{phase}_post"] = post
+
+            # Display final status for short phases (before first timer fires)
+            # This ensures phase duration is shown even for phases < interval
+            if not self._phase_timer_fired:
+                self._display_phase_status(phase.name)
+
+            # Cancel phase timer after phase completes
+            self._cancel_phase_timer()
 
             self._phase_timings.append((phase.name, time.time() - t0))
 
@@ -2030,6 +2044,49 @@ Be specific about:
         )
         logger.info(status_msg)
         self.msg.send(status_msg, sender="Orchestrator")
+
+    def _get_phase_status_interval(self) -> int:
+        """Get the phase status update interval from config."""
+        interval = self.cfg.get("workflow", {}).get("phase_status_interval", 30)
+        # Clamp to valid range
+        return max(30, min(60, interval))
+
+    def _start_phase_timer(self, phase_name: str) -> None:
+        """Start periodic status updates for the current phase."""
+        self._cancel_phase_timer()  # Cancel any existing timer
+        self._phase_timer_fired = False  # Reset flag for new phase
+
+        interval = self._get_phase_status_interval()
+        self._phase_timer = threading.Timer(
+            interval,
+            self._periodic_status_update,
+            args=(phase_name,)
+        )
+        self._phase_timer.daemon = True
+        self._phase_timer.start()
+        logger.debug("Started phase timer for %s (interval: %ds)", phase_name, interval)
+
+    def _cancel_phase_timer(self) -> None:
+        """Cancel any running phase timer."""
+        if self._phase_timer is not None:
+            self._phase_timer.cancel()
+            self._phase_timer = None
+
+    def _periodic_status_update(self, phase_name: str) -> None:
+        """Callback invoked by timer to display periodic status update."""
+        # Check if phase is still running (phase_start_time still set)
+        if self._phase_start_time is None:
+            return
+
+        # Mark that timer has fired (so we don't show final status for short phases)
+        self._phase_timer_fired = True
+
+        # Display the status update
+        self._display_phase_status(phase_name)
+
+        # Reschedule if phase is still running
+        if self._phase_start_time is not None:
+            self._start_phase_timer(phase_name)
 
     def _post_summary(self, error: str | None = None) -> None:
         """Format and send a workflow summary to Mattermost."""
