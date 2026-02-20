@@ -797,7 +797,7 @@ class Orchestrator:
             method = getattr(self, method_name)
             t0 = time.time()
             self._phase_start_time = time.time()
-            self._display_phase_status(phase.name)
+            self._display_phase_status(phase.name, "in_progress")
 
             # Pre-stage discovery hook
             if self._augmentor:
@@ -813,6 +813,8 @@ class Orchestrator:
                         if post:
                             self._augment_context[f"{phase}_post"] = post
                     self._phase_timings.append((phase.name, time.time() - t0))
+                    # Display failure status for rejected phase
+                    self._display_phase_status(phase.name, "failure")
                     return  # rejected
             else:
                 method()
@@ -838,6 +840,9 @@ class Orchestrator:
                     self._augment_context[f"{phase}_post"] = post
 
             self._phase_timings.append((phase.name, time.time() - t0))
+
+            # Display success status for completed phase
+            self._display_phase_status(phase.name, "success")
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -2015,16 +2020,19 @@ Be specific about:
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
-    def _display_phase_status(self, phase_name: str) -> None:
-        """Display current phase status with elapsed time."""
+    def _display_phase_status(self, phase_name: str, status: str = "in_progress") -> None:
+        """Display current phase status with elapsed time and emoji."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
+
+        # Emoji mapping: in_progress -> 🔄, success -> ✅, failure -> ❌
+        emoji = {"in_progress": "🔄", "success": "✅", "failure": "❌"}.get(status, "")
 
         total_elapsed = time.time() - self._run_start_time
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"{emoji} Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
