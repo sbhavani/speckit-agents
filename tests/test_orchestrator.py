@@ -75,6 +75,254 @@ class TestStatePersistence:
         )
         assert orchestrator._load_state() is None
 
+    def test_recovery_from_backup_on_corrupt_json(self, orchestrator, tmp_project):
+        """When current state has corrupt JSON, recover from backup."""
+        _, tmp_path = tmp_project
+        # Create valid backup
+        valid_state = {
+            "version": 1,
+            "workflow_type": "normal",
+            "phase": "DEV_PLAN",
+            "feature": {"feature": "test"},
+            "pm_session": None,
+            "dev_session": None,
+            "pr_url": None,
+            "branch_name": "test-branch",
+            "worker_handoff": False,
+            "original_path": str(tmp_path),
+            "worktree_path": None,
+            "thread_root_id": None,
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+        (tmp_path / ".agent-team-state.json.bak").write_text(json.dumps(valid_state))
+        # Corrupt current state
+        (tmp_path / ".agent-team-state.json").write_text("not valid json {{{")
+
+        result = orchestrator._load_state()
+
+        assert result is not None
+        assert result["phase"] == "DEV_PLAN"
+        assert result["branch_name"] == "test-branch"
+
+    def test_recovery_from_backup_on_missing_fields(self, orchestrator, tmp_project):
+        """When current state has missing required fields, recover from backup."""
+        _, tmp_path = tmp_project
+        # Create valid backup
+        valid_state = {
+            "version": 1,
+            "workflow_type": "normal",
+            "phase": "DEV_IMPLEMENT",
+            "feature": {"feature": "test"},
+            "pm_session": None,
+            "dev_session": None,
+            "pr_url": None,
+            "branch_name": "test-branch",
+            "worker_handoff": False,
+            "original_path": str(tmp_path),
+            "worktree_path": None,
+            "thread_root_id": None,
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+        (tmp_path / ".agent-team-state.json.bak").write_text(json.dumps(valid_state))
+        # Create state with missing required fields
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps({"phase": "INIT"}))
+
+        result = orchestrator._load_state()
+
+        assert result is not None
+        assert result["phase"] == "DEV_IMPLEMENT"
+
+    def test_returns_none_when_both_state_and_backup_corrupt(self, orchestrator, tmp_project):
+        """When both state and backup are corrupt, return None."""
+        _, tmp_path = tmp_project
+        # Corrupt backup
+        (tmp_path / ".agent-team-state.json.bak").write_text("not valid json {{{")
+        # Corrupt current state
+        (tmp_path / ".agent-team-state.json").write_text("also corrupt {{{")
+
+        result = orchestrator._load_state()
+
+        assert result is None
+
+    def test_load_backup_returns_none_when_no_backup(self, orchestrator, tmp_project):
+        """When no backup exists, _load_backup returns None."""
+        _, tmp_path = tmp_project
+
+        result = orchestrator._load_backup()
+
+        assert result is None
+
+    def test_error_message_on_corrupt_json(self, orchestrator, tmp_project, caplog):
+        """Verify error message logged for corrupt JSON."""
+        _, tmp_path = tmp_project
+        (tmp_path / ".agent-team-state.json").write_text("not valid json {{{")
+
+        with caplog.at_level(logging.WARNING):
+            orchestrator._load_state()
+
+        assert any("corrupted (invalid JSON)" in msg for msg in caplog.messages)
+
+    def test_error_message_on_missing_fields(self, orchestrator, tmp_project, caplog):
+        """Verify error message logged for missing required fields."""
+        _, tmp_path = tmp_project
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps({"phase": "INIT"}))
+
+        with caplog.at_level(logging.WARNING):
+            orchestrator._load_state()
+
+        assert any("corrupted (missing required fields)" in msg for msg in caplog.messages)
+
+    def test_error_message_when_both_corrupt(self, orchestrator, tmp_project, caplog):
+        """Verify error message logged when both state and backup are corrupt."""
+        _, tmp_path = tmp_project
+        (tmp_path / ".agent-team-state.json.bak").write_text("corrupt")
+        (tmp_path / ".agent-team-state.json").write_text("corrupt")
+
+        with caplog.at_level(logging.WARNING):
+            orchestrator._load_state()
+
+        assert any("Both state file and backup are corrupted" in msg for msg in caplog.messages)
+
+    def test_info_message_when_no_state(self, orchestrator, tmp_project, caplog):
+        """Verify info message logged when no saved state exists."""
+        _, tmp_path = tmp_project
+        # Ensure no state file exists
+
+        with caplog.at_level(logging.INFO):
+            orchestrator._load_state()
+
+        assert any("No saved state found" in msg for msg in caplog.messages)
+
+    def test_recovery_success_logged(self, orchestrator, tmp_project, caplog):
+        """Verify recovery from backup logs success message."""
+        _, tmp_path = tmp_project
+        # Create valid backup
+        valid_state = {
+            "version": 1,
+            "workflow_type": "normal",
+            "phase": "DEV_PLAN",
+            "feature": {"feature": "test"},
+            "pm_session": None,
+            "dev_session": None,
+            "pr_url": None,
+            "branch_name": "test-branch",
+            "worker_handoff": False,
+            "original_path": str(tmp_path),
+            "worktree_path": None,
+            "thread_root_id": None,
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+        (tmp_path / ".agent-team-state.json.bak").write_text(json.dumps(valid_state))
+        # Corrupt current state
+        (tmp_path / ".agent-team-state.json").write_text("corrupt")
+
+        with caplog.at_level(logging.INFO):
+            result = orchestrator._load_state()
+
+        assert result is not None
+        assert any("Recovered state from backup" in msg for msg in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# Backup creation tests
+# ---------------------------------------------------------------------------
+
+class TestBackupCreation:
+    """Tests for backup creation functionality (T020)."""
+
+    def test_backup_file_path_returns_correct_path(self, orchestrator, tmp_project):
+        """Verify _backup_file_path returns correct backup path."""
+        _, tmp_path = tmp_project
+
+        backup_path = orchestrator._backup_file_path()
+
+        assert backup_path == tmp_path / ".agent-team-state.json.bak"
+
+    def test_create_backup_returns_true_when_no_state(self, orchestrator, tmp_project):
+        """Verify _create_backup returns True when no state file exists."""
+        _, tmp_path = tmp_project
+        # Ensure no state file exists
+        assert not (tmp_path / ".agent-team-state.json").exists()
+
+        result = orchestrator._create_backup()
+
+        assert result is True
+        assert not (tmp_path / ".agent-team-state.json.bak").exists()
+
+    def test_create_backup_copies_state_file(self, orchestrator, tmp_project):
+        """Verify _create_backup copies state file to backup."""
+        _, tmp_path = tmp_project
+        # Create a state file first
+        state_data = {"version": 1, "phase": "INIT", "workflow_type": "normal"}
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps(state_data))
+
+        result = orchestrator._create_backup()
+
+        assert result is True
+        assert (tmp_path / ".agent-team-state.json.bak").exists()
+        backup_content = json.loads((tmp_path / ".agent-team-state.json.bak").read_text())
+        assert backup_content["phase"] == "INIT"
+        assert backup_content["version"] == 1
+
+    def test_backup_replaces_old_backup(self, orchestrator, tmp_project):
+        """Verify backup replaces old backup with new content."""
+        _, tmp_path = tmp_project
+        # Create initial state
+        old_state = {"version": 1, "phase": "INIT", "workflow_type": "normal"}
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps(old_state))
+        # Create old backup
+        (tmp_path / ".agent-team-state.json.bak").write_text(json.dumps({"version": 1, "phase": "OLD"}))
+
+        # Save new state with different phase
+        orchestrator.state.phase = Phase.DEV_PLAN
+        orchestrator.state.feature = {"feature": "test"}
+        orchestrator._save_state()
+
+        # Backup should now have the old state content
+        backup_content = json.loads((tmp_path / ".agent-team-state.json.bak").read_text())
+        assert backup_content["phase"] == "INIT"  # Old state was backed up
+
+    def test_save_state_creates_backup_before_writing(self, orchestrator, tmp_project, caplog):
+        """Verify _save_state creates backup before writing new state."""
+        _, tmp_path = tmp_project
+        # Create existing state
+        old_state = {"version": 1, "phase": "INIT", "workflow_type": "normal"}
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps(old_state))
+
+        # Set new state
+        orchestrator.state.phase = Phase.DEV_PLAN
+        orchestrator.state.feature = {"feature": "test"}
+        orchestrator._save_state()
+
+        # Verify backup was created with old state
+        assert (tmp_path / ".agent-team-state.json.bak").exists()
+        backup_content = json.loads((tmp_path / ".agent-team-state.json.bak").read_text())
+        assert backup_content["phase"] == "INIT"
+
+        # Verify new state was written
+        new_state = json.loads((tmp_path / ".agent-team-state.json").read_text())
+        assert new_state["phase"] == "DEV_PLAN"
+
+    def test_create_backup_preserves_file_metadata(self, orchestrator, tmp_project):
+        """Verify backup preserves file metadata (timestamps)."""
+        _, tmp_path = tmp_project
+        # Create state file
+        (tmp_path / ".agent-team-state.json").write_text(json.dumps({"version": 1, "phase": "INIT"}))
+
+        import time
+        time.sleep(0.01)  # Small delay to ensure different timestamps
+
+        orchestrator._create_backup()
+
+        state_stat = (tmp_path / ".agent-team-state.json").stat()
+        backup_stat = (tmp_path / ".agent-team-state.json.bak").stat()
+
+        # copy2 should preserve timestamps (allowing small variance for filesystem precision)
+        assert abs(state_stat.st_mtime - backup_stat.st_mtime) < 0.1
+
 
 # ---------------------------------------------------------------------------
 # Resume logic
@@ -507,12 +755,22 @@ class TestThreadIdPersistence:
         msg = Messenger(bridge=None, dry_run=True)
         orch = Orchestrator(config, msg)
 
-        # Create state file with thread_root_id
+        # Create state file with thread_root_id (including all required fields)
         (tmp_path / ".agent-team-state.json").write_text(json.dumps({
             "version": 1,
+            "workflow_type": "normal",
             "phase": "DEV_IMPLEMENT",
-            "thread_root_id": "thread_xyz789",
             "feature": {},
+            "pm_session": None,
+            "dev_session": None,
+            "pr_url": None,
+            "branch_name": "test-branch",
+            "worker_handoff": False,
+            "original_path": str(tmp_path),
+            "worktree_path": None,
+            "thread_root_id": "thread_xyz789",
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
         }))
 
         saved = orch._load_state()
@@ -559,3 +817,211 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# State validation (unit tests for _validate_state)
+# ---------------------------------------------------------------------------
+
+class TestValidateState:
+    """Unit tests for the _validate_state method."""
+
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        return Orchestrator(config, msg)
+
+    def _valid_state(self, **overrides):
+        """Create a valid state dict with optional overrides."""
+        state = {
+            "version": 1,
+            "workflow_type": "normal",
+            "phase": "INIT",
+            "feature": None,
+            "pm_session": None,
+            "dev_session": None,
+            "pr_url": None,
+            "branch_name": None,
+            "worker_handoff": False,
+            "original_path": "/tmp/test",
+            "worktree_path": None,
+            "thread_root_id": None,
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+        state.update(overrides)
+        return state
+
+    def test_valid_state_passes_validation(self, tmp_path):
+        """Valid state returns (True, None)."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state()
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is True
+        assert error_msg is None
+
+    def test_valid_state_with_all_fields_passes(self, tmp_path):
+        """State with all fields populated passes validation."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(
+            phase="DEV_IMPLEMENT",
+            feature={"feature": "Test feature", "description": "Test desc"},
+            pm_session="pm_123",
+            dev_session="dev_456",
+            pr_url="https://github.com/org/repo/pull/1",
+            branch_name="feature/test",
+            worker_handoff=True,
+            worktree_path="/tmp/worktree",
+            thread_root_id="thread_abc",
+        )
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is True
+        assert error_msg is None
+
+    def test_missing_required_field_fails_validation(self, tmp_path):
+        """Missing required field returns (False, error_message)."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state()
+        del state["version"]
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Missing required fields" in error_msg
+        assert "version" in error_msg
+
+    def test_missing_multiple_fields_fails_validation(self, tmp_path):
+        """Missing multiple required fields returns error listing all."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state()
+        del state["phase"]
+        del state["workflow_type"]
+        del state["branch_name"]
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "phase" in error_msg
+        assert "workflow_type" in error_msg
+        assert "branch_name" in error_msg
+
+    def test_invalid_version_fails_validation(self, tmp_path):
+        """Invalid version returns (False, error_message)."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(version=99)
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Invalid version" in error_msg
+        assert "99" in error_msg
+
+    def test_version_zero_fails_validation(self, tmp_path):
+        """Version 0 (not 1) fails validation."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(version=0)
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Invalid version" in error_msg
+
+    def test_invalid_phase_fails_validation(self, tmp_path):
+        """Invalid phase returns (False, error_message)."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(phase="INVALID_PHASE")
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Invalid phase" in error_msg
+        assert "INVALID_PHASE" in error_msg
+
+    def test_invalid_field_type_fails_validation(self, tmp_path):
+        """Invalid field type returns (False, error_message).
+
+        Note: phase validation runs before type check, so phase=123 fails with
+        'Invalid phase' rather than 'Invalid type for phase'.
+        """
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(phase=123)  # Should be str
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        # Phase check happens before type check
+        assert "Invalid phase" in error_msg
+
+    def test_string_field_as_int_fails_validation(self, tmp_path):
+        """String field with int value fails type validation."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(workflow_type=123)
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Invalid type for workflow_type" in error_msg
+
+    def test_bool_field_as_string_fails_validation(self, tmp_path):
+        """Bool field with string value fails type validation."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(worker_handoff="true")  # Should be bool
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Invalid type for worker_handoff" in error_msg
+
+    def test_int_field_as_string_fails_validation(self, tmp_path):
+        """Int field with string value fails type validation.
+
+        Note: version check runs before type check, so version="1" fails with
+        'Invalid version' rather than 'Invalid type for version'.
+        """
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(version="1")  # Should be int
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        # Version check happens before type check
+        assert "Invalid version" in error_msg
+
+    def test_null_field_with_string_value_fails_validation(self, tmp_path):
+        """Field that allows None but gets wrong type fails."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(feature="not_a_dict")  # Should be dict or None
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is False
+        assert "Invalid type for feature" in error_msg
+
+    def test_empty_dict_passes_for_optional_dict_field(self, tmp_path):
+        """Empty dict {} is valid for feature field."""
+        orch = self._make_orchestrator(tmp_path)
+        state = self._valid_state(feature={})
+
+        is_valid, error_msg = orch._validate_state(state)
+
+        assert is_valid is True
+        assert error_msg is None
+
+    def test_all_phases_are_valid(self, tmp_path):
+        """All valid Phase enum values pass validation."""
+        orch = self._make_orchestrator(tmp_path)
+
+        from orchestrator import Phase
+        for phase in Phase:
+            state = self._valid_state(phase=phase.name)
+            is_valid, error_msg = orch._validate_state(state)
+            assert is_valid is True, f"Phase {phase.name} should be valid: {error_msg}"
+
