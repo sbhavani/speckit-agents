@@ -797,7 +797,12 @@ class Orchestrator:
             method = getattr(self, method_name)
             t0 = time.time()
             self._phase_start_time = time.time()
-            self._display_phase_status(phase.name)
+
+            # Show 🔄 emoji when waiting for human input at checkpoint phases
+            if is_checkpoint:
+                self._display_phase_status(phase.name, emoji="🔄")
+            else:
+                self._display_phase_status(phase.name)
 
             # Pre-stage discovery hook
             if self._augmentor:
@@ -812,6 +817,8 @@ class Orchestrator:
                         post = self._augmentor.run_post_hook(phase, self.state)
                         if post:
                             self._augment_context[f"{phase}_post"] = post
+                    # Show ❌ emoji for rejection
+                    self._display_phase_status(phase.name, emoji="❌")
                     self._phase_timings.append((phase.name, time.time() - t0))
                     return  # rejected
             else:
@@ -837,6 +844,8 @@ class Orchestrator:
                 if post:
                     self._augment_context[f"{phase}_post"] = post
 
+            # Show ✅ emoji for successful phase completion
+            self._display_phase_status(phase.name, emoji="✅")
             self._phase_timings.append((phase.name, time.time() - t0))
 
             # Save after each phase; clear on DONE
@@ -2015,16 +2024,17 @@ Be specific about:
         m, s = divmod(s, 60)
         return f"{m}m {s}s" if s else f"{m}m"
 
-    def _display_phase_status(self, phase_name: str) -> None:
-        """Display current phase status with elapsed time."""
+    def _display_phase_status(self, phase_name: str, emoji: str = "") -> None:
+        """Display current phase status with elapsed time and optional emoji marker."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
 
         total_elapsed = time.time() - self._run_start_time
         phase_elapsed = time.time() - self._phase_start_time
 
+        emoji_prefix = f"{emoji} " if emoji else ""
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"{emoji_prefix}Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
