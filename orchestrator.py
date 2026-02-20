@@ -31,6 +31,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import yaml  # type: ignore[import-untyped]
 
 from mattermost_bridge import MattermostBridge
+from utils import deep_merge
 from state_redis import RedisState
 from tool_augment import ToolAugmentor, ToolAugmentConfig
 
@@ -161,7 +162,7 @@ def load_config(path: str) -> dict:
     if local.exists():
         with open(local) as f:
             local_cfg = yaml.safe_load(f) or {}
-        _deep_merge(cfg, local_cfg)
+        deep_merge(cfg, local_cfg)
 
     # Apply path mapping if HOST_WORKDIR is set
     host_workdir = os.environ.get("HOST_WORKDIR", "")
@@ -222,14 +223,6 @@ def resolve_project_config(config: dict, project_name: str | None = None) -> tup
 
     proj = config["project"]
     return proj.get("path", "."), proj.get("prd_path", "docs/PRD.md"), proj.get("channel_id")
-
-
-def _deep_merge(base: dict, override: dict) -> None:
-    for k, v in override.items():
-        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
-            _deep_merge(base[k], v)
-        else:
-            base[k] = v
 
 
 # ---------------------------------------------------------------------------

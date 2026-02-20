@@ -18,6 +18,7 @@ from pathlib import Path
 
 import redis
 import yaml
+from utils import deep_merge
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,17 +40,8 @@ def load_config(path: str) -> dict:
     if local.exists():
         with open(local) as f:
             local_cfg = yaml.safe_load(f) or {}
-        _deep_merge(cfg, local_cfg)
+        deep_merge(cfg, local_cfg)
     return cfg
-
-
-def _deep_merge(base: dict, override: dict) -> None:
-    """Merge override dict into base dict in-place."""
-    for key, value in override.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(base[key], value)
-        else:
-            base[key] = value
 
 
 class Worker:

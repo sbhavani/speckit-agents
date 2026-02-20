@@ -16,6 +16,7 @@ import redis
 import yaml
 
 from mattermost_bridge import MattermostBridge
+from utils import deep_merge
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +40,7 @@ class Responder:
         openclaw = config.get("openclaw", {})
 
         self.bridge = MattermostBridge(
-            ssh_host=openclaw.get("ssh_host", "sb@mac-mini-i7.local"),
+            ssh_host=openclaw.get("ssh_host", ""),  # Not used when use_ssh=False
             channel_id=mattermost.get("channel_id", ""),
             mattermost_url=mattermost.get("url", "http://localhost:8065"),
             dev_bot_token=mattermost.get("dev_bot_token", ""),
@@ -51,7 +52,6 @@ class Responder:
         )
 
         self.last_check = int(time.time() * 1000)  # milliseconds
-        self.orchestrator_process: Optional[subprocess.Popen] = None
         self.processed_messages: set[str] = set()  # Track processed message IDs
 
         # Store minimax API config for responding to PM questions
@@ -411,19 +411,10 @@ def main():
         with open(local_path) as f:
             local_cfg = yaml.safe_load(f) or {}
         # Deep merge local config into base config
-        _deep_merge(config, local_cfg)
+        deep_merge(config, local_cfg)
 
     responder = Responder(config)
     responder.run()
-
-
-def _deep_merge(base: dict, override: dict) -> None:
-    """Merge override dict into base dict in-place."""
-    for key, value in override.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(base[key], value)
-        else:
-            base[key] = value
 
 
 if __name__ == "__main__":

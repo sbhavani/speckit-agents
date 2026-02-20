@@ -67,7 +67,7 @@ Override locally with `config.local.yaml` (gitignored).
 
 ## Target Project
 
-The orchestrator works on `/Users/sbhavani/code/finance-agent` by default (configurable in config.yaml). That project must have speckit commands in `.claude/commands/`.
+The orchestrator works on `/Users/sb/code/finance_agent` by default (configurable in config.yaml). That project must have speckit commands in `.claude/commands/`.
 
 ## Git Conventions
 

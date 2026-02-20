@@ -11,6 +11,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 
 
 def main():
@@ -88,7 +89,6 @@ def main():
                     workers.append(new_proc)
                     print(f"  Restarted worker with PID {new_proc.pid}")
             # Wait a bit before checking again
-            import time
             time.sleep(5)
 
     except KeyboardInterrupt:
