@@ -1038,7 +1038,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
-        self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
+        self.msg.send(f"🔄 📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
 
         # Inject pre-hook findings as codebase context
         prompt = f"/speckit.specify {desc}"
@@ -1071,12 +1071,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — Complete ✅\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
         logger.info("Phase: DEV_PLAN")
-        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
+        self.msg.send("🔄 📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
         prompt = "/speckit.plan"
         pre = self._augment_context.get(Phase.DEV_PLAN)
@@ -1105,44 +1105,48 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📐 **Plan** — Complete ✅\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
         logger.info("Phase: DEV_TASKS")
-        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
+        self.msg.send("📝 **Tasks** — Generating task list... 🔄", sender="Dev Agent")
 
-        prompt = "/speckit.tasks"
-        pre = self._augment_context.get(Phase.DEV_TASKS)
-        if pre:
-            prompt = (
-                f"CODEBASE CONTEXT (automated discovery):\n"
-                f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
-                f"Use this to ground your tasks in the actual codebase.\n\n{prompt}"
+        try:
+            prompt = "/speckit.tasks"
+            pre = self._augment_context.get(Phase.DEV_TASKS)
+            if pre:
+                prompt = (
+                    f"CODEBASE CONTEXT (automated discovery):\n"
+                    f"```json\n{json.dumps(pre, indent=2)}\n```\n\n"
+                    f"Use this to ground your tasks in the actual codebase.\n\n{prompt}"
+                )
+
+            result = run_claude_stream(
+                prompt=prompt,
+                cwd=self.project_path,
+                session_id=self.state.dev_session,
+                allowed_tools=DEV_TOOLS,
+                timeout=3600,
             )
+            self.state.dev_session = result.get("session_id", self.state.dev_session)
 
-        result = run_claude_stream(
-            prompt=prompt,
-            cwd=self.project_path,
-            session_id=self.state.dev_session,
-            allowed_tools=DEV_TOOLS,
-            timeout=3600,
-        )
-        self.state.dev_session = result.get("session_id", self.state.dev_session)
+            # Get the task list summary
+            summary = self._get_phase_summary(
+                "List the implementation tasks you just generated as a numbered list. "
+                "Keep each item to one line. Be concise."
+            )
+            # Truncate to avoid Mattermost message limit (16383 chars)
+            max_len = 8000
+            if len(summary) > max_len:
+                summary = summary[:max_len] + "\n... (truncated)"
+            self.msg.send(f"📝 **Tasks** — Complete ✅\n\n{summary}", sender="Dev Agent")
 
-        # Get the task list summary
-        summary = self._get_phase_summary(
-            "List the implementation tasks you just generated as a numbered list. "
-            "Keep each item to one line. Be concise."
-        )
-        # Truncate to avoid Mattermost message limit (16383 chars)
-        max_len = 8000
-        if len(summary) > max_len:
-            summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
-
-        # Move artifacts to specs/[branch-name]/ directory
-        self._move_artifacts_to_specs_dir()
+            # Move artifacts to specs/[branch-name]/ directory
+            self._move_artifacts_to_specs_dir()
+        except Exception as e:
+            self.msg.send(f"📝 **Tasks** — Failed ❌\n\nError: {e}", sender="Dev Agent")
+            raise
 
     def _move_artifacts_to_specs_dir(self) -> None:
         """Move SPEC.md, plan.md, tasks.md to specs/[branch-name]/ directory.
@@ -1492,7 +1496,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                     logger.info("Removed stale file: %s", fpath)
 
         self.msg.send(
-            "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
+            "🔄 🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
             "during this phase and the PM will answer.",
             sender="Dev Agent",
         )
@@ -1517,7 +1521,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+        self.msg.send("🔨 **Implement** — Complete ✅", sender="Dev Agent")
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1665,7 +1669,7 @@ Otherwise, implement all tasks to completion."""
                     except Exception as e:
                         logger.error("Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"⚠️ Task {task['id']} failed: {e}",
+                            f"❌ Task {task['id']} failed: {e}",
                             sender="Dev Agent",
                         )
                         raise
@@ -1910,7 +1914,7 @@ Otherwise, complete this task completely."""
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
         logger.info("Phase: CREATE_PR")
-        self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent")
+        self.msg.send("🔄 **PR** — Creating pull request...", sender="Dev Agent")
 
         prompt = """Create a pull request for all the changes on this branch.
 
@@ -1998,9 +2002,9 @@ Be specific about:
             # Get user mention from config (e.g., "@sbhavani")
             user_mention = self.cfg.get("workflow", {}).get("user_mention", "")
             if user_mention:
-                self.msg.send(f"{user_mention} PR created: {self.state.pr_url}", sender="Dev Agent")
+                self.msg.send(f"✅ {user_mention} PR created: {self.state.pr_url}", sender="Dev Agent")
             else:
-                self.msg.send(f"PR created: {self.state.pr_url}", sender="Dev Agent")
+                self.msg.send(f"✅ PR created: {self.state.pr_url}", sender="Dev Agent")
         else:
             self.msg.send("Workflow complete (no PR URL captured).", sender="Orchestrator")
 
@@ -2066,7 +2070,7 @@ Be specific about:
             summary = (
                 f"**Workflow Summary**\n"
                 f"Feature: {feature_name}\n"
-                f"Status: {status} | Duration: {duration_str}\n\n"
+                f"❌ Status: {status} | Duration: {duration_str}\n\n"
                 f"{table}{aug_line}\n\n"
                 f"Error: {error}\n"
                 f"Run with `--resume` to continue."
