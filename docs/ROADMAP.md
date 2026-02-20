@@ -1,85 +1,36 @@
 # Roadmap
 
-Future enhancements and prioritized features.
+Future enhancements beyond the completed PRD scope.
 
-## MoSCoW Roadmap
+## Completed (from original PRD)
 
-### Must Have (Critical)
-- [ ] **Error recovery**: Improve handling of corrupted state files
-- [ ] **Timeout handling**: More robust Claude timeout management
+All P0–P3 user stories are implemented. See [PRD.md](PRD.md) for details.
 
-### Should Have (Important)
-- [ ] **Slash commands + Webhooks**: Trigger workflows from Mattermost via slash command
-- [ ] **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
+Key milestones:
+- Core workflow (PM suggest → Review → Dev specify/plan/tasks/implement → PR)
+- Human intervention (@mention PM, structured questions, override)
+- UX (phase timers, progress emoji, ANSI colors, `--doctor`)
+- Parallel execution (Redis Streams, worker pool, `[P]` task markers, `--simple`)
+- Resilience (Redis + file state, `--resume`, retry backoff)
+- Observability (phase durations, tool augmentation JSONL logs)
+- Slash command trigger (`responder.py` listens for `/suggest` and @mentions)
 
-### Could Have (Nice to Have)
-- [ ] **Multiple Dev Agents**: Fan out parallel Spec Kit phases
-- [ ] **Code Review Agent**: Review PR before posting
-- [ ] **Hatchet integration**: Background task queue
+## Ideas (Unprioritized)
 
-### Won't Have (Not for now)
-- **Temporal**: Enterprise workflow orchestration - overkill
-- **Full multi-agent parallelism**: Limited benefit currently
+These are potential directions. None have user stories or acceptance criteria yet — they need to be scoped before work begins.
 
-## Prioritized Feature List
+- **Code Review Agent**: Automated PR review before posting
+- **Metrics dashboard**: Track features shipped, time-to-PR, questions asked
+- **Multiple Dev Agents**: Fan out parallel Spec Kit phases across agents
+- **Mock mode**: `--mock-llm` flag for testing without Claude
+- **Structured logs**: JSONL output for log aggregation
+- **Health check endpoint**: HTTP liveness/readiness for containerized deployments
 
-### P1: Core Workflow
+## Won't Have
 
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| Parallel task execution | Run [P] marked tasks concurrently | ✅ Done |
-| Enhanced resume | Better state recovery | Small |
-| Config validation | Startup checks | Small |
-
-### P2: UX
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| Phase duration display | Time per phase in summary | ✅ Done |
-| Progress emoji | ✅ ❌ 🔄 on completions | |
-| Color output | ANSI colors | |
-| Verbose mode | `--verbose` flag | ✅ Done |
-| Config doctor | `--doctor` flag | ✅ Done |
-
-### P3: Developer Experience
-
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| Hot reload | Watch config, restart | Small |
-| Template projects | `--template` flag | Small |
-| Local dev mode | Skip git worktree | Small |
-| Mock mode | `--mock-llm` for testing | Medium |
-
-### P4: Observability
-
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| Structured logs | JSON logging | Small |
-| Metrics export | Prometheus endpoint | Medium |
-| Trace IDs | Correlation IDs | Small |
-| Health check | HTTP endpoint | Small |
-
-### P5: Advanced
-
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| Auto-scaling workers | K8s HPA | Large |
-| Scheduled runs | Cron-like | Medium |
-| Feature branching | Auto naming | Small |
-| PR templates | Custom body | Tiny |
-
-## Testing Strategy
-
-1. **Unit tests** - Test in isolation with mocks
-2. **Integration tests** - Test with real Redis/Mattermost
-3. **Manual testing** - Dry-run mode for validation
-4. **Load testing** - Concurrent workers
-
-## Performance Notes
-
-- Phase timeouts: 60min each
-- Mattermost poll: 15s interval
-- Retry backoff: 5s, 20s, 80s
+- **Temporal**: Enterprise workflow orchestration — overkill for current scale
+- **Hatchet**: Background task queue — Redis Streams covers this
+- **Auto-scaling workers (K8s HPA)**: No demand signal, manual scaling is sufficient
 
 ## Lessons Learned
 

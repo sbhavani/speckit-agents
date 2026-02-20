@@ -2,54 +2,58 @@
 
 A multi-agent orchestration system where a **Product Manager agent** and a **Developer agent** collaborate to ship features autonomously, communicating through Mattermost. Human operator can intervene at any time.
 
+## Implementation Status
+
+All P0–P3 features are implemented. See status markers below.
+
 ## User Stories
 
-### P0: Core Workflow (Must Have)
+### P0: Core Workflow (Must Have) — ✅ Complete
 
 **As a** operator,
 **I want** the system to automatically suggest, implement, and PR features from the PRD,
 **So that** features ship without manual intervention.
 
-- [P0-US1] PM Agent reads PRD and suggests highest-priority unimplemented feature
-- [P0-US2] Human approves/rejects feature suggestion in Mattermost
-- [P0-US3] Dev Agent runs `/speckit.specify` to create SPEC.md
-- [P0-US4] Dev Agent runs `/speckit.plan` to create plan.md
-- [P0-US5] Dev Agent runs `/speckit.tasks` to create tasks.md
-- [P0-US6] Human reviews plan before implementation (60s yolo window)
-- [P0-US7] Dev Agent runs `/speckit.implement` to implement all tasks
-- [P0-US8] Dev Agent creates PR via `gh pr create`
-- [P0-US9] PM Agent records learnings to `.agent/product-manager.md`
+- [P0-US1] ✅ PM Agent reads PRD and suggests highest-priority unimplemented feature
+- [P0-US2] ✅ Human approves/rejects feature suggestion in Mattermost
+- [P0-US3] ✅ Dev Agent runs `/speckit.specify` to create SPEC.md
+- [P0-US4] ✅ Dev Agent runs `/speckit.plan` to create plan.md
+- [P0-US5] ✅ Dev Agent runs `/speckit.tasks` to create tasks.md
+- [P0-US6] ✅ Human reviews plan before implementation (configurable timeout)
+- [P0-US7] ✅ Dev Agent runs `/speckit.implement` to implement all tasks
+- [P0-US8] ✅ Dev Agent creates PR via `gh pr create`
+- [P0-US9] ✅ PM Agent records learnings to `.agent/product-manager.md`
 
 **Acceptance Criteria:**
 - Each workflow produces a PR URL posted to Mattermost
 - Human can approve/reject at REVIEW and PLAN_REVIEW checkpoints
 - All phases logged to Mattermost with summaries
 
-### P1: Human Intervention (Must Have)
+### P1: Human Intervention (Must Have) — ✅ Complete
 
 **As a** human team member,
 **I want** to ask questions and get answers during implementation,
 **So that** I can guide the feature direction.
 
-- [P1-US1] Human can @mention PM Agent with questions during implementation
-- [P1-US2] PM Agent answers based on PRD context
-- [P1-US3] Dev Agent can ask structured questions (JSON format)
-- [P1-US4] Questions posted to Mattermost, PM answers, human can override
+- [P1-US1] ✅ Human can @mention PM Agent with questions during implementation
+- [P1-US2] ✅ PM Agent answers based on PRD context
+- [P1-US3] ✅ Dev Agent can ask structured questions (JSON format)
+- [P1-US4] ✅ Questions posted to Mattermost, PM answers, human can override
 
 **Acceptance Criteria:**
 - Questions routed correctly (product → PM, implementation → Dev)
 - Human override takes precedence over PM answer
 
-### P1: UX Improvements (Should Have)
+### P1: UX Improvements (Should Have) — ✅ Complete
 
 **As a** operator,
 **I want** better visual feedback during workflow execution,
 **So that** I can quickly understand what's happening.
 
-- [P1-US5] Phase status shows elapsed time in real-time
-- [P1-US6] Progress emoji added to phase completions (✅ ❌ 🔄)
-- [P1-US7] ANSI color coding for console output (green=info, yellow=warn, red=error)
-- [P1-US8] Config doctor command validates setup (`--doctor`)
+- [P1-US5] ✅ Phase status shows elapsed time in real-time
+- [P1-US6] ✅ Progress emoji added to phase completions (✅ ❌ 🔄)
+- [P1-US7] ✅ ANSI color coding for console output (green=info, yellow=warn, red=error)
+- [P1-US8] ✅ Config doctor command validates setup (`--doctor`)
 
 **Acceptance Criteria:**
 - Each phase shows "Phase: X | Duration: Ym Zs | Total: Am Bs"
@@ -57,17 +61,17 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 - Console output uses colors for readability
 - Running `--doctor` shows validation results
 
-### P2: Parallel Execution (Should Have)
+### P2: Parallel Execution (Should Have) — ✅ Complete
 
 **As a** operator,
 **I want** multiple features to implement in parallel,
 **So that** throughput increases.
 
-- [P2-US1] Worker pool spawns N parallel workers
-- [P2-US2] Each worker runs independent orchestrator
-- [P2-US3] Redis Streams distributes work to available workers
-- [P2-US4] Parallel task execution within a feature (tasks marked `[P]` run concurrently)
-- [P2-US5] `--simple` flag skips specify/plan/tasks phases for quick fixes
+- [P2-US1] ✅ Worker pool spawns N parallel workers (`worker_pool.py`)
+- [P2-US2] ✅ Each worker runs independent orchestrator
+- [P2-US3] ✅ Redis Streams distributes work to available workers (`src/redis_streams/`)
+- [P2-US4] ✅ Parallel task execution within a feature (tasks marked `[P]` run concurrently)
+- [P2-US5] ✅ `--simple` flag skips specify/plan/tasks phases for quick fixes
 
 **Acceptance Criteria:**
 - Multiple workers can run simultaneously without conflicts
@@ -77,7 +81,21 @@ A multi-agent orchestration system where a **Product Manager agent** and a **Dev
 
 ## Architecture: Orchestrator + Worker Handoff
 
-The system uses a distributed architecture where the orchestrator coordinates workflow while workers handle implementation:
+The system uses a distributed architecture where the orchestrator coordinates workflow while workers handle implementation.
+
+### Components
+
+| Component | File | Role |
+|-----------|------|------|
+| Orchestrator | `orchestrator.py` | Main workflow state machine |
+| Responder | `responder.py` | Listens for `/suggest` commands and @mentions in Mattermost |
+| Worker | `worker.py` | Redis Streams consumer, runs orchestrator per feature |
+| Worker Pool | `worker_pool.py` | Spawns and manages N worker processes |
+| Mattermost Bridge | `mattermost_bridge.py` | Dual-bot Mattermost API client |
+| Redis State | `state_redis.py` | Redis-backed state persistence |
+| Tool Augmentor | `tool_augment.py` | Pre/post phase discovery and validation hooks |
+| Augment Analyzer | `analyze_augment.py` | JSONL log analysis for augmentation metrics |
+| Redis Streams Lib | `src/redis_streams/` | Consumer, producer, checkpoint, monitoring |
 
 ### Orchestrator Responsibilities
 1. **PM_SUGGEST**: PM Agent reads PRD, suggests highest-priority unimplemented feature
@@ -95,12 +113,22 @@ Workers listen on the Redis stream and pick up approved features:
 5. **DEV_IMPLEMENT**: Run `/speckit.implement` for all tasks
 6. **CREATE_PR**: Create branch, commit, open PR via `gh pr create`
 
+### Responder
+`responder.py` runs as a long-lived process that monitors Mattermost for:
+- `/suggest` commands — triggers the orchestrator to suggest and implement the next feature
+- `@product-manager` mentions — routes questions to the PM Agent (via Minimax API)
+
+It publishes approved features to the Redis stream for workers to consume.
+
 ### Redis Stream Configuration
 ```yaml
 redis_streams:
   url: "redis://localhost:6379"
   stream: "feature-requests"
   consumer_group: "orchestrator-workers"
+  defaults:
+    max_length: 10000
+    block_ms: 5000
 ```
 
 ### Running with Workers
@@ -108,9 +136,15 @@ redis_streams:
 # Start orchestrator (coordinates, publishes to stream)
 uv run python orchestrator.py --loop --project agent-team
 
+# Start responder (listens for /suggest and @mentions)
+uv run python responder.py
+
 # Start workers (consume from stream, run implementation)
 uv run python worker.py --consumer worker-1
 uv run python worker.py --consumer worker-2
+
+# Or start a worker pool (spawns N workers with auto-restart)
+uv run python worker_pool.py --workers 3
 ```
 
 ### Message Format
@@ -130,28 +164,28 @@ When orchestrator publishes to stream:
 - Multiple features can run in parallel
 - Each worker has independent state
 
-### P3: Resilience (Could Have)
+### P3: Resilience (Could Have) — ✅ Complete
 
 **As a** operator,
 **I want** the system to recover from failures,
 **So that** interrupted workflows can resume.
 
-- [P3-US1] State persisted to Redis or file
-- [P3-US2] `--resume` flag picks up from last phase
-- [P3-US3] Timeouts handled gracefully with retry logic
+- [P3-US1] ✅ State persisted to Redis (`state_redis.py`) or file (`.agent-team-state.json`)
+- [P3-US2] ✅ `--resume` flag picks up from last phase
+- [P3-US3] ✅ Timeouts handled gracefully with retry logic
 
 **Acceptance Criteria:**
 - Workflow resumes at correct phase with preserved context
 
-### P3: Observability (Could Have)
+### P3: Observability (Could Have) — ✅ Complete
 
 **As a** operator,
 **I want** visibility into workflow progress and metrics,
 **So that** I can monitor system health.
 
-- [P3-US4] Phase durations tracked and displayed in summary
-- [P3-US5] Tool augmentation logs pre/post phase state
-- [P3-US6] JSONL logs for post-mortem analysis
+- [P3-US4] ✅ Phase durations tracked and displayed in summary
+- [P3-US5] ✅ Tool augmentation logs pre/post phase state (`tool_augment.py`)
+- [P3-US6] ✅ JSONL logs for post-mortem analysis (`analyze_augment.py`)
 
 **Acceptance Criteria:**
 - Summary shows time per phase
@@ -161,6 +195,7 @@ When orchestrator publishes to stream:
 
 ### Performance
 - Phase timeouts: SPECIFY=60min, PLAN=60min, TASKS=60min, IMPLEMENT=60min
+- Worker orchestrator timeout: 2 hours
 - Mattermost poll interval: 15s (configurable)
 - Worker pool scales to N concurrent workers
 
@@ -173,6 +208,7 @@ When orchestrator publishes to stream:
 - Claude session preserved via `--resume`
 - Exponential backoff on transient failures (5s, 20s, 80s)
 - Worktree cleanup mandatory after PR creation
+- Worker pool auto-restarts failed workers
 
 ## Test Scenarios
 
@@ -183,3 +219,4 @@ When orchestrator publishes to stream:
 5. **Parallel**: Start 3 workers, queue 3 features, verify all complete
 6. **Simple mode**: Run with --simple, verify no speckit phases run
 7. **Doctor**: Run --doctor, verify validation output
+8. **Tool augmentation**: Run with --tools, verify pre/post hooks execute
