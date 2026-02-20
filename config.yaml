@@ -11,6 +11,7 @@ projects:
   finance-agent:
     path: /Users/sb/code/finance-agent
     prd_path: docs/PRD.md
+    channel_id: quq99mcckbnnpcpny6887qpgac  # #finance-agent
     channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br  # #agent-team
   live-set-revival:
     path: /Users/sb/code/live-set-revival
@@ -40,8 +41,7 @@ openclaw:
   anthropic_model: MiniMax-M2.1
 
 mattermost:
-  # Channel ID for #speckit-agents
-  channel_id: 5fdg9pha97fspmmdss5i6qeu7o
+  # Channel ID should be set per-project in projects section
   # Mattermost server URL (as seen from the remote host)
   url: "http://localhost:8065"
 
