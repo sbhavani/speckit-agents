@@ -3,6 +3,7 @@
 Responder service - Listens for /suggest and @mentions, kicks off workflows.
 """
 
+import json
 import logging
 import os
 import subprocess
@@ -16,6 +17,9 @@ import redis
 import yaml
 
 from mattermost_bridge import MattermostBridge
+
+# Claude Code CLI binary
+CLAUDE_BIN = os.environ.get("CLAUDE_BIN", os.path.expanduser("~/.local/bin/claude"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -202,10 +206,21 @@ class Responder:
 
         # Determine if it's PM or Dev
         is_pm = "@product-manager" in text.lower()
-        # @dev-agent not implemented yet - fall through to PM
+        is_dev = "@dev-agent" in text.lower()
+
+        # Handle edge case: both mentioned - prioritize @dev-agent
+        if is_dev and is_pm:
+            logger.info("Both @product-manager and @dev-agent mentioned, prioritizing @dev-agent")
+
+        # Handle @dev-agent mentions (takes priority over PM)
+        if is_dev:
+            self._handle_dev_mention(text, channel_id, is_question=is_question)
+            return
+
+        # Handle @product-manager (PM is required)
         if not is_pm:
             self.bridge.send(
-                "Use @product-manager for questions for now. @dev-agent coming soon!",
+                "Use @product-manager or @dev-agent for questions.",
                 sender="Responder",
                 channel_id=channel_id,
             )
@@ -220,6 +235,103 @@ class Responder:
 
         # Not a question - publish feature request to Redis stream
         self._publish_feature_request(channel_id=channel_id)
+
+    def _handle_dev_mention(self, text: str, channel_id: str, is_question: bool = False) -> None:
+        """Handle @dev-agent mention - route questions to Dev Agent or start workflow."""
+        logger.info(f"@dev-agent mention in channel {channel_id}: {text[:100]}... is_question={is_question}")
+
+        # Route based on whether it's a question or feature request
+        if is_question:
+            # Route to Dev Agent for answering
+            logger.info("Routing @dev-agent question to Dev Agent")
+            response = self._generate_dev_response(text, channel_id)
+            self.bridge.send(response, sender="Dev Agent", channel_id=channel_id)
+        else:
+            # Route to workflow (feature request)
+            # Extract feature from message text (similar to _handle_suggest)
+            feature = None
+
+            # Try quoted first: @dev-agent "Add user auth"
+            if '"' in text:
+                parts = text.split('"')
+                if len(parts) >= 2:
+                    feature = parts[1]
+            else:
+                # Try text after @dev-agent: @dev-agent add user auth
+                lower = text.lower()
+                if "@dev-agent" in lower:
+                    idx = lower.index("@dev-agent") + len("@dev-agent")
+                    remainder = text[idx:].strip()
+                    if remainder:
+                        feature = remainder
+
+            logger.info(f"Routing @dev-agent to feature workflow: feature={feature}")
+            self._publish_feature_request(feature=feature, channel_id=channel_id)
+
+    def _generate_dev_response(self, message: str, channel_id: str) -> str:
+        """Generate a response by routing to Dev Agent."""
+        # Get project context for this channel
+        project_info = self._get_project_for_channel(channel_id)
+        project_path = project_info[0] if project_info else ""
+
+        # Build prompt for dev agent
+        prompt = f"""You are a Developer Agent helping with implementation questions.
+
+User question: {message}
+
+Provide a helpful, concise answer about implementation. Focus on practical guidance."""
+
+        # Call Claude with dev-agent
+        return self._send_to_dev_agent(prompt, project_path)
+
+    def _send_to_dev_agent(self, prompt: str, project_path: str = "") -> str:
+        """Send prompt to Claude Code CLI with dev-agent context."""
+        cmd = [
+            CLAUDE_BIN, "-p", prompt,
+            "--agent", "dev-agent",
+            "--output-format", "json"
+        ]
+
+        logger.info(f"Calling dev-agent (cwd={project_path or 'default'})")
+
+        # Clear CLAUDECODE env var so we can spawn from within a Claude Code session
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=project_path or os.getcwd(),
+                timeout=60,
+                env=env
+            )
+
+            if result.returncode != 0:
+                logger.error(f"Dev agent failed: {result.stderr[:200]}")
+                return "Sorry, I couldn't get a response from the Dev Agent."
+
+            # Parse JSON response
+            try:
+                parsed = json.loads(result.stdout)
+                response_text = parsed.get("result", "")
+                return response_text[:1000]  # Limit response length
+            except json.JSONDecodeError:
+                # Sometimes output is plain text
+                return result.stdout.strip()[:1000]
+
+        except subprocess.TimeoutExpired:
+            logger.error("Dev agent timed out")
+            return "Sorry, the Dev Agent took too long to respond."
+        except FileNotFoundError:
+            logger.error(f"Claude CLI not found at: {CLAUDE_BIN}")
+            return "Sorry, Claude CLI is not installed or not in the expected location."
+        except PermissionError:
+            logger.error(f"Claude CLI is not executable: {CLAUDE_BIN}")
+            return "Sorry, Claude CLI does not have execute permissions."
+        except Exception as e:
+            logger.error(f"Dev agent error: {e}")
+            return "Sorry, I encountered an error calling the Dev Agent."
 
     def _get_project_for_channel(self, channel_id: str) -> tuple[str, str] | None:
         """Get project path and PRD path for a channel."""
