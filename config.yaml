@@ -87,7 +87,7 @@ workflow:
   user_mention: ""
   # Tool-augmented discovery and validation hooks
   tool_augmentation:
-    enabled: false
+    enabled: true
     pre_stages: true
     post_stages: true
     run_tests_before_impl: true
