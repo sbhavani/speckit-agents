@@ -966,7 +966,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send("❌ Feature rejected. Stopping.", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -987,6 +987,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         self.state.worker_handoff = True
         logger.info(f"Set worker_handoff=True, feature={self.state.feature.get('feature')}")
 
+        self.msg.send("✅ REVIEW phase complete", sender="Orchestrator")
         return True
 
     def _publish_feature_to_stream(self) -> None:
@@ -1071,7 +1072,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — Complete ✅\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
@@ -1106,6 +1107,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
         self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send("✅ DEV_PLAN phase complete", sender="Orchestrator")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
@@ -1139,7 +1141,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📝 **Tasks** — Complete ✅\n\n{summary}", sender="Dev Agent")
 
         # Move artifacts to specs/[branch-name]/ directory
         self._move_artifacts_to_specs_dir()
@@ -1199,7 +1201,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
         if auto or self._auto_approve:
             logger.info("Auto-approve enabled, proceeding to implementation")
-            self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator")
+            self.msg.send("✅ Auto-approved — starting implementation.", sender="Orchestrator")
             return True
 
         poll_interval = 5
@@ -1234,10 +1236,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             logger.info(f"Plan review response: '{response[:50]}...' (lower: '{lower}')")
 
             if lower in APPROVE_WORDS:
-                self.msg.send("Approved — starting implementation.", sender="Orchestrator")
+                self.msg.send("✅ Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send("❌ Plan rejected. Stopping.", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1255,7 +1257,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         # Timeout — auto-approve (yolo mode)
         self.msg.send(
-            f"No objection after {review_timeout}s — proceeding with implementation.",
+            f"✅ No objection after {review_timeout}s — proceeding with implementation.",
             sender="Orchestrator",
         )
         return True
@@ -1517,7 +1519,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+        self.msg.send("✅ **Implement** — Complete", sender="Dev Agent")
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1929,6 +1931,7 @@ Otherwise, complete this task completely."""
 
         self.state.pr_url = result.get("result", "").strip()
         logger.info("PR URL: %s", self.state.pr_url)
+        self.msg.send("✅ CREATE_PR phase complete", sender="Orchestrator")
 
     def _phase_pm_learn(self) -> None:
         """Have PM agent write a learning entry to .agent/product-manager.md journal."""
@@ -1979,6 +1982,7 @@ Be specific about:
             self.state.pm_session = result.get("session_id")
 
         logger.info("Learning recorded to journal")
+        self.msg.send("✅")
 
     def _phase_done(self) -> None:
         self.state.phase = Phase.DONE
