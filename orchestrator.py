@@ -36,6 +36,16 @@ from tool_augment import ToolAugmentor, ToolAugmentConfig
 
 logger = logging.getLogger(__name__)
 
+# Emoji markers for phase status
+EMOJI_SUCCESS = "✅"
+EMOJI_FAILURE = "❌"
+EMOJI_IN_PROGRESS = "🔄"
+
+# Text fallbacks for terminals without emoji support
+TEXT_SUCCESS = "[OK]"
+TEXT_FAILURE = "[FAIL]"
+TEXT_IN_PROGRESS = "[IN PROGRESS]"
+
 
 # ANSI color codes
 class ColoredFormatter(logging.Formatter):
@@ -2013,7 +2023,10 @@ Be specific about:
         if s < 60:
             return f"{s}s"
         m, s = divmod(s, 60)
-        return f"{m}m {s}s" if s else f"{m}m"
+        if m < 60:
+            return f"{m}m {s}s" if s else f"{m}m"
+        h, m = divmod(m, 60)
+        return f"{h}h {m}m {s}s" if s else f"{h}h {m}m" if m else f"{h}h"
 
     def _display_phase_status(self, phase_name: str) -> None:
         """Display current phase status with elapsed time."""
@@ -2024,8 +2037,8 @@ Be specific about:
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
-            f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
+            f"{EMOJI_IN_PROGRESS} Phase: {phase_name} | "
+            f"Duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
         logger.info(status_msg)
@@ -2039,9 +2052,9 @@ Be specific about:
         duration_str = self._fmt_duration(total)
 
         if error:
-            status = f"Failed at {self.state.phase.name}"
+            status = f"{EMOJI_FAILURE} Failed at {self.state.phase.name}"
         else:
-            status = "Complete"
+            status = f"{EMOJI_SUCCESS} Complete"
 
         # Build timing table
         rows = []
