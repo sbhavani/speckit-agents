@@ -82,6 +82,15 @@ _setup_logging()
 
 
 # ---------------------------------------------------------------------------
+# Emoji status indicators for phase execution
+# ---------------------------------------------------------------------------
+
+IN_PROGRESS_EMOJI = "🔄"
+COMPLETED_EMOJI = "✅"
+FAILED_EMOJI = "❌"
+
+
+# ---------------------------------------------------------------------------
 # State machine
 # ---------------------------------------------------------------------------
 
@@ -756,7 +765,7 @@ class Orchestrator:
             except Exception as e:
                 self._save_state()
                 logger.exception("Workflow error")
-                self._post_summary(error=str(e))
+                self._post_summary(error=f"{FAILED_EMOJI} {str(e)}")
                 break
 
             if not loop:
@@ -838,6 +847,12 @@ class Orchestrator:
                     self._augment_context[f"{phase}_post"] = post
 
             self._phase_timings.append((phase.name, time.time() - t0))
+
+            # Send completion message with emoji
+            self.msg.send(
+                f"{COMPLETED_EMOJI} Phase {phase.name} complete",
+                sender="Orchestrator",
+            )
 
             # Save after each phase; clear on DONE
             if phase == Phase.DONE:
@@ -2024,7 +2039,7 @@ Be specific about:
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"{IN_PROGRESS_EMOJI} Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
