@@ -362,6 +362,62 @@ class TestPostSummary:
         assert "RuntimeError: claude -p failed" in text
         assert "--resume" in text
 
+    def test_summary_table_has_emoji_indicators(self, tmp_path):
+        """Test that summary table includes emoji indicators next to phase names."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        orch = Orchestrator(config, msg)
+        orch.state.feature = {"feature": "Test feature"}
+        orch.state.phase = Phase.DONE
+        orch._run_start_time = 0.0
+        orch._phase_timings = [
+            ("DEV_SPECIFY", 150.0),
+            ("DEV_PLAN", 75.0),
+            ("DEV_TASKS", 45.0),
+            ("DEV_IMPLEMENT", 900.0),
+        ]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        # Check for emoji indicators in summary table
+        assert "📋" in text or "SPECIFY" in text
+        assert "📐" in text or "PLAN" in text
+        assert "📝" in text or "TASKS" in text
+        assert "🔨" in text or "IMPLEMENT" in text
+
+    def test_plan_phase_completion_has_emoji(self, tmp_path):
+        """Test that PLAN phase completion message includes checkmark emoji."""
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        orch = Orchestrator(config, msg)
+        orch.state.feature = {"feature": "Test feature"}
+        orch.state.phase = Phase.DEV_PLAN
+        orch.state.dev_session = "test-session"
+
+        # Simulate the message that would be sent on PLAN completion
+        summary = "Key files: test.py, config.yaml"
+        expected_message = f"📐 **Plan** — ✅ Complete\n\n{summary}"
+
+        orch.msg.send(expected_message, sender="Dev Agent")
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        # Verify emoji indicators are present
+        assert "📐" in text
+        assert "✅" in text
+        assert "Plan" in text
+        assert "Complete" in text
+
     @patch("orchestrator.time")
     def test_summary_with_no_timings(self, mock_time, tmp_path):
         mock_time.time.return_value = 5.0
@@ -559,3 +615,70 @@ class TestQuestionRouting:
         mock.assert_called_once()
         call_args = mock.call_args
         assert "PRD" in call_args[1]["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Phase Emoji Markers
+# ---------------------------------------------------------------------------
+
+class TestPhaseEmojiMarkers:
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        msg.root_id = None
+        return Orchestrator(config, msg)
+
+    @patch("orchestrator.run_claude_stream")
+    def test_specify_phase_completion_has_success_emoji(self, mock_stream, tmp_path):
+        """T002: SPECIFY phase completion message should contain ✅ emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Test feature", "description": "A test feature"}
+        mock_stream.return_value = {"result": "ok", "session_id": "s1"}
+        orch._get_phase_summary = MagicMock(return_value="Summary bullet points")
+
+        orch._phase_dev_specify()
+
+        # Collect all messages sent
+        calls = orch.msg.send.call_args_list
+        assert len(calls) >= 2  # at least in-progress + completion
+
+        # First message: in-progress with 🔄
+        first_msg = calls[0][0][0]
+        assert "🔄" in first_msg
+        assert "Specify" in first_msg
+
+        # Last message: completion with ✅
+        last_msg = calls[-1][0][0]
+        assert "✅" in last_msg
+        assert "Specify" in last_msg
+        assert "Complete" in last_msg
+
+    @patch("orchestrator.run_claude_stream")
+    def test_tasks_phase_completion_has_success_emoji(self, mock_stream, tmp_path):
+        """T004: TASKS phase completion message should contain ✅ emoji."""
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Test feature", "description": "A test feature"}
+        mock_stream.return_value = {"result": "ok", "session_id": "s1"}
+        orch._get_phase_summary = MagicMock(return_value="Summary bullet points")
+        orch._move_artifacts_to_specs_dir = MagicMock()
+
+        orch._phase_dev_tasks()
+
+        # Collect all messages sent
+        calls = orch.msg.send.call_args_list
+        assert len(calls) >= 2  # at least in-progress + completion
+
+        # First message: in-progress with 🔄
+        first_msg = calls[0][0][0]
+        assert "🔄" in first_msg
+        assert "Tasks" in first_msg
+
+        # Last message: completion with ✅
+        last_msg = calls[-1][0][0]
+        assert "✅" in last_msg
+        assert "Tasks" in last_msg
+        assert "Complete" in last_msg

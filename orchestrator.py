@@ -856,7 +856,7 @@ class Orchestrator:
             logger.info("Validating configuration...")
             valid, errors = self.msg.bridge.validate()
             if not valid:
-                error_msg = "Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors)
+                error_msg = "❌ Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors)
                 logger.error(error_msg)
                 self.msg.send(error_msg, sender="Orchestrator")
                 raise RuntimeError(f"Configuration validation failed: {errors}")
@@ -966,7 +966,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send("❌ Feature rejected. Stopping.", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -1038,7 +1038,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
-        self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — 🔄 {desc[:80]}...", sender="Dev Agent")
 
         # Inject pre-hook findings as codebase context
         prompt = f"/speckit.specify {desc}"
@@ -1071,12 +1071,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — ✅ Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
         logger.info("Phase: DEV_PLAN")
-        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
+        self.msg.send("📐 **Plan** — 🔄 Creating technical plan...", sender="Dev Agent")
 
         prompt = "/speckit.plan"
         pre = self._augment_context.get(Phase.DEV_PLAN)
@@ -1105,12 +1105,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📐 **Plan** — ✅ Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
         logger.info("Phase: DEV_TASKS")
-        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
+        self.msg.send("📝 **Tasks** — 🔄 Generating task list...", sender="Dev Agent")
 
         prompt = "/speckit.tasks"
         pre = self._augment_context.get(Phase.DEV_TASKS)
@@ -1139,7 +1139,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📝 **Tasks** — ✅ Complete\n\n{summary}", sender="Dev Agent")
 
         # Move artifacts to specs/[branch-name]/ directory
         self._move_artifacts_to_specs_dir()
@@ -1237,7 +1237,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 self.msg.send("Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send("❌ Plan rejected. Stopping.", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1492,7 +1492,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                     logger.info("Removed stale file: %s", fpath)
 
         self.msg.send(
-            "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
+            "🔨 **Implement** — 🔄 Starting implementation... You can ask me product questions anytime "
             "during this phase and the PM will answer.",
             sender="Dev Agent",
         )
@@ -1517,7 +1517,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+        self.msg.send("🔨 **Implement** — ✅ Complete", sender="Dev Agent")
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1665,12 +1665,12 @@ Otherwise, implement all tasks to completion."""
                     except Exception as e:
                         logger.error("Parallel task failed: %s - %s", task['id'], e)
                         self.msg.send(
-                            f"⚠️ Task {task['id']} failed: {e}",
+                            f"❌ Task {task['id']} failed: {e}",
                             sender="Dev Agent",
                         )
                         raise
 
-        self.msg.send("✅ All tasks complete", sender="Dev Agent")
+        self.msg.send("✅ All tasks complete ✅", sender="Dev Agent")
 
     def _build_task_prompt(self, task: dict, feature_desc: str, pre: dict | None) -> str:
         """Build the prompt for a specific task implementation."""
@@ -2043,10 +2043,27 @@ Be specific about:
         else:
             status = "Complete"
 
-        # Build timing table
+        # Phase emoji mapping for summary table
+        PHASE_EMOJI = {
+            "INIT": "🚀",
+            "PM_SUGGEST": "💡",
+            "REVIEW": "👀",
+            "DEV_SPECIFY": "📋",
+            "DEV_PLAN": "📐",
+            "DEV_TASKS": "📝",
+            "PLAN_REVIEW": "📋",
+            "DEV_IMPLEMENT": "🔨",
+            "CREATE_PR": "📥",
+            "PM_LEARN": "📚",
+            "DONE": "✅",
+        }
+
+        # Build timing table with emoji
         rows = []
         for phase_name, dur in self._phase_timings:
-            rows.append(f"| {phase_name} | {self._fmt_duration(dur)} |")
+            emoji = PHASE_EMOJI.get(phase_name, "📌")
+            status_emoji = "✅" if status == "Complete" else "❌"
+            rows.append(f"| {emoji} {phase_name} {status_emoji} | {self._fmt_duration(dur)} |")
         table = (
             "| Phase | Duration |\n"
             "|:------|:---------|\n"
