@@ -202,15 +202,35 @@ class Responder:
 
         # Determine if it's PM or Dev
         is_pm = "@product-manager" in text.lower()
-        # @dev-agent not implemented yet - fall through to PM
-        if not is_pm:
-            self.bridge.send(
-                "Use @product-manager for questions for now. @dev-agent coming soon!",
-                sender="Responder",
-                channel_id=channel_id,
-            )
+        is_dev = "@dev-agent" in text.lower()
+
+        # Edge case: both @product-manager and @dev-agent mentioned
+        # Dev-agent takes precedence (first wins) - this is intentional
+        # to avoid confusing dual responses
+
+        # Handle @dev-agent mentions
+        if is_dev:
+            # Check for empty mention (just "@dev-agent" with no additional text)
+            text_without_mention = text.lower().replace("@dev-agent", "").strip()
+            if not text_without_mention:
+                # Empty mention - provide helpful usage guidance
+                logger.info("Detected empty @dev-agent mention, providing usage guidance")
+                response = "Hi! I'm the Dev Agent. You can ask me technical questions about the codebase or give me guidance during implementation. Try:\n- @dev-agent How do we handle authentication?\n- @dev-agent Please use the new API endpoint"
+                self.bridge.send(response, sender="Dev Agent", channel_id=channel_id)
+                return
+
+            if is_question:
+                logger.info("Detected @dev-agent question, answering directly")
+                response = self._dev_agent_response(text, channel_id, is_question)
+                self.bridge.send(response, sender="Dev Agent", channel_id=channel_id)
+            else:
+                # Guidance/instruction - acknowledge
+                logger.info("Detected @dev-agent guidance, acknowledging")
+                response = self._dev_agent_response(text, channel_id, is_question)
+                self.bridge.send(response, sender="Dev Agent", channel_id=channel_id)
             return
 
+        # Handle @product-manager mentions
         # If it's a question, just answer it directly (don't spawn orchestrator)
         if is_question:
             logger.info("Detected question, answering directly")
@@ -294,6 +314,44 @@ class Responder:
         prompt += f"User question: {message}\n\nRespond directly as the Product Manager would. Keep it friendly and concise."
 
         # Send to OpenClaw via SSH
+        return self._send_to_openclaw(prompt)
+
+    def _dev_agent_response(self, message: str, channel_id: str, is_question: bool) -> str:
+        """Generate a response for @dev-agent mentions."""
+        # Get project for this channel
+        project_info = self._get_project_for_channel(channel_id)
+
+        # Build prompt with technical context
+        prompt = ""
+
+        # For dev-agent questions, inject technical context (project path)
+        if project_info:
+            project_path, _prd_path = project_info
+            if is_question:
+                prompt += f"""You are a Developer Agent helping with implementation in the project at `{project_path}`. Answer technical questions about the codebase.\n\n"""
+            else:
+                prompt += f"""You are a Developer Agent working on the project at `{project_path}`. Acknowledge the guidance below.\n\n"""
+
+        # Add channel context (recent messages)
+        try:
+            recent = self.bridge.read_posts_from_channel(channel_id, limit=5)
+            if recent:
+                prompt += "Recent conversation:\n"
+                for msg in recent:
+                    user = msg.get("user_id", "unknown")
+                    text = msg.get("message", "")[:300]
+                    prompt += f"- {user}: {text}\n"
+                prompt += "\n"
+        except Exception as e:
+            logger.warning(f"Failed to get channel context: {e}")
+
+        if is_question:
+            # This is a question - answer it
+            prompt += f"User question: {message}\n\nRespond directly as the Developer Agent would. Keep it technical and concise."
+        else:
+            # This is guidance/instruction - acknowledge it
+            prompt += f"User guidance: {message}\n\nAcknowledge this guidance and indicate you will consider it in your implementation work."
+
         return self._send_to_openclaw(prompt)
 
     def _send_to_openclaw(self, prompt: str) -> str:
