@@ -70,6 +70,18 @@ redis_streams:
     block_ms: 5000
     count: 10
 
+# Dynamic worker pool scaling configuration
+# Set enabled: true and use --auto-scale flag to enable
+worker_scaling:
+  enabled: false
+  min_workers: 1
+  max_workers: 10
+  scale_up_threshold: 2.0
+  scale_down_threshold: 0.25
+  scale_cooldown: 60
+  idle_timeout: 300
+  poll_interval: 10
+
 workflow:
   # Seconds to wait for human approval of feature suggestion
   approval_timeout: 300
