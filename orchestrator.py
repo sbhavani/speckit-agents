@@ -870,7 +870,7 @@ class Orchestrator:
             if not valid:
                 error_msg = "Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors)
                 logger.error(error_msg)
-                self.msg.send(error_msg, sender="Orchestrator", emoji="❌")
+                self.msg.send(error_msg, sender="Orchestrator", emoji=get_phase_emoji(PhaseState.FAILED))
                 raise RuntimeError(f"Configuration validation failed: {errors}")
 
         # Check for /feature or /suggest command in recent messages
@@ -900,7 +900,7 @@ class Orchestrator:
         logger.info("Phase: PM_SUGGEST")
 
         # Announce PM_SUGGEST phase start
-        self.msg.send("Analyzing PRD for next feature suggestion...", sender="PM Agent", emoji="🔄")
+        self.msg.send("Analyzing PRD for next feature suggestion...", sender="PM Agent", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
         prompt = f"""Read {self.prd_path} thoroughly. Then scan the codebase and git log to understand what features are already implemented.
 
@@ -939,7 +939,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("PM suggested: %s", self.state.feature.get("feature"))
 
         # Announce PM_SUGGEST phase complete
-        self.msg.send(f"Suggested: {self.state.feature.get('feature')}", sender="PM Agent", emoji="✅")
+        self.msg.send(f"Suggested: {self.state.feature.get('feature')}", sender="PM Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
     def _phase_review(self) -> bool:
         self.state.phase = Phase.REVIEW
@@ -956,7 +956,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             f"_Rationale: {f.get('rationale', 'N/A')}_\n\n"
             f"Reply **approve**, **reject**, or suggest an alternative.",
             sender="PM Agent",
-            emoji="🔄",
+            emoji=get_phase_emoji(PhaseState.IN_PROGRESS),
         )
 
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
@@ -977,7 +977,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator", emoji="❌")
+            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator", emoji=get_phase_emoji(PhaseState.FAILED))
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -987,13 +987,13 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             self.msg.send(
                 f"Using your input as the feature description: {response}",
                 sender="Orchestrator",
-                emoji="✅",
+                emoji=get_phase_emoji(PhaseState.COMPLETED),
             )
             self.state.feature["description"] = response
             self.state.feature["feature"] = response[:60]
         else:
             # Feature approved
-            self.msg.send("Feature approved — proceeding to specification.", sender="Orchestrator", emoji="✅")
+            self.msg.send("Feature approved — proceeding to specification.", sender="Orchestrator", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
         return True
 
@@ -1002,7 +1002,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         logger.info("Phase: DEV_SPECIFY")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
-        self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent", emoji="🔄")
+        self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
         # Inject pre-hook findings as codebase context
         prompt = f"/speckit.specify {desc}"
@@ -1035,12 +1035,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent", emoji="✅")
+        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
         logger.info("Phase: DEV_PLAN")
-        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent", emoji="🔄")
+        self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
         prompt = "/speckit.plan"
         pre = self._augment_context.get(Phase.DEV_PLAN)
@@ -1069,12 +1069,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent", emoji="✅")
+        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
         logger.info("Phase: DEV_TASKS")
-        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent", emoji="🔄")
+        self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
         prompt = "/speckit.tasks"
         pre = self._augment_context.get(Phase.DEV_TASKS)
@@ -1103,7 +1103,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent", emoji="✅")
+        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
         # Move artifacts to specs/[branch-name]/ directory
         self._move_artifacts_to_specs_dir()
@@ -1158,13 +1158,13 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "- Reply **reject** to stop\n"
             f"- Auto-proceeding in {review_timeout}s if no response",
             sender="Orchestrator",
-            emoji="🔄",
+            emoji=get_phase_emoji(PhaseState.IN_PROGRESS),
         )
 
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
         if auto or self._auto_approve:
             logger.info("Auto-approve enabled, proceeding to implementation")
-            self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator", emoji="✅")
+            self.msg.send("Auto-approved — starting implementation.", sender="Orchestrator", emoji=get_phase_emoji(PhaseState.COMPLETED))
             return True
 
         poll_interval = 5
@@ -1199,10 +1199,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             logger.info(f"Plan review response: '{response[:50]}...' (lower: '{lower}')")
 
             if lower in APPROVE_WORDS:
-                self.msg.send("Approved — starting implementation.", sender="Orchestrator", emoji="✅")
+                self.msg.send("Approved — starting implementation.", sender="Orchestrator", emoji=get_phase_emoji(PhaseState.COMPLETED))
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator", emoji="❌")
+                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator", emoji=get_phase_emoji(PhaseState.FAILED))
                 return False
             # Empty response - skip
             if not lower:
@@ -1460,7 +1460,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
             "during this phase and the PM will answer.",
             sender="Dev Agent",
-            emoji="🔄",
+            emoji=get_phase_emoji(PhaseState.IN_PROGRESS),
         )
 
         # Get feature description
@@ -1483,7 +1483,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent", emoji="✅")
+        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1633,7 +1633,7 @@ Otherwise, implement all tasks to completion."""
                         self.msg.send(
                             f"❌ Task {task['id']} failed: {e}",
                             sender="Dev Agent",
-                            emoji="❌",
+                            emoji=get_phase_emoji(PhaseState.FAILED),
                         )
                         raise
 
@@ -1877,7 +1877,7 @@ Otherwise, complete this task completely."""
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
         logger.info("Phase: CREATE_PR")
-        self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent", emoji="🔄")
+        self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
         prompt = """Create a pull request for all the changes on this branch.
 
@@ -1901,7 +1901,7 @@ Otherwise, complete this task completely."""
         """Have PM agent write a learning entry to .agent/product-manager.md journal."""
         self.state.phase = Phase.PM_LEARN
         logger.info("Phase: PM_LEARN")
-        self.msg.send("📖 **Learn** — Recording learnings...", sender="PM Agent", emoji="🔄")
+        self.msg.send("📖 **Learn** — Recording learnings...", sender="PM Agent", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
         feature_name = self.state.feature.get("feature", "Unknown")
 
@@ -1965,11 +1965,11 @@ Be specific about:
             # Get user mention from config (e.g., "@sbhavani")
             user_mention = self.cfg.get("workflow", {}).get("user_mention", "")
             if user_mention:
-                self.msg.send(f"{user_mention} PR created: {self.state.pr_url}", sender="Dev Agent", emoji="✅")
+                self.msg.send(f"{user_mention} PR created: {self.state.pr_url}", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
             else:
-                self.msg.send(f"PR created: {self.state.pr_url}", sender="Dev Agent", emoji="✅")
+                self.msg.send(f"PR created: {self.state.pr_url}", sender="Dev Agent", emoji=get_phase_emoji(PhaseState.COMPLETED))
         else:
-            self.msg.send("Workflow complete (no PR URL captured).", sender="Orchestrator", emoji="✅")
+            self.msg.send("Workflow complete (no PR URL captured).", sender="Orchestrator", emoji=get_phase_emoji(PhaseState.COMPLETED))
 
     # -- Summary ---------------------------------------------------------------
 
@@ -1991,12 +1991,12 @@ Be specific about:
         phase_elapsed = time.time() - self._phase_start_time
 
         status_msg = (
-            f"Phase: {phase_name} | "
+            f"{get_phase_emoji(PhaseState.IN_PROGRESS)} Phase: {phase_name} | "
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
         logger.info(status_msg)
-        self.msg.send(status_msg, sender="Orchestrator")
+        self.msg.send(status_msg, sender="Orchestrator", emoji=get_phase_emoji(PhaseState.IN_PROGRESS))
 
     def _post_summary(self, error: str | None = None) -> None:
         """Format and send a workflow summary to Mattermost."""
