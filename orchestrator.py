@@ -1023,7 +1023,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             msg_id = r.xadd(stream_name, message)
             logger.info(f"Published feature to stream {stream_name}: {msg_id}")
             self.msg.send(
-                f"📎 Published to work queue (worker will pick up shortly)",
+                "📎 Published to work queue (worker will pick up shortly)",
                 sender="Orchestrator",
             )
         except Exception as e:
