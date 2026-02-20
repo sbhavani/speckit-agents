@@ -885,7 +885,7 @@ class Orchestrator:
 
     def _phase_pm_suggest(self) -> None:
         self.state.phase = Phase.PM_SUGGEST
-        logger.info("Phase: PM_SUGGEST")
+        logger.info("Phase: PM_SUGGEST ✅")
 
         prompt = f"""Read {self.prd_path} thoroughly. Then scan the codebase and git log to understand what features are already implemented.
 
@@ -921,11 +921,11 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                 "priority": "P1",
             }
 
-        logger.info("PM suggested: %s", self.state.feature.get("feature"))
+        logger.info("✅ PM suggested: %s", self.state.feature.get("feature"))
 
     def _phase_review(self) -> bool:
         self.state.phase = Phase.REVIEW
-        logger.info("Phase: REVIEW")
+        logger.info("Phase: REVIEW ✅")
 
         f = self.state.feature
         # Start thread with feature name
@@ -943,11 +943,12 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
         if auto:
             logger.info("Auto-approve enabled, proceeding")
-            self.msg.send("Auto-approved (config: auto_approve=true)", sender="Orchestrator")
+            self.msg.send("✅ Auto-approved (config: auto_approve=true)", sender="Orchestrator")
             # Publish to stream for workers
             self._publish_feature_to_stream()
             self.state.worker_handoff = True
             logger.info(f"Set worker_handoff=True (auto-approve), feature={self.state.feature.get('feature')}")
+            self.msg.send("✅ Feature approved, proceeding to development.", sender="Orchestrator")
             return True
 
         timeout = self.cfg.get("workflow", {}).get("approval_timeout", 300)
@@ -955,18 +956,19 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         if response is None:
             self.msg.send(
-                f"No response after {timeout}s — auto-approving.",
+                f"✅ No response after {timeout}s — auto-approving.",
                 sender="Orchestrator",
             )
             # Publish to stream for workers
             self._publish_feature_to_stream()
             self.state.worker_handoff = True
             logger.info(f"Set worker_handoff=True (timeout), feature={self.state.feature.get('feature')}")
+            self.msg.send("✅ Feature approved, proceeding to development.", sender="Orchestrator")
             return True
 
         lower = re.sub(r"@\S+\s*", "", response.lower()).strip()
         if lower in ("reject", "no", "skip", "stop", "\U0001f44e", "-1", ":-1:", ":thumbsdown:"):
-            self.msg.send("Feature rejected. Stopping.", sender="Orchestrator")
+            self.msg.send("❌ Feature rejected. Stopping.", sender="Orchestrator")
             return False
 
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
@@ -986,6 +988,9 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         # Mark that we handed off to workers - orchestrator should skip dev phases
         self.state.worker_handoff = True
         logger.info(f"Set worker_handoff=True, feature={self.state.feature.get('feature')}")
+
+        # Send completion message
+        self.msg.send("✅ Feature approved, proceeding to development.", sender="Orchestrator")
 
         return True
 
@@ -1035,7 +1040,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_specify(self) -> None:
         self.state.phase = Phase.DEV_SPECIFY
-        logger.info("Phase: DEV_SPECIFY")
+        logger.info("Phase: DEV_SPECIFY ✅")
 
         desc = self.state.feature.get("description", self.state.feature.get("feature"))
         self.msg.send(f"📋 **Specify** — {desc[:80]}...", sender="Dev Agent")
@@ -1071,11 +1076,11 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📋 **Specify** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📋 **Specify** — ✅ Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_plan(self) -> None:
         self.state.phase = Phase.DEV_PLAN
-        logger.info("Phase: DEV_PLAN")
+        logger.info("Phase: DEV_PLAN ✅")
         self.msg.send("📐 **Plan** — Creating technical plan...", sender="Dev Agent")
 
         prompt = "/speckit.plan"
@@ -1105,11 +1110,11 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📐 **Plan** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"📐 **Plan** — ✅ Complete\n\n{summary}", sender="Dev Agent")
 
     def _phase_dev_tasks(self) -> None:
         self.state.phase = Phase.DEV_TASKS
-        logger.info("Phase: DEV_TASKS")
+        logger.info("Phase: DEV_TASKS ✅")
         self.msg.send("📝 **Tasks** — Generating task list...", sender="Dev Agent")
 
         prompt = "/speckit.tasks"
@@ -1139,7 +1144,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         max_len = 8000
         if len(summary) > max_len:
             summary = summary[:max_len] + "\n... (truncated)"
-        self.msg.send(f"📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
+        self.msg.send(f"✅ 📝 **Tasks** — Complete\n\n{summary}", sender="Dev Agent")
 
         # Move artifacts to specs/[branch-name]/ directory
         self._move_artifacts_to_specs_dir()
@@ -1177,7 +1182,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         Returns True to proceed, False to abort.
         """
         self.state.phase = Phase.PLAN_REVIEW
-        logger.info("Phase: PLAN_REVIEW")
+        logger.info("Phase: PLAN_REVIEW ✅/❌")
 
         # Mark position BEFORE posting the review message so we capture
         # any human messages that arrived during earlier phases too.
@@ -1189,7 +1194,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         review_timeout = self.cfg.get("workflow", {}).get("plan_review_timeout", 60)
 
         self.msg.send(
-            "👀 **Review** — Ready for implementation. Review the plan above.\n\n"
+            "🔄 **Review** — Waiting for your approval. Review the plan above.\n\n"
             "- Reply **approve** to proceed\n"
             "- Reply **reject** to stop\n"
             f"- Auto-proceeding in {review_timeout}s if no response",
@@ -1234,10 +1239,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             logger.info(f"Plan review response: '{response[:50]}...' (lower: '{lower}')")
 
             if lower in APPROVE_WORDS:
-                self.msg.send("Approved — starting implementation.", sender="Orchestrator")
+                self.msg.send("✅ Approved — starting implementation.", sender="Orchestrator")
                 return True
             if lower in REJECT_WORDS:
-                self.msg.send("Plan rejected. Stopping.", sender="Orchestrator")
+                self.msg.send("❌ Plan rejected. Stopping.", sender="Orchestrator")
                 return False
             # Empty response - skip
             if not lower:
@@ -1248,7 +1253,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # This prevents PM from answering during review (only approve/reject allowed)
             logger.info("Plan review: ignoring non-approve/reject message: %s", response[:50])
             self.msg.send(
-                f"Please reply **approve** to proceed or **reject** to stop. "
+                f"🔄 Please reply **approve** to proceed or **reject** to stop. "
                 f"Auto-proceeding in {int(deadline - time.time())}s.",
                 sender="Orchestrator",
             )
@@ -1478,7 +1483,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
     def _phase_dev_implement(self) -> None:
         self.state.phase = Phase.DEV_IMPLEMENT
-        logger.info("Phase: DEV_IMPLEMENT")
+        logger.info("Phase: DEV_IMPLEMENT ✅")
 
         # Clean up any stale spec/plan/tasks files from previous features
         # This prevents implementing the wrong feature in simple mode
@@ -1517,7 +1522,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             # Original single-command implementation
             self._execute_single_implementation(feature_desc)
 
-        self.msg.send("🔨 **Implement** — Complete", sender="Dev Agent")
+        self.msg.send("🔨 **Implement** — ✅ Complete", sender="Dev Agent")
 
     def _execute_single_implementation(self, feature_desc: str) -> None:
         """Execute implementation as a single command (original behavior)."""
@@ -1909,7 +1914,7 @@ Otherwise, complete this task completely."""
 
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
-        logger.info("Phase: CREATE_PR")
+        logger.info("Phase: CREATE_PR ✅")
         self.msg.send("🔀 **PR** — Creating pull request...", sender="Dev Agent")
 
         prompt = """Create a pull request for all the changes on this branch.
@@ -1930,10 +1935,16 @@ Otherwise, complete this task completely."""
         self.state.pr_url = result.get("result", "").strip()
         logger.info("PR URL: %s", self.state.pr_url)
 
+        # Send completion message with ✅ emoji
+        if self.state.pr_url:
+            self.msg.send("✅ **PR** — Pull request created successfully!", sender="Dev Agent")
+        else:
+            self.msg.send("❌ **PR** — Failed to create pull request.", sender="Dev Agent")
+
     def _phase_pm_learn(self) -> None:
         """Have PM agent write a learning entry to .agent/product-manager.md journal."""
         self.state.phase = Phase.PM_LEARN
-        logger.info("Phase: PM_LEARN")
+        logger.info("Phase: PM_LEARN ✅")
         self.msg.send("📖 **Learn** — Recording learnings...", sender="PM Agent")
 
         feature_name = self.state.feature.get("feature", "Unknown")
@@ -1978,7 +1989,8 @@ Be specific about:
             )
             self.state.pm_session = result.get("session_id")
 
-        logger.info("Learning recorded to journal")
+        logger.info("✅ Learning recorded to journal")
+        self.msg.send("✅ **Learn** — Learnings recorded to journal.", sender="PM Agent")
 
     def _phase_done(self) -> None:
         self.state.phase = Phase.DONE
