@@ -101,7 +101,7 @@ def run_single(feature: dict, condition: str, dry_run: bool = False) -> dict | N
             cmd,
             capture_output=True,
             text=True,
-            timeout=1800,  # 30 min max per run
+            timeout=2400,  # 40 min max per run
             cwd=Path(__file__).parent,
         )
         duration = time.monotonic() - start
