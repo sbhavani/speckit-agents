@@ -2313,8 +2313,11 @@ def main() -> None:
         messenger = Messenger(bridge=None, dry_run=True)
     else:
         mm = config["mattermost"]
+        ssh_host = config["openclaw"]["ssh_host"]
+        # Use SSH only for non-local hosts
+        use_ssh = ssh_host not in ("localhost", "127.0.0.1", "")
         bridge = MattermostBridge(
-            ssh_host=config["openclaw"]["ssh_host"],
+            ssh_host=ssh_host,
             channel_id=channel_id,
             mattermost_url=mm.get("url", "http://localhost:8065"),
             dev_bot_token=mm["dev_bot_token"],
@@ -2322,6 +2325,7 @@ def main() -> None:
             pm_bot_token=mm.get("pm_bot_token", ""),
             pm_bot_user_id=mm.get("pm_bot_user_id", ""),
             openclaw_account=config["openclaw"].get("openclaw_account"),
+            use_ssh=use_ssh,
         )
         messenger = Messenger(bridge=bridge)
 

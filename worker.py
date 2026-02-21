@@ -238,8 +238,6 @@ class Worker:
             if command == "resume":
                 cmd.extend(["--resume", "--approve"])
 
-            # Add --dry-run to avoid Mattermost issues in testing
-            cmd.append("--dry-run")
 
             logger.info(f"Running orchestrator: {' '.join(cmd)}")
 

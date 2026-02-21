@@ -12,7 +12,6 @@ projects:
     path: /Users/sb/code/finance-agent
     prd_path: docs/PRD.md
     channel_id: quq99mcckbnnpcpny6887qpgac  # #finance-agent
-    channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br  # #agent-team
   live-set-revival:
     path: /Users/sb/code/live-set-revival
     prd_path: docs/SPEC.md
