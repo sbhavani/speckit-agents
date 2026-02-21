@@ -12,3 +12,4 @@ config.local.yaml
 .agent-team-state.json
 specs/
 .agent/
+logs/
