@@ -62,6 +62,7 @@ def build_command(feature: dict, condition: str) -> list[str]:
     """Build the orchestrator subprocess command."""
     cmd = [
         sys.executable, "orchestrator.py",
+        "--simple",  # Skip specify/plan/tasks phases, go straight to implement
         "--dry-run",
         "--feature", feature["description"],
         "--project", feature["project"],
