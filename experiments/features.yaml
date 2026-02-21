@@ -1,52 +1,102 @@
 # Curated feature set for tool-augmented multi-agent experiment
-# 15 features: 5 per project, across 5 categories and 3 complexity levels
+# Based on actual finance-agent PRD and Roadmap
 #
 # Categories: api_endpoint, config_change, refactor, test, new_module
 # Complexity: low, medium, high
+# Priority: from PRD (P0/P1/P2)
 
 features:
   # ── finance-agent ──────────────────────────────────────────
+  # Priority P0: Core benchmark features
+
   - id: fin-01
     project: finance-agent
     category: api_endpoint
     expected_complexity: medium
+    priority: P0
+    prd_ref: P0-US1 to P0-US6
     description: >-
-      Add a GET /api/portfolio/summary endpoint that returns aggregated
-      portfolio value, top holdings, and daily change percentage.
+      Add a CLI flag --output-format to support multiple output formats (JSON, CSV, markdown table)
+      in addition to the default JSON output. Include summary statistics in all formats.
 
   - id: fin-02
     project: finance-agent
     category: config_change
     expected_complexity: low
+    priority: P0
+    prd_ref: P0-US10
     description: >-
-      Add configurable rate-limit settings for external market data API calls,
-      with defaults of 5 requests/second and 1000 requests/day.
+      Add configurable timeout settings: per-question timeout (default 120s) and per-turn timeout.
+      These should be configurable via CLI flags --question-timeout and --turn-timeout.
 
   - id: fin-03
     project: finance-agent
-    category: refactor
-    expected_complexity: high
+    category: test
+    expected_complexity: medium
+    priority: P0
+    prd_ref: P0-US7 to P0-US10
     description: >-
-      Refactor the transaction processing module to use the Strategy pattern,
-      extracting buy, sell, and dividend handlers into separate classes.
+      Add integration tests for the evaluation harness covering: accuracy calculation,
+      per-type breakdown, cost tracking, latency metrics, and failure categorization.
+
+  # Priority P1: Should Have features
 
   - id: fin-04
     project: finance-agent
-    category: test
-    expected_complexity: medium
+    category: new_module
+    expected_complexity: high
+    priority: P1
+    prd_ref: P1-US7 to P1-US8
     description: >-
-      Add integration tests for the portfolio rebalancing workflow covering
-      edge cases: empty portfolio, single-asset portfolio, and rounding errors.
+      Add multi-model batch evaluation capability: accept a --models flag with comma-separated
+      model names, run evaluation for each model on the same dataset, output combined results
+      with side-by-side comparison table showing accuracy, cost, latency per model.
 
   - id: fin-05
     project: finance-agent
+    category: config_change
+    expected_complexity: low
+    priority: P1
+    prd_ref: P1-US4 to P1-US6
+    description: >-
+      Add --parallel flag to control concurrent question evaluation (1-10). Currently
+      supports parallel evaluation but needs better configuration and tool call success rate tracking.
+
+  # Priority P2: Could Have features
+
+  - id: fin-06
+    project: finance-agent
     category: new_module
     expected_complexity: high
+    priority: P2
+    prd_ref: P2-US1 to P2-US2
     description: >-
-      Create a tax-lot tracking module that records cost basis per purchase
-      and supports FIFO, LIFO, and specific-identification methods.
+      Create a web UI module for browsing benchmark results. Should include: accuracy
+      rankings table, filter by question type/model/date, and basic search.
+
+  - id: fin-07
+    project: finance-agent
+    category: refactor
+    expected_complexity: medium
+    priority: P2
+    prd_ref: P2-US3 to P2-US5
+    description: >-
+      Add new financial tools: PDF Parser for 10-K/10-Q PDFs, Financial Calculator for
+      CAGR/ROE/ROIC/WACC calculations, and FRED API integration for macroeconomic data.
+
+  - id: fin-08
+    project: finance-agent
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: P2-US6 to P2-US7
+    description: >-
+      Implement caching layer for SEC filings and web content. Add support for
+      user-provided custom datasets in JSON format.
 
   # ── live-set-revival ───────────────────────────────────────
+  # TODO: Update based on actual live-set-revival PRD
+
   - id: lsr-01
     project: live-set-revival
     category: api_endpoint
@@ -88,6 +138,7 @@ features:
       click track and generates a per-song accuracy report.
 
   # ── agent-team ─────────────────────────────────────────────
+
   - id: at-01
     project: agent-team
     category: api_endpoint
