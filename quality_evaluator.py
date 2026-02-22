@@ -121,12 +121,16 @@ def score_run(run_dir: Path) -> dict | None:
         stdout=stdout,
     )
 
+    # Filter out CLAUDECODE to avoid nested session issues
+    env = {k: v for k, v in __import__("os").environ.items() if k != "CLAUDECODE"}
+
     try:
         result = subprocess.run(
             ["claude", "-p", prompt, "--output-format", "json"],
             capture_output=True,
             text=True,
             timeout=120,
+            env=env,
         )
         if result.returncode != 0:
             return {
