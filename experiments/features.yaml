@@ -178,3 +178,57 @@ features:
     description: >-
       Create a metrics-collection module that tracks per-phase duration,
       token usage, and tool-call counts, exporting to a JSONL log.
+
+  # ── dexter ────────────────────────────────────────────────
+  # Based on Q2-Q3 roadmap items
+
+  - id: dex-01
+    project: dexter
+    category: config_change
+    expected_complexity: low
+    priority: P1
+    prd_ref: Q2 2025
+    description: >-
+      Add a --json flag to output responses in JSON format instead of natural language.
+      This enables programmatic use of Dexter in scripts and pipelines.
+
+  - id: dex-02
+    project: dexter
+    category: new_module
+    expected_complexity: medium
+    priority: P1
+    prd_ref: Q2 2025
+    description: >-
+      Implement session persistence: save conversation history to disk and allow
+      resuming previous sessions with --session <id> flag.
+
+  - id: dex-03
+    project: dexter
+    category: api_endpoint
+    expected_complexity: medium
+    priority: P1
+    prd_ref: Q3 2025
+    description: >-
+      Add Telegram bot integration: accept messages via Telegram webhooks,
+      process them through the agent, and respond in the same chat.
+
+  - id: dex-04
+    project: dexter
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: Q3 2025
+    description: >-
+      Implement streaming response mode: stream agent thinking and tool results
+      token-by-token to the terminal using ANSI escape codes.
+
+  - id: dex-05
+    project: dexter
+    category: refactor
+    expected_complexity: high
+    priority: P2
+    prd_ref: Q3 2025
+    description: >-
+      Add portfolio analysis capability: accept multiple stock tickers and
+      generate comparative analysis including relative performance, risk metrics,
+      and correlation coefficients.

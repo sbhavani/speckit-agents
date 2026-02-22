@@ -20,6 +20,9 @@ projects:
     path: /Volumes/SSD-PGU3/code/agent-team
     prd_path: docs/PRD.md
     channel_id: bhpbt6h4xtnem8int5ccmbo4dw  # #product-dev (reuse)
+  dexter:
+    path: /Users/sb/code/dexter
+    prd_path: docs/PRD.md
   # example:
   #   path: /Users/sbhavani/code/another-project
   #   prd_path: docs/SPEC.md
