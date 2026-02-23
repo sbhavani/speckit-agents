@@ -1,0 +1,4 @@
+# Section 1: Introduction
+The promise of autonomous software engineering is currently limited by the reliability of AI agents in large, evolving repositories. While **Spec Kit** provides a robust, "spec-first" methodology, the transition from high-level specifications to concrete code remains error-prone. We introduce **Spec Kit Agents**, which strengthens this transition by adding an automated **Discovery and Validation** layer. 
+
+By injecting a "Just-in-Time Discovery" phase before each reasoning step, our system ensures that every specification is grounded in existing project conventions and every plan is verified against installed dependencies. This paper describes the system's multi-agent architecture, the implementation of our tool-augmented guardrails, and provides a comparative evaluation showing substantial gains in both delivery speed and code quality.
