@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -28,7 +29,7 @@ EXPERIMENTS_DIR = Path(__file__).parent / "experiments"
 RESULTS_DIR = EXPERIMENTS_DIR / "results"
 FEATURES_FILE = EXPERIMENTS_DIR / "features.yaml"
 AUGMENT_LOG_DIR = Path(__file__).parent / "logs" / "augment"
-CONDITIONS = ["baseline", "augmented"]
+CONDITIONS = ["baseline", "augmented", "full", "full-augmented"]
 SLEEP_BETWEEN_RUNS = 5
 
 
@@ -62,11 +63,16 @@ def build_command(feature: dict, condition: str) -> list[str]:
     """Build the orchestrator subprocess command."""
     cmd = [
         sys.executable, "orchestrator.py",
-        "--simple",  # Skip specify/plan/tasks phases, go straight to implement
+        "--dry-run",
         "--feature", feature["description"],
         "--project", feature["project"],
     ]
-    if condition == "baseline":
+    if condition in ("baseline", "augmented"):
+        cmd.append("--simple")  # Skip specify/plan/tasks phases
+    else:
+        cmd.append("--approve")  # Auto-approve plan review for full runs
+
+    if condition in ("baseline", "full"):
         cmd.append("--no-tools")
     else:
         cmd.append("--tools")
@@ -89,19 +95,23 @@ def run_single(feature: dict, condition: str, dry_run: bool = False) -> dict | N
 
     # Clear augment logs before augmented runs so we capture only this run's logs
     latest_augment_logs = []
-    if condition == "augmented":
+    if condition in ("augmented", "full-augmented"):
         latest_augment_logs = list(AUGMENT_LOG_DIR.glob("run_*.jsonl")) if AUGMENT_LOG_DIR.exists() else []
 
     print(f"  Running: {' '.join(cmd[:6])}...")
     start = time.monotonic()
+
+    # Strip CLAUDECODE so nested claude -p calls don't refuse to run
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=2400,  # 40 min max per run
+            timeout=5400 if condition.startswith("full") else 2400,
             cwd=Path(__file__).parent,
+            env=env,
         )
         duration = time.monotonic() - start
         exit_code = result.returncode
@@ -111,7 +121,8 @@ def run_single(feature: dict, condition: str, dry_run: bool = False) -> dict | N
         duration = time.monotonic() - start
         exit_code = -1
         stdout_text = (e.stdout or b"").decode("utf-8", errors="replace")
-        stderr_text = (e.stderr or b"").decode("utf-8", errors="replace") + "\n[TIMEOUT after 1800s]"
+        timeout_val = 5400 if condition.startswith("full") else 2400
+        stderr_text = (e.stderr or b"").decode("utf-8", errors="replace") + f"\n[TIMEOUT after {timeout_val}s]"
     except Exception as e:
         duration = time.monotonic() - start
         exit_code = -2
@@ -123,7 +134,7 @@ def run_single(feature: dict, condition: str, dry_run: bool = False) -> dict | N
     (run_dir / "stderr.log").write_text(stderr_text, encoding="utf-8")
 
     # Copy augmentation logs for augmented runs
-    if condition == "augmented" and AUGMENT_LOG_DIR.exists():
+    if condition in ("augmented", "full-augmented") and AUGMENT_LOG_DIR.exists():
         new_logs = [
             f for f in AUGMENT_LOG_DIR.glob("run_*.jsonl")
             if f not in latest_augment_logs

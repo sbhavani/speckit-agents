@@ -262,21 +262,12 @@ def run_claude(
     logger.debug("Prompt: %s", prompt[:200])
 
     # Clear CLAUDECODE env var so we can spawn from within a Claude Code session
-    # Also ensure ANTHROPIC_AUTH_TOKEN is set for API calls
+    # NOTE: Do NOT inject ANTHROPIC_AUTH_TOKEN — it causes claude CLI to switch
+    # to API mode, which fails when the token scope doesn't match. Let the CLI
+    # use its own logged-in session (same as run_claude_stream).
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-    if "ANTHROPIC_AUTH_TOKEN" not in env:
-        # Try to load from config.local.yaml
-        import yaml
-        local_config_path = os.path.join(os.path.dirname(__file__), "config.local.yaml")
-        if os.path.exists(local_config_path):
-            with open(local_config_path) as f:
-                local_config = yaml.safe_load(f)
-                api_key = local_config.get("openclaw", {}).get("anthropic_api_key")
-                if api_key:
-                    env["ANTHROPIC_AUTH_TOKEN"] = api_key
 
     logger.info(f"Running command: {' '.join(cmd)}")
-    logger.info(f"ANTHROPIC_AUTH_TOKEN present: {'ANTHROPIC_AUTH_TOKEN' in env}")
 
     last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
@@ -306,11 +297,32 @@ def run_claude(
                 return {"result": partial.strip(), "session_id": session_id, "_timeout": True}
 
         if result.returncode != 0:
-            last_error = RuntimeError(f"claude -p failed: {result.stderr[:500]}")
+            # stream-json puts errors in stdout as JSON, not stderr
+            # Parse stream-json to find actual error messages
+            error_msgs = []
+            for line in result.stdout.strip().split('\n'):
+                try:
+                    obj = json.loads(line.strip())
+                    if obj.get("is_error") or obj.get("subtype") == "error_during_execution":
+                        # Errors can be in "errors" list or "result" string
+                        error_msgs.extend(obj.get("errors", []))
+                        if obj.get("result"):
+                            error_msgs.append(obj["result"])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            error_detail = "; ".join(error_msgs) if error_msgs else (result.stderr[:500] or result.stdout[:500])
+            last_error = RuntimeError(f"claude -p failed: {error_detail}")
             logger.error(
                 "claude -p returned %d (attempt %d/%d): %s",
-                result.returncode, attempt, max_retries, result.stderr[:200],
+                result.returncode, attempt, max_retries, error_detail[:200],
             )
+
+            # If session not found, drop --resume and retry without it
+            if "No conversation found" in error_detail and session_id:
+                logger.warning("Session %s not found, retrying without --resume", session_id)
+                cmd = [c for c in cmd if c not in ("--resume", session_id)]
+                session_id = None
+
             if attempt < max_retries:
                 backoff = 5 * (4 ** (attempt - 1))
                 logger.info("Retrying in %ds...", backoff)
@@ -417,7 +429,7 @@ def run_claude_stream(
                     result_text += _extract_text_from_event(event)
 
                     # Track session_id from events
-                    if event.get("type") == "session_id":
+                    if event.get("session_id"):
                         session_id_out = event.get("session_id")
 
                     # Call progress callback if provided
@@ -670,6 +682,14 @@ class Orchestrator:
             )
             if result.returncode != 0:
                 raise RuntimeError(f"Failed to create worktree: {result.stderr}")
+
+        # Copy .claude/ directory if it exists (not tracked by git, needed for slash commands)
+        claude_dir = Path(self.original_path) / ".claude"
+        if claude_dir.exists():
+            import shutil
+            dest = Path(self.worktree_path) / ".claude"
+            shutil.copytree(claude_dir, dest, dirs_exist_ok=True)
+            logger.info("Copied .claude/ directory to worktree")
 
         # Switch to worktree
         self.project_path = self.worktree_path
@@ -1331,16 +1351,23 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             logger.debug("Could not get git branch: %s", e)
 
     def _get_phase_summary(self, prompt: str) -> str:
-        """Ask the dev session for a concise summary of what was just done."""
-        result = run_claude(
-            prompt=prompt,
-            cwd=self.project_path,
-            session_id=self.state.dev_session,
-            allowed_tools=["Read", "Glob"],
-            timeout=120,
-        )
-        self.state.dev_session = result.get("session_id", self.state.dev_session)
-        return result.get("result", "(no summary available)")
+        """Ask a fresh session for a concise summary of what was just done.
+
+        Uses a new session (no --resume) because stream-mode sessions from
+        Popen cannot be resumed reliably.
+        """
+        try:
+            result = run_claude(
+                prompt=prompt,
+                cwd=self.project_path,
+                session_id=None,
+                allowed_tools=["Read", "Glob"],
+                timeout=120,
+            )
+            return result.get("result", "(no summary available)")
+        except Exception as e:
+            logger.warning("Phase summary failed (non-fatal): %s", e)
+            return "(summary unavailable)"
 
     def _make_progress_callback(self, phase_name: str, report_interval: int = 3):
         """Create a progress callback that posts tool usage to Mattermost.
@@ -1972,7 +1999,7 @@ Otherwise, complete all tasks completely."""
         result = run_claude(
             prompt=prompt,
             cwd=self.project_path,
-            session_id=self.state.dev_session,
+            session_id=None,  # Fresh session — stream-mode sessions can't be resumed
             allowed_tools=DEV_TOOLS,
             timeout=3600,
         )
@@ -2392,6 +2419,8 @@ def main() -> None:
             "rationale": "Manually specified via --feature flag",
             "priority": "P1",
         }
+        if args.approve:
+            orchestrator._auto_approve = True
         # Start a thread for this feature
         orchestrator.msg.start_thread(
             f"Feature specified via CLI: **{args.feature[:60]}**",
