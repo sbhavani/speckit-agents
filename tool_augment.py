@@ -49,6 +49,10 @@ DISCOVERY_TOOLS = [
 
 VALIDATION_TOOLS = DISCOVERY_TOOLS + [
     "Bash(pytest *)", "Bash(ruff *)",
+    "Bash(npm test *)", "Bash(npm run test *)",
+    "Bash(pnpm test *)", "Bash(pnpm run test *)",
+    "Bash(bun test *)", "Bash(bunx *)",
+    "Bash(npm run lint *)", "Bash(pnpm run lint *)", "Bash(bun run lint *)",
 ]
 
 
@@ -215,10 +219,17 @@ You are a pre-flight checker. Run pre-implementation checks and return a JSON ob
   "tests_green": true/false,
   "git_clean": true/false,
   "git_branch": "current branch name",
-  "pre_flight_passed": true/false
+  "pre_flight_passed": true/false,
+  "project_type": "python|npm|pnpm|unknown"
 }}
 
-Run `pytest --tb=line -q` to check the test baseline (if pytest is configured). Check `git status` for cleanliness and `git branch` for the current branch. Return ONLY the JSON object."""
+First, check if this is a Python project (has pyproject.toml or setup.py) or a JS/TS project (has package.json). Then run the appropriate test command:
+- Python: `pytest --tb=line -q` or `python -m pytest --tb=line -q`
+- npm: `npm test` or `npm run test` (check package.json scripts first)
+- pnpm: `pnpm test` or `pnpm run test` (check package.json scripts first)
+- bun: `bun test` (check package.json scripts first)
+
+Also check `git status` for cleanliness and `git branch` for the current branch. Return ONLY the JSON object."""
 
 _POST_SPECIFY_PROMPT = """\
 You are a spec validator. Check the specification that was just created against the actual codebase and return a JSON object with:
@@ -262,10 +273,17 @@ You are a quality checker. Run post-implementation validation and return a JSON 
   "lint_issues": ["linting issues found"],
   "files_changed": 0,
   "quality_score": 0.0-1.0,
-  "validation_passed": true/false
+  "validation_passed": true/false,
+  "project_type": "python|npm|pnpm|bun|unknown"
 }}
 
-Run `pytest --tb=short -q` to check tests. Run `ruff check .` for linting. Check `git diff --stat` for files changed. Count TODO/FIXME comments in changed files. Return ONLY the JSON object."""
+First, check if this is a Python project (has pyproject.toml or setup.py) or a JS/TS project (has package.json). Then and lint commands:
+- Python: `pytest --tb=short -q` run the appropriate test for tests, `ruff check .` for linting
+- npm: `npm test` or `npm run test` for tests (check package.json scripts first), `npm run lint` if available
+- pnpm: `pnpm test` or `pnpm run test` for tests, `pnpm run lint` if available
+- bun: `bun test` for tests (check package.json scripts first), `bun run lint` if available
+
+Also check `git diff --stat` for files changed. Return ONLY the JSON object."""
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +427,12 @@ class ToolAugmentor:
     def _pre_implement(self, state: Any) -> dict:
         tools = DISCOVERY_TOOLS[:]
         if self.config.run_tests_before_impl:
-            tools.append("Bash(pytest *)")
+            tools.extend([
+                "Bash(pytest *)", "Bash(ruff *)",
+                "Bash(npm test *)", "Bash(npm run test *)",
+                "Bash(pnpm test *)", "Bash(pnpm run test *)",
+                "Bash(bun test *)", "Bash(bun run *)",
+            ])
         return self._invoke_claude(_PRE_IMPLEMENT_PROMPT, "DEV_IMPLEMENT", "pre", tools)
 
     # -- Post-hooks ------------------------------------------------------------
@@ -426,7 +449,13 @@ class ToolAugmentor:
     def _post_implement(self, state: Any) -> dict:
         tools = DISCOVERY_TOOLS[:]
         if self.config.run_tests_after_impl:
-            tools.extend(["Bash(pytest *)", "Bash(ruff *)"])
+            tools.extend([
+                "Bash(pytest *)", "Bash(ruff *)",
+                "Bash(npm test *)", "Bash(npm run test *)",
+                "Bash(pnpm test *)", "Bash(pnpm run test *)",
+                "Bash(bun test *)", "Bash(bun run *)",
+                "Bash(npm run lint *)", "Bash(pnpm run lint *)", "Bash(bun run lint *)",
+            ])
         return self._invoke_claude(_POST_IMPLEMENT_PROMPT, "DEV_IMPLEMENT", "post", tools)
 
     # -- Claude invocation -----------------------------------------------------
