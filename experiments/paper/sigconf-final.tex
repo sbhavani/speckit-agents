@@ -803,6 +803,41 @@ Assuming MiniMax-M2.5 pricing (~\$3/1M tokens) and roughly 1,000 tokens/minute o
 
 The quality improvement (+0.19 composite score, p<0.05) may justify the 2.8x cost for critical features where code quality is paramount. For smaller features, the Baseline or Augmented configurations offer better efficiency.
 
+\subsection{Broader Impact and Cost-Benefit Framework}
+
+Our work addresses a high-impact pain point in autonomous software engineering: \textbf{context blindness}, where agents operate without grounded understanding of the codebase. The tool-augmented guardrails pattern we propose is \textbf{deployable and generalizable}---it can be layered atop many agent stacks (Claude Code, Cursor, Windsurf) since it operates as a thin wrapper around the agent execution loop.
+
+\textbf{Significance.} If generalized and validated at scale, this approach could materially improve the reliability and auditability of autonomous coding systems. By ensuring agents discover existing patterns before planning and validate artifacts before proceeding, we reduce the risk of hallucinated solutions that waste developer time reviewing and fixing broken PRs.
+
+\textbf{Risks and Trade-offs.} Several considerations practitioners should weigh:
+
+\begin{itemize}
+  \item \textbf{Latency overhead}: Full-Augmented adds 2.8x latency; not suitable for time-critical workflows
+  \item \textbf{Operational complexity}: More configuration points (discovery prompts, validation hooks, timeout tuning)
+  \item \textbf{Brittleness to refactors}: Early-stage checks may fail when codebase undergoes large structural changes
+  \item \textbf{Evaluation ecosystem}: Relying solely on automated tests/judges misses human-usability factors; hybrid evaluation is recommended
+\end{itemize}
+
+\textbf{Cost-Benefit Decision Framework.} We provide guidance for practitioners deciding when to enable which guardrails:
+
+\begin{table}[ht]
+  \centering
+  \caption{Recommended configuration by feature complexity}
+  \label{tab:config-guidance}
+  \begin{tabular}{llp{5cm}}
+    \hline
+    \textbf{Feature Type} & \textbf{Recommended} & \textbf{Rationale} \\
+    \hline
+    Low complexity (config changes) & Baseline & Speed matters; quality ceiling is high \\
+    Medium complexity (new endpoints) & Augmented & Validation catches path/import errors \\
+    High complexity (new modules) & Full-Augmented & Discovery critical for architecture; validation ensures correctness \\
+    Critical production features & Full-Augmented & Quality improvement (+0.19) justifies 2.8x cost \\
+    \hline
+  \end{tabular}
+\end{table}
+
+This framework helps teams make informed decisions based on feature criticality, time constraints, and quality requirements.
+
 \subsection{Limitations}
 
 \begin{itemize}
