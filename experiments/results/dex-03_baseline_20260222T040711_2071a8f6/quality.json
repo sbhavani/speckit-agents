@@ -34,11 +34,11 @@
     "quality": "Code is organized with good separation (outbound, plugin, runtime, types) and includes tests. However, there's duplication between WhatsApp and Telegram handlers, the markdown cleaning regex is complex and hard to follow, and the module-level server variable creates potential state management issues."
   },
   "test_results": {
-    "passed": 23,
+    "passed": 31,
     "failed": 0,
-    "total": 23,
+    "total": 31,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [67.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 31 pass\n 0 fail\n 69 expect() calls\nRan 31 tests across 7 files. [127.00ms]\n",
     "category": "none"
   }
 }

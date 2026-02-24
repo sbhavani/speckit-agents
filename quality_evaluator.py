@@ -74,11 +74,94 @@ FAILURE_CATEGORIES = [
 # Removed find_related_tests - we always run ALL tests to verify no regressions
 
 
-def run_project_tests(project: str, timeout: int = 120) -> dict:
+def cleanup_pr_checkout(pr_number: int, base_path: Path) -> None:
+    """Clean up PR checkout directory."""
+    pr_dir = base_path.parent / f"pr_checkout_{pr_number}"
+    if pr_dir.exists():
+        import shutil
+        shutil.rmtree(pr_dir, ignore_errors=True)
+
+
+def checkout_pr_branch(pr_repo: str, pr_number: int, base_path: Path, project: str) -> Path | None:
+    """Checkout PR branch for testing.
+
+    Returns the path to the checked-out PR branch, or None if failed.
+    """
+    # Create temp directory for PR checkout
+    pr_dir = base_path.parent / f"pr_checkout_{pr_number}"
+
+    # Clean up any existing directory
+    cleanup_pr_checkout(pr_number, base_path)
+    pr_dir.mkdir(exist_ok=True)
+
+    try:
+        # Clone the repo (shallow clone)
+        result = subprocess.run(
+            ["gh", "repo", "clone", pr_repo, str(pr_dir), "--", "--depth", "1"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            print(f"    Warning: Failed to clone repo: {result.stderr[:200]}")
+            return None
+
+        # Fetch the PR ref
+        result = subprocess.run(
+            ["git", "fetch", "origin", f"pull/{pr_number}/head:pr-{pr_number}"],
+            cwd=pr_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            print(f"    Warning: Could not fetch PR branch: {result.stderr[:100]}")
+            # Try main branch as fallback
+            subprocess.run(["git", "checkout", "main"], cwd=pr_dir, capture_output=True, timeout=30)
+            # Try to install deps anyway
+        else:
+            subprocess.run(
+                ["git", "checkout", f"pr-{pr_number}"],
+                cwd=pr_dir,
+                capture_output=True,
+                timeout=30,
+            )
+
+        # Install dependencies based on project type
+        print(f"    Installing dependencies...")
+        if project == "dexter":
+            # Use bun for TypeScript projects
+            subprocess.run(
+                ["bun", "install"],
+                cwd=pr_dir,
+                capture_output=True,
+                timeout=180,
+            )
+        elif project in ("fastapi", "airflow", "finance-agent"):
+            # Use uv for Python projects
+            subprocess.run(
+                ["uv", "sync"],
+                cwd=pr_dir,
+                capture_output=True,
+                timeout=180,
+            )
+
+        return pr_dir
+
+    except Exception as e:
+        print(f"    Warning: PR checkout failed: {e}")
+        return None
+
+
+def run_project_tests(project: str, pr_repo: str | None = None, pr_number: int | None = None, timeout: int = 120) -> dict:
     """Run ALL project tests to verify no regressions.
 
     Args:
         project: Project name (dexter, fastapi, airflow, etc.)
+        pr_repo: GitHub repo (e.g., "sbhavani/dexter")
+        pr_number: PR number to test
         timeout: Test execution timeout in seconds.
 
     Returns:
@@ -94,12 +177,24 @@ def run_project_tests(project: str, timeout: int = 120) -> dict:
         }
 
     base_test_cmd = config["test_cmd"]
-    project_path = Path(config["path"])
+    base_project_path = Path(config["path"])
 
-    if not project_path.exists():
+    # Try to checkout PR branch if PR info provided
+    test_path = base_project_path
+    pr_checkout_dir = None
+
+    if pr_repo and pr_number:
+        pr_checkout_dir = checkout_pr_branch(pr_repo, pr_number, base_project_path, project)
+        if pr_checkout_dir and pr_checkout_dir.exists():
+            test_path = pr_checkout_dir
+            print(f"    Testing PR #{pr_number} at {test_path}")
+        else:
+            print(f"    Warning: Could not checkout PR, testing base repo")
+
+    if not test_path.exists():
         return {
             "passed": 0, "failed": 0, "total": 0,
-            "percentage": None, "output": f"Project path does not exist: {project_path}",
+            "percentage": None, "output": f"Test path does not exist: {test_path}",
             "category": "other", "error": "path_not_found"
         }
 
@@ -109,7 +204,7 @@ def run_project_tests(project: str, timeout: int = 120) -> dict:
     try:
         result = subprocess.run(
             test_args,
-            cwd=project_path,
+            cwd=test_path,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -150,14 +245,17 @@ def run_project_tests(project: str, timeout: int = 120) -> dict:
         # Parse bun test output
         elif "bun" in base_test_cmd[0] or "bun" in " ".join(base_test_cmd):
             # Bun test: "X tests passed" or "X tests, Y failed" or "X pass"
+            # Also: "21 pass\n 3 fail\n 3 errors"
             passed_match = re.search(r"(\d+) tests? passed", output) or re.search(r"(\d+) pass", output)
             failed_match = re.search(r"(\d+) tests? failed", output)
+            error_match = re.search(r"(\d+) errors?", output)
 
             passed = int(passed_match.group(1)) if passed_match else 0
             failed = int(failed_match.group(1)) if failed_match else 0
-            total = passed + failed
+            errors = int(error_match.group(1)) if error_match else 0
+            total = passed + failed + errors
 
-            if failed > 0:
+            if failed > 0 or errors > 0:
                 category = "test_failure"
             elif passed > 0:
                 category = "none"
@@ -772,11 +870,12 @@ def add_test_results_to_existing(project: str | None = None, timeout: int = 120)
         # Get project from metadata
         metadata = json.loads((run_dir / "metadata.json").read_text())
         project_name = metadata.get("project", "")
-        changed_files = quality.get("changed_files", [])
+        pr_repo = quality.get("pr_repo")
+        pr_number = quality.get("pr_number")
 
         print(f"  [TEST] {run_dir.name} ({project_name})...", end=" ", flush=True)
 
-        test_result = run_project_tests(project_name, timeout=timeout)
+        test_result = run_project_tests(project_name, pr_repo=pr_repo, pr_number=pr_number, timeout=timeout)
 
         # Add test results to existing quality.json
         quality["test_results"] = test_result
@@ -896,9 +995,10 @@ def main() -> None:
         # Run tests if requested
         if args.run_tests and result.get("pr_url"):
             project = meta.get("project", "")
-            changed_files = result.get("changed_files", [])
+            pr_repo = result.get("pr_repo")
+            pr_number = result.get("pr_number")
             print(f"\n  Running tests for {project}...", end=" ", flush=True)
-            test_result = run_project_tests(project, timeout=args.test_timeout)
+            test_result = run_project_tests(project, pr_repo=pr_repo, pr_number=pr_number, timeout=args.test_timeout)
             result["test_results"] = test_result
             print(f"{test_result.get('percentage', 'N/A')}% passed ({test_result.get('category', 'unknown')})")
 

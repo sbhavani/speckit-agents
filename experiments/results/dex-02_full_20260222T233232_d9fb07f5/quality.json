@@ -47,11 +47,11 @@
     "quality": "Well-organized with clear separation: types, id, store, history, manager modules. Comprehensive test coverage with temp directory isolation. Some CLI integration code in cli.ts/index.tsx is dense but readable. Good use of Zod schemas for validation."
   },
   "test_results": {
-    "passed": 23,
+    "passed": 51,
     "failed": 0,
-    "total": 23,
+    "total": 51,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [72.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 51 pass\n 0 fail\n 218 expect() calls\nRan 51 tests across 10 files. [115.00ms]\n",
     "category": "none"
   }
 }

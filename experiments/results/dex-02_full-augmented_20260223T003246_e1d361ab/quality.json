@@ -47,7 +47,7 @@
     "failed": 0,
     "total": 23,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [71.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [73.00ms]\n",
     "category": "none"
   }
 }

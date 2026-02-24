@@ -24,11 +24,11 @@
   "scores": null,
   "error": "judge_timeout",
   "test_results": {
-    "passed": 23,
+    "passed": 76,
     "failed": 0,
-    "total": 23,
+    "total": 76,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [70.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 76 pass\n 0 fail\n 165 expect() calls\nRan 76 tests across 7 files. [151.00ms]\n",
     "category": "none"
   }
 }

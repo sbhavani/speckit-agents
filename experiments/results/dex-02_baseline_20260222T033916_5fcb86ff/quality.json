@@ -30,11 +30,11 @@
     "quality": "Well-organized with clear separation of concerns in session-storage.ts. Comprehensive tests included. Some minor improvements possible like extracting complex types and adding JSDoc comments."
   },
   "test_results": {
-    "passed": 23,
+    "passed": 39,
     "failed": 0,
-    "total": 23,
+    "total": 39,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [74.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 39 pass\n 0 fail\n 80 expect() calls\nRan 39 tests across 7 files. [3.39s]\n",
     "category": "none"
   }
 }

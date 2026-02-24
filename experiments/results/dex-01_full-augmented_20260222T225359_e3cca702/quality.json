@@ -39,11 +39,11 @@
     "quality": "The code is well-organized with clear separation of concerns: argument parsing, JSON execution, and type definitions in separate modules. Comprehensive tests cover parse-args, JSON output building, stdout isolation, and error paths. Helper functions are focused and well-named. The try/catch/finally pattern ensures proper cleanup of console overrides."
   },
   "test_results": {
-    "passed": 23,
+    "passed": 47,
     "failed": 0,
-    "total": 23,
+    "total": 47,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [69.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n{\n  \"success\": true,\n  \"answer\": \"test\"\n}\n\nsrc/cli/json-mode.test.ts:\n\n 47 pass\n 0 fail\n 106 expect() calls\nRan 47 tests across 8 files. [690.00ms]\n",
     "category": "none"
   }
 }

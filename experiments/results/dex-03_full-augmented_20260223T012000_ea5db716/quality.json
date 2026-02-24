@@ -43,11 +43,11 @@
     "quality": "Well-organized with good separation of concerns (inbound, outbound, types, plugin), comprehensive test coverage, and excellent README documentation. Minor improvements possible in HTTP server initialization and factory patterns."
   },
   "test_results": {
-    "passed": 23,
+    "passed": 77,
     "failed": 0,
-    "total": 23,
+    "total": 77,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [70.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\nTelegram message from 999 not in allowFrom list\nTelegram message from 123456789 has no text content\nTelegram message from 999 not in allowFrom list\n\nsrc/gateway/channels/telegram/inbound.test.ts:\n\nsrc/gateway/channels/telegram/integration.test.ts:\n\n 77 pass\n 0 fail\n 136 expect() calls\nRan 77 tests across 9 files. [110.00ms]\n",
     "category": "none"
   }
 }

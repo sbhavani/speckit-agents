@@ -36,11 +36,11 @@
     "quality": "Code is readable and reasonably organized, but there are issues: the tokenDelay config option is defined but never used in streaming, the StreamState duplicates tracking with individual strings, and several methods (printAnswer, clearLine) exist but are never called from the agent runner."
   },
   "test_results": {
-    "passed": 23,
+    "passed": 34,
     "failed": 0,
-    "total": 23,
+    "total": 34,
     "percentage": 100.0,
-    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [66.00ms]\n",
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 34 pass\n 0 fail\n 64 expect() calls\nRan 34 tests across 7 files. [76.00ms]\n",
     "category": "none"
   }
 }
