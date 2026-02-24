@@ -28,5 +28,13 @@
     "correctness": "ServerSentEvent encoding is correct, but there are bugs: the ping code at lines 228-230 is unreachable (after raise TypeError), and the disconnect_callback is never automatically invoked during streaming - users must manually call listen_for_disconnect().",
     "style": "Follows Python/FastAPI conventions with type hints, docstrings, and proper imports. Minor inconsistency: ping_interval is documented as alias but handled with slightly different logic.",
     "quality": "Code is readable with good test coverage (20 tests). Issues: unreachable ping code, awkward disconnect callback design requiring manual intervention, and the TypeError message has a typo ('got {type(event)}' should be {type(event).__name__})."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_3",
+    "category": "test_failure"
   }
 }

@@ -26,5 +26,13 @@
     "correctness": "The documentation files are internally consistent and well-structured, but there is no actual code implementation to evaluate for correctness against the feature requirements.",
     "style": "The documentation follows standard formats (user stories with acceptance criteria, structured roadmap, markdown conventions). The Constitution follows typical framework governance documents.",
     "quality": "The documentation quality is high - clear sections, logical organization, proper markdown formatting, and coherent structure. However, it's documentation for a different purpose than the stated feature."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

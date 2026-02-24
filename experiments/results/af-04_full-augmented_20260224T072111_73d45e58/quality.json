@@ -26,5 +26,13 @@
     "correctness": "Type changes are technically sound - Context type is appropriate for execute hooks, and BaseHook return type for get_hook is correct. Sensor execute returning None aligns with sensor behavior.",
     "style": "Follows Python 3.10+ type annotation conventions using | syntax, consistent with codebase style.",
     "quality": "Changes are clean and focused, but minimal scope limits overall impact. Only surface-level annotations added without addressing deeper type hierarchy needs."
+  },
+  "test_results": {
+    "passed": 0,
+    "failed": 0,
+    "total": 0,
+    "percentage": 0.0,
+    "output": "============================= test session starts ==============================\nplatform darwin -- Python 3.12.8, pytest-9.0.2, pluggy-1.6.0 -- /Users/sb/code/pr_checkout_14/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/sb/code/pr_checkout_14\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, unordered-0.7.0, mock-3.15.1, instafail-0.5.0, timeouts-1.2.1, xdist-3.8.0, custom-exit-code-0.3.0, time-machine-3.2.0, icdiff-0.9, asyncio-1.3.0, kgb-7.3, rerunfailures-16.1, requests-mock-1.12....",
+    "category": "other"
   }
 }

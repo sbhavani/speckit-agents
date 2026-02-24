@@ -30,5 +30,13 @@
     "correctness": "The implementation is technically sound with proper async handling and lifecycle management. Minor concern: the middleware accesses plugin manager via __dict__ which is fragile, but the overall logic for hook execution and lifespan wrapping is correct.",
     "style": "Code follows Python and FastAPI conventions with proper type hints, docstrings, and async/await usage. The structure matches the existing codebase style.",
     "quality": "Well-organized with clear separation between Protocol definition and Manager. Comprehensive tests cover all hooks. The main quality concern is the slightly hacky middleware attribute access pattern."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

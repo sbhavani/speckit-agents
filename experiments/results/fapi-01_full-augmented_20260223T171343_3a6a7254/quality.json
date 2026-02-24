@@ -30,5 +30,13 @@
     "correctness": "The SSE formatting follows the spec correctly (field order: id, event, data, retry), multi-line data handling works, and JSON auto-encoding for dicts/lists is implemented. The type hint mismatch (strings vs bytes in content) could cause confusion but works in practice due to StreamingResponse's iteration handling.",
     "style": "The code generally follows FastAPI conventions with proper docstrings and type hints. However, the implementation is placed at the bottom of responses.py while imports are at the top, creating inconsistency. The test file is comprehensive but mixes unit and integration tests.",
     "quality": "The code is clean and readable with good abstractions. Tests cover extensive edge cases including multi-line data, various data types, and different field combinations. The main quality issue is including unrelated documentation files in the PR."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_2",
+    "category": "test_failure"
   }
 }

@@ -32,5 +32,13 @@
     "correctness": "The dependency injection in BaseTypedMiddleware uses solve_dependencies which is designed for request handlers, not middleware - this may cause issues. Tests mostly verify import/instantiation rather than actual middleware behavior, and the async dispatch wrapper has potential edge cases.",
     "style": "The code follows Python conventions with proper type hints, docstrings, and organized imports. Uses consistent naming and follows FastAPI patterns. Minor inconsistency with extensive Any usage in some places.",
     "quality": "Code is reasonably organized with clear file separation, but has issues: unused MiddlewareRunner class, tests that don't verify actual functionality, and the dependency injection approach may not work correctly in practice."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

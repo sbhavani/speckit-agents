@@ -45,5 +45,13 @@
     "correctness": "The implementation has some issues: global state (_plugin_middleware_instance) in plugins.py is problematic for multiple apps, the middleware wrapper doesn't properly update when plugins are added after middleware registration, and response modifications in after_request may not work since response is already sent. However, core functionality works for the happy path.",
     "style": "Follows FastAPI conventions with Protocol-based interface, add_plugin method mirroring add_middleware pattern, and proper exports. Some minor inconsistencies like mixing dataclass and manual attribute handling. Type hints are present but not strict throughout.",
     "quality": "Well-organized with clear separation (plugins.py, applications.py, tests). Good test coverage across lifecycle, middleware, OpenAPI, and error handling. Code is readable but the global middleware instance pattern could be improved with a cleaner design."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

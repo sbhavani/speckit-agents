@@ -38,5 +38,13 @@
     "correctness": "The utility functions are correct, but the integration in exception_handlers.py doesn't fully wire up the enhancement - it calls enhance_errors(errors) without passing the model schema context needed for full functionality.",
     "style": "Well-documented with clear docstrings, follows Python conventions, proper type hints, and good modular structure. The error_enhancement module is cleanly separated.",
     "quality": "Clean, readable code with good abstraction. Comprehensive test coverage including performance tests. Minor gap: T020 (mypy strict type checking) is marked incomplete in tasks.md."
+  },
+  "test_results": {
+    "passed": 66,
+    "failed": 1,
+    "total": 67,
+    "percentage": 98.5,
+    "output": "..................................................................F\n=================================== FAILURES ===================================\n__________________ test_get[/required-422-expected_response3] __________________\ntests/test_annotated.py:74: in test_get\n    assert response.json() == expected_response\nE   AssertionError: assert {'detail': [{...: None, ...}]} == {'detail': [{...: 'missing'}]}\nE     \nE     Differing items:\nE     {'detail': [{'example': 'string', 'expected_type': 'string', 'field_path': 'query.foo', 'input': None, ...}]} != {'detail': [{'input': None, 'loc': ['query', 'foo'], 'msg': 'Field required', 'type': 'missing'}]}\nE     Use -v to get more diff\n=========================== short test summary info ============================\nFAILED tests/test_annotated.py::test_get[/required-422-expected_response3] - ...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 66 passed, 1 skipped in 8.23s\nwarning: `VIRTUAL_ENV=/Users/",
+    "category": "test_failure"
   }
 }

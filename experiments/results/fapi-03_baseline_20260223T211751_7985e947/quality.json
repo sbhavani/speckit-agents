@@ -30,5 +30,13 @@
     "correctness": "Core logic works but has issues: import statement inside merge_openapi_schemas function, incomplete path merging in OpenAPI schema (only adds new paths without merging operations), no error handling if plugin hooks raise exceptions, and the call_plugin_hooks comparison logic is unusual.",
     "style": "Uses type hints consistently, follows docstring conventions, and is Pythonic. Minor issue: import copy should be at module level. Otherwise consistent with typical FastAPI style.",
     "quality": "Code is readable with good separation of concerns, but has some maintainability issues: SimpleResponse class created inside middleware method, missing error handling in hooks, and the dynamic import reduces clarity."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

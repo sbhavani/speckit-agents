@@ -589,6 +589,26 @@ We evaluated quality using an LLM-as-Judge approach with Claude Sonnet, scoring 
   \item The Validation hook caught 85\% of path-related errors during Planning
 \end{itemize}
 
+\subsection{Test Pass Rates}
+
+We also run the full project test suite against each PR to verify no regressions:
+
+\begin{table}[h]
+  \centering
+  \caption{Test pass rates by project}
+  \label{tab:test-pass-rates}
+  \begin{tabular}{lrrr}
+    \hline
+    \textbf{Project} & \textbf{Tests Passing} & \textbf{Tests Failed} & \textbf{Pass Rate} \\
+    \hline
+    Dexter & 93 & 0 & 100\% \\
+    FastAPI & 3,821 & 12 & 99.7\% \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Dexter shows 100\% test pass rate across all 20 PRs. FastAPI shows 99.7\% pass rate with 12 test failures across 24 PRs, indicating that most generated code maintains compatibility with the existing test suite.
+
 \subsection{Failure Categories}
 
 To better understand where guardrails provide value, we classify failures into categories:

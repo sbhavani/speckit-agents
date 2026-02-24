@@ -27,5 +27,13 @@
     "correctness": "Cannot evaluate correctness since there's no implementation code to review. The tests would fail without the corresponding implementation changes to FastAPI's schema generation logic.",
     "style": "The test file follows reasonable Python and FastAPI testing conventions, using proper pytest patterns and TestClient usage. However, the unrelated constitution/PRD/ROADMAP files about FastAPI are confusingly added to this speckit-agents repository.",
     "quality": "The tests are well-structured and cover multiple scenarios, but without any implementation, the PR is incomplete. Adding FastAPI framework documentation to a non-FastAPI repo also seems misplaced."
+  },
+  "test_results": {
+    "passed": 346,
+    "failed": 1,
+    "total": 347,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n..........................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_",
+    "category": "test_failure"
   }
 }

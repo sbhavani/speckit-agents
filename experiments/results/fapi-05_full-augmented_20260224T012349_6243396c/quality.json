@@ -50,5 +50,13 @@
     "correctness": "The implementation is mostly sound with proper cycle detection in MiddlewareGraph and correct DI integration. However, there's a notable issue in TypedMiddleware where call_next() returns a placeholder Response while the actual response is sent via send(), which could cause subtle bugs in practice.",
     "style": "The code follows FastAPI conventions well: uses dataclasses appropriately, has consistent type hints, proper module organization, and follows naming conventions. Some minor inconsistencies in error handling patterns exist but don't significantly impact readability.",
     "quality": "The code is well-organized into separate modules (typing.py, config.py, graph.py, typed.py, dependencies.py, exceptions.py) with comprehensive test coverage. The specification files (spec.md, plan.md, tasks.md, contracts, quickstart) show good planning. The main quality concern is the call_next implementation in TypedMiddleware."
+  },
+  "test_results": {
+    "passed": 384,
+    "failed": 1,
+    "total": 385,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n........................................................................ [ 11%]\n........................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = Comp",
+    "category": "test_failure"
   }
 }

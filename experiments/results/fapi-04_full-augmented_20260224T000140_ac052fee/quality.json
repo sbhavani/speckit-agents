@@ -27,5 +27,13 @@
     "correctness": "The examples conversion logic has edge cases (e.g., doesn't handle None values in dict), and deprecation only works via json_schema_extra not direct field metadata. No discriminator handling.",
     "style": "Follows basic Python conventions but uses magic string '\f' without explanation. Function mixes multiple responsibilities (examples + deprecation).",
     "quality": "No tests included. Limited comments. The code structure is reasonable but lacks robustness for edge cases and error handling."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

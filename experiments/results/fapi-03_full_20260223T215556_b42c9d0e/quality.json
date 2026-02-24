@@ -46,5 +46,13 @@
     "correctness": "The core logic works but has issues: 1) The after_request hooks are called after super().__call__ completes but create a new PlainTextResponse instead of using the actual response, which could lose modifications. 2) If an exception occurs in route handling, after_request hooks may never execute since they're outside the try/except. 3) The routing.py integration adds _plugins to router but lifespan integration may not work correctly in all cases.",
     "style": "The code mostly follows FastAPI conventions with proper async/await, type hints, and docstrings. Minor style issues: inconsistent use of openapi_schema as property vs method, some test code has asyncio.run() calls inside test functions which could be simplified with pytest-asyncio.",
     "quality": "Well-structured with clear module separation (plugins/protocol.py, plugins/registry.py, plugins/utils.py). Good error isolation per plugin. Tests are comprehensive. The main quality concern is the response handling in after_request which creates a new response rather than properly capturing modifications made during the request."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

@@ -25,5 +25,13 @@
     "correctness": "Implementation is mostly sound with proper Airflow 2.x/3.x compatibility handling. Minor concern: execution_date parameter in create_task_instance is accepted but not visibly used, and the task.execute patching in simulate_task_run could have edge case issues if an exception occurs during patch application.",
     "style": "Follows project conventions with proper Apache License headers, comprehensive docstrings, and type hints. Some minor inconsistencies: redundant dual imports in trigger_dag_run, and undocumented **kwargs in some functions.",
     "quality": "Well-organized with clear section comments and logical module structure. Good use of existing test utilities as wrappers. Minor issue: potential test pollution from mutating task.execute during simulation, though the finally block properly restores the original."
+  },
+  "test_results": {
+    "passed": 0,
+    "failed": 0,
+    "total": 0,
+    "percentage": 0.0,
+    "output": "============================= test session starts ==============================\nplatform darwin -- Python 3.12.8, pytest-9.0.2, pluggy-1.6.0 -- /Users/sb/code/pr_checkout_7/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/sb/code/pr_checkout_7\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, unordered-0.7.0, mock-3.15.1, instafail-0.5.0, timeouts-1.2.1, xdist-3.8.0, custom-exit-code-0.3.0, time-machine-3.2.0, icdiff-0.9, asyncio-1.3.0, kgb-7.3, rerunfailures-16.1, requests-mock-1.12.1,...",
+    "category": "other"
   }
 }

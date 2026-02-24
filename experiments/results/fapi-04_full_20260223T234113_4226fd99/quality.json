@@ -27,5 +27,13 @@
     "correctness": "The examples conversion logic and deprecation handling work for the happy path, but uses .pop() which mutates input dicts potentially causing issues elsewhere, and has convoluted branching logic that could lead to edge case bugs.",
     "style": "Follows existing code patterns in the file, but contains significant code duplication where the same example conversion logic appears in multiple places with slight variations.",
     "quality": "Readable but would benefit from extracting the duplicated conversion logic into a reusable helper function. The three unrelated documentation files dilute the PR's focus."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

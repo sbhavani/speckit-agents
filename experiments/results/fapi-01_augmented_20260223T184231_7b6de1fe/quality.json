@@ -29,5 +29,13 @@
     "correctness": "Implementation is sound with proper async/sync handling via _wrap_sse_content. The _is_async detection has edge cases but handles the main scenarios correctly. SSE formatting follows spec with CRLF line endings and proper multiline data handling.",
     "style": "Follows project conventions well - uses existing import patterns, consistent type hints, proper docstrings matching project style, and follows same testing patterns as other test files.",
     "quality": "Clean, well-organized code with good abstractions (helper functions for wrapping). Tests are comprehensive. Minor improvement would be reordering retry parameter in SSEResponse.__init__ to be alphabetically consistent."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_4",
+    "category": "test_failure"
   }
 }

@@ -32,5 +32,13 @@
     "correctness": "The core logic for registration and validation is sound, but there are issues: the try/except AttributeError in add_typed_middleware is a hack for initial setup; duplicate exception classes exist in both exceptions.py and middleware/typed.py; and type[Any] as dict keys may cause issues with unhashable types.",
     "style": "Mostly follows Python/FastAPI conventions with proper type hints, but has inconsistencies: duplicate exception definitions, unused imports (Self, resolve_dependencies, extract_dependencies), and added documentation files (PRD.md, ROADMAP.md, constitution.md) that are unrelated to this feature.",
     "quality": "Tests are comprehensive but the production code has significant gaps: middleware never executes, incomplete function implementations, and the PR includes unrelated documentation changes. The code structure is readable but lacks the critical runtime integration."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_2",
+    "category": "test_failure"
   }
 }

@@ -37,19 +37,19 @@ PROJECT_TEST_CONFIG = {
         "path": "/Users/sb/code/dexter",
     },
     "fastapi": {
-        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "test_cmd": ["uv", "run", "pytest", "-x", "-q", "--tb=short"],
         "path": "/Users/sb/code/fastapi/tests",
     },
     "airflow": {
-        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "test_cmd": ["uv", "run", "pytest", "-x", "-q", "--tb=short"],
         "path": "/Users/sb/code/airflow",
     },
     "finance-agent": {
-        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "test_cmd": ["uv", "run", "pytest", "-x", "-q", "--tb=short"],
         "path": "/Users/sb/code/finance-agent",
     },
     "live-set-revival": {
-        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "test_cmd": ["uv", "run", "pytest", "-x", "-q", "--tb=short"],
         "path": "/Users/sb/code/live-set-revival",
     },
 }
@@ -140,13 +140,24 @@ def checkout_pr_branch(pr_repo: str, pr_number: int, base_path: Path, project: s
                 timeout=180,
             )
         elif project in ("fastapi", "airflow", "finance-agent"):
-            # Use uv for Python projects
+            # Use uv for Python projects - install with dev dependencies for testing
             subprocess.run(
-                ["uv", "sync"],
+                ["uv", "sync", "--dev"],
                 cwd=pr_dir,
                 capture_output=True,
-                timeout=180,
+                timeout=300,
             )
+            # Also try pip install test requirements if available
+            test_deps_files = ["requirements-test.txt", "tests/requirements.txt", "test-requirements.txt"]
+            for req_file in test_deps_files:
+                req_path = pr_dir / req_file
+                if req_path.exists():
+                    subprocess.run(
+                        ["pip", "install", "-r", req_file],
+                        cwd=pr_dir,
+                        capture_output=True,
+                        timeout=180,
+                    )
 
         return pr_dir
 

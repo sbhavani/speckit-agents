@@ -29,5 +29,13 @@
     "correctness": "The SSE encoding follows the spec correctly, but the generator cleanup in _stream_events is problematic - the finally block calls aclose() on async generators which isn't standard (async generators auto-cleanup via async for), and the hasattr check suggests uncertainty about the API.",
     "style": "Imports are well-organized (stdlib, third-party, local), type hints are used throughout, and code follows Python/FastAPI conventions. The unrelated documentation files hurt consistency.",
     "quality": "Tests are comprehensive but some are flaky (disconnect handler test uses ThreadPoolExecutor with cancel() which may not reliably interrupt), and the code has some redundancy (the finally block cleanup overlaps with async for's automatic cleanup)."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  6%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }

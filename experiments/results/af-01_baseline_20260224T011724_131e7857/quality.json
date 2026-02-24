@@ -33,5 +33,13 @@
     "correctness": "The string matching approach for identifying error types is fragile - it could produce false positives. The get_error_type_from_exception function exists but isn't used in the model validators. The error field population logic is missing.",
     "style": "Mostly follows Airflow conventions with proper Pydantic models and dataclasses. However, there's significant duplicate code between TaskInstanceResponse and TaskInstanceHistoryResponse model_validators that should be extracted to a shared utility function.",
     "quality": "Well-organized module structure with dedicated error_diagnostics.py. Good test coverage for the diagnostics module itself. The code is readable but the duplicate validator logic and missing integration points reduce overall quality."
+  },
+  "test_results": {
+    "passed": 0,
+    "failed": 0,
+    "total": 0,
+    "percentage": 0.0,
+    "output": "============================= test session starts ==============================\nplatform darwin -- Python 3.12.8, pytest-9.0.2, pluggy-1.6.0 -- /Users/sb/code/pr_checkout_1/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/sb/code/pr_checkout_1\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, unordered-0.7.0, mock-3.15.1, instafail-0.5.0, timeouts-1.2.1, xdist-3.8.0, custom-exit-code-0.3.0, time-machine-3.2.0, icdiff-0.9, asyncio-1.3.0, kgb-7.3, rerunfailures-16.1, requests-mock-1.12.1,...",
+    "category": "other"
   }
 }

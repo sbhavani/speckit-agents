@@ -29,5 +29,13 @@
     "correctness": "The typed middleware classes are implemented correctly, but there are bugs: the test has a malformed lambda type annotation in TestFunctionMiddlewareProtocol, and FunctionMiddlewareProtocol uses an invalid signature with bare ellipsis. The MiddlewareStack.build() logic appears correct.",
     "style": "The _typed.py follows Python typing conventions with proper protocols, but the PR incorrectly adds unrelated FastAPI documentation files (constitution.md, PRD.md, ROADMAP.md) that don't match this project's structure, indicating scope creep.",
     "quality": "Code structure is reasonable with protocols and builder pattern, but quality issues exist: the test has runtime bugs, the 'compile-time' claim is inaccurate, and documentation files are misplace."
+  },
+  "test_results": {
+    "passed": 336,
+    "failed": 1,
+    "total": 337,
+    "percentage": 99.7,
+    "output": "........................................................................ [  2%]\n........................................................................ [  4%]\n........................................................................ [  7%]\n........................................................................ [  9%]\n................................................F\n=================================== FAILURES ===================================\n_______________________________ test_fastapi_cli _______________________________\ntests/test_fastapi_cli.py:27: in test_fastapi_cli\n    assert \"Path does not exist non_existent_file.py\" in result.stdout\nE   assert 'Path does not exist non_existent_file.py' in 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n'\nE    +  where 'To use the fastapi command, please install \"fastapi[standard]\":\\n\\n\\tpip install \"fastapi[standard]\"\\n\\n' = CompletedProcess(args=['/Users/sb/code/fastapi/pr_checkout_1",
+    "category": "test_failure"
   }
 }
