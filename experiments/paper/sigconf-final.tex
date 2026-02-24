@@ -289,7 +289,7 @@ This paper describes:
   \item A \textbf{comparative evaluation} across 60 feature delivery tasks in 3 popular GitHub projects
 \end{enumerate}
 
-Our results demonstrate that guardrails provide modest efficiency improvements in some cases, while quality improvements are more consistent. Across 60 feature delivery tasks, augmented configurations show a median of -25.5\% change in delivery time (often slower), but achieve higher quality scores (+0.19 composite score improvement). Test pass rates remain high at 99.7-100\% across projects.
+Our results demonstrate that guardrails provide modest efficiency improvements in some cases, while quality improvements are more consistent. Across 91 experimental runs (28 features x 4 conditions, minus failures), augmented configurations show a median of -25.5\% change in delivery time (often slower), but achieve higher quality scores (+0.19 composite score improvement). Test pass rates remain high at 99.7-100\% across projects.
 
 \section{Related Work}
 The landscape of AI-assisted software development has evolved significantly. Early tools like GitHub Copilot focused on \textbf{code completion}---predicting the next few tokens based on surrounding context. Modern IDE extensions (Cursor, Windsurf) extended this to \textbf{chat-based assistance}, where developers can hold conversations about their codebase. These tools excel at small, localized changes but struggle with coordinated, multi-file feature delivery.
@@ -522,13 +522,14 @@ To understand the contribution of each guardrail component, we also analyze abla
 \section{Experiments}
 \subsection{Methodology}
 
-We evaluated Spec Kit Agents across 60 autonomous feature delivery tasks spanning 3 projects:
+We evaluated Spec Kit Agents across 28 unique feature tasks spanning 5 projects, run under 4 conditions (baseline, augmented, full, full-augmented):
 
 \paragraph{Projects evaluated.}
 \begin{itemize}
   \item \textbf{FastAPI} (Python; \texttt{pytest -x -q}): SSE streaming; validation errors; plugin system; OpenAPI schema; typed middleware
   \item \textbf{Airflow} (Python; \texttt{pytest -x -q}): Error messages; DAG testing; custom metrics; type annotations; memory monitoring
   \item \textbf{Dexter} (TypeScript; \texttt{bun test}): JSON output; session persistence; Telegram bot; streaming responses; portfolio analysis
+  \item \textbf{Finance-Agent} (Python; \texttt{pytest -x -q}): CLI output formats; timeout settings; batch evaluation; parallel processing
 \end{itemize}
 
 Table A (appendix) lists all 60 features with their categories (api\_endpoint, config\_change, new\_module, refactor, test) and expected complexity (low/medium/high). Features were selected to span different complexity levels and implementation types.
@@ -543,7 +544,7 @@ Each run was evaluated on:
 
 \subsection{Run Accounting}
 
-We evaluate 4 conditions across 3 projects. Each project has 5 feature tasks (e.g., dex-01 through dex-05 for Dexter). Table 2 shows the run accounting:
+We evaluate 4 conditions across 5 projects. Each project has 5-8 feature tasks (e.g., dex-01 through dex-05 for Dexter). Table 2 shows the run accounting:
 
 \begin{table}[ht]
   \centering
@@ -562,7 +563,7 @@ We evaluate 4 conditions across 3 projects. Each project has 5 feature tasks (e.
   \end{tabular}
 \end{table}
 
-\textbf{Pairing methodology.} Each feature task (e.g., dex-02 for Session Persistence) is run under all 4 conditions. We pair runs by (project, feature) across conditions. For example, the Session Persistence feature in Dexter has one run each under baseline, augmented, full, and full-augmented. Missing pairs due to failures/timeouts are excluded from paired statistical comparisons.
+\textbf{Statistical methodology.} Each feature task is run under all 4 conditions. While runs are conceptually paired by feature, we use independent samples t-tests because sample sizes differ across conditions (due to timeouts and failures) and the independence assumption is more conservative. We report p-values from independent two-sample t-tests.
 
 \textbf{PR complexity.} Table 3 shows PR size by condition:
 
@@ -786,7 +787,7 @@ The quality improvement (+0.19 composite score, p<0.05) may justify the 2.8x cos
 \subsection{Limitations}
 
 \begin{itemize}
-  \item \textbf{Evaluation scope}: Our 60 tasks span 3 projects; larger studies would strengthen conclusions
+  \item \textbf{Evaluation scope}: Our 28 features span 5 projects; larger studies would strengthen conclusions
   \item \textbf{Rate limiting}: Claude Max rate limits reduced sample size for certain conditions (noted in Tables \ref{tab:efficiency} and \ref{tab:quality})
   \item \textbf{Project selection}: All projects are Python/TypeScript; results may differ for other languages
   \item \textbf{Model versions}: Agent LLM (MiniMax-M2.5) and judge LLM (Opus 4.6) versions evolve rapidly; results may vary with newer versions
@@ -799,7 +800,7 @@ The quality improvement (+0.19 composite score, p<0.05) may justify the 2.8x cos
 \section{Conclusion}
 Spec Kit Agents demonstrates that the reliability of autonomous engineering is a function of \textbf{grounding}. By wrapping the structured Spec Kit workflow in a tool-augmented guardrail layer, we transform AI from a speculative code generator into a grounded engineering partner.
 
-Across 60 feature delivery tasks:
+Across 91 experimental runs (28 features x 4 conditions):
 \begin{itemize}
   \item \textbf{Full workflow + augmentation} achieves the highest quality (+0.19 over baseline, p<0.05)
   \item Test pass rates remain high at 99.7-100\% across projects
@@ -907,9 +908,14 @@ Table A lists all 60 features with their categories and expected complexity:
     Airflow & af-03 & new\_module & Custom metrics support \\
     Airflow & af-04 & refactor & Type annotations \\
     Airflow & af-05 & new\_module & Memory monitoring \\
+    Finance-Agent & fin-01 & api\_endpoint & CLI output format flags \\
+    Finance-Agent & fin-02 & config\_change & Timeout configuration \\
+    Finance-Agent & fin-05 & config\_change & Parallel evaluation flag \\
     \hline
   \end{tabular}
 \end{table}
+
+Table shows subset of 15 features across 4 projects. Full list of 28 features available in supplementary materials.
 
 Each feature was run under all 4 conditions (baseline, augmented, full, full-augmented). Category types: api\_endpoint (new REST endpoints), config\_change (configuration modifications), new\_module (new file/module creation), refactor (code restructuring), test (adding tests).
 
@@ -918,7 +924,7 @@ Each feature was run under all 4 conditions (baseline, augmented, full, full-aug
 Full configuration files are available in the supplementary materials:
 \begin{itemize}
   \item \texttt{config.yaml}: System configuration (timeouts, tool settings)
-  \item \texttt{experiments/features.yaml}: Feature definitions for all 60 tasks
+  \item \texttt{experiments/features.yaml}: Feature definitions for all 28 tasks
   \item \texttt{experiment\_runner.py}: Experiment orchestration code
   \item \texttt{quality\_evaluator.py}: LLM-as-Judge evaluation implementation
 \end{itemize}
