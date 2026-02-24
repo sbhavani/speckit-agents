@@ -974,11 +974,14 @@ To understand the contribution of each guardrail component, we analyze:
   \item \textbf{Validation-only}: Post-phase validation of artifacts, but no pre-phase discovery
 \end{itemize}
 
-This ablation reveals which error types each component prevents:
+Due to the high success rate of our experiments (91\% completion, 99.7-100\% test pass rate), we have limited quantitative data on failure modes. However, the design of each guardrail component targets specific error categories:
+
 \begin{itemize}
-  \item Discovery prevents \textbf{api\_hallucination} and \textbf{architecture\_violation} by grounding agents in reality before they plan
-  \item Validation catches \textbf{path\_error}, \textbf{import\_error}, and \textbf{syntax\_error} after artifacts are generated
+  \item \textbf{Discovery} (pre-phase probing): By reading existing codebase patterns before planning, discovery aims to prevent \textbf{api\_hallucination} (using non-existent APIs) and \textbf{architecture\_violation} (ignoring project conventions). The mechanism is proactive: agents discover what exists before proposing what to build.
+  \item \textbf{Validation} (post-phase hooks): By verifying file paths exist and dependencies are available after each phase, validation aims to catch \textbf{path\_error}, \textbf{import\_error}, and \textbf{syntax\_error} before they propagate to implementation. The mechanism is reactive: catch errors early in the workflow.
 \end{itemize}
+
+Table \ref{tab:run-counts} shows that augmented conditions (which include validation hooks) had fewer failures than baseline, providing limited empirical support for validation effectiveness. Discovery effectiveness is harder to measure directly since it prevents errors before they occur.
 
 
 \end{document}
