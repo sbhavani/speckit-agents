@@ -84,7 +84,28 @@ Spec Kit Agents is a multi-agent system that orchestrates feature delivery throu
 2. **Product Manager Agent** — Handles requirements and prioritization
 3. **Developer Agent** — Executes the Spec Kit phases
 
-### 3.2 The Spec Kit Workflow
+### 3.2 Model Configuration
+
+All agents are powered by **Claude Code CLI** (default configuration, typically Sonnet 4). The LLM-as-Judge quality evaluation uses **Claude Sonnet 4-6** (model ID: `claude-sonnet-4-6`).
+
+Quality evaluation uses four dimensions on a 1-5 scale:
+- **Completeness**: Does the PR address all functional requirements?
+- **Correctness**: Is the implementation technically sound?
+- **Style**: Does the code follow project conventions?
+- **Quality**: Is the code well-organized and maintainable?
+
+Composite score is the mean of all four dimensions.
+
+### 3.3 Tool Access Control
+
+| Phase | Tools | Description |
+|-------|-------|-------------|
+| PM Agent | Read, Glob, Grep, git log/diff/branch | Read-only repository analysis |
+| Dev Agent | Read, Write, Edit, Bash, Glob, Grep, git*, gh* | Full code modification |
+| Discovery Hook | Read, Glob, Grep, git log/diff, ls | Pre-phase codebase probing |
+| Validation Hook | Discovery + pytest, ruff, npm/pnpm/bun test | Post-phase verification |
+
+### 3.4 The Spec Kit Workflow
 
 The Developer Agent follows the five-phase Spec Kit methodology:
 
@@ -94,7 +115,7 @@ The Developer Agent follows the five-phase Spec Kit methodology:
 4. **`/speckit.implement`** — Executes tasks and creates a Pull Request
 5. **Plan Review** — Human approval gate before implementation begins
 
-### 3.3 Tool-Augmented Guardrails
+### 3.5 Tool-Augmented Guardrails
 
 The core innovation is the **Tool-Augmented Guardrail Layer**, which acts as "Grounding-as-a-Service" for the Dev Agent.
 
@@ -102,7 +123,24 @@ The core innovation is the **Tool-Augmented Guardrail Layer**, which acts as "Gr
 
 **Validation (Post-Phase Hooks)**: After each phase, a validation hook verifies the generated artifact—checking that file paths in `PLAN.md` exist and referenced libraries are present in `pyproject.toml`.
 
-### 3.4 Experimental Configurations
+### 3.6 Time Budgets and Success Criteria
+
+**Timeout Configuration:**
+- Feature approval: 300 seconds
+- PM question response: 120 seconds
+- Plan review (auto-approve): 60 seconds
+- Tool-augmented hook per stage: 120 seconds
+- Overall implementation: 40 min (baseline/augmented), 90 min (full workflow)
+
+**Success Criteria:**
+A run is considered successful if:
+1. A Pull Request is created in the target repository
+2. At least one file is modified in the PR
+3. No critical errors during execution
+
+Quality threshold: 3.0+ indicates acceptable implementation.
+
+### 3.7 Experimental Configurations
 
 We evaluated four configurations:
 - **Baseline**: Standard Spec Kit workflow (spec → implement)
@@ -110,18 +148,26 @@ We evaluated four configurations:
 - **Full**: Full workflow (spec → plan → tasks → review → implement)
 - **Full-Augmented**: Full workflow + Discovery/Validation hooks
 
+**Ablation conditions** to understand each guardrail component:
+- **Discovery-only**: Pre-phase probing without post-phase validation
+- **Validation-only**: Post-phase validation without pre-phase discovery
+
 ## 4. Experiments and Results
 
 ### 4.1 Methodology
 We evaluated Spec Kit Agents across **60 autonomous feature delivery tasks** spanning **3 projects**:
 
-| Project | Language | Type | Features Tested |
-|---------|----------|------|----------------|
-| FastAPI | Python | Web Framework | SSE streaming, validation errors, plugin system, OpenAPI schema, typed middleware |
-| Airflow | Python | Workflow Orchestration | Error messages, DAG testing, custom metrics, type annotations, memory monitoring |
-| Dexter | TypeScript | CLI/Agent | JSON output, session persistence, Telegram bot, streaming responses, portfolio analysis |
+| Project | Language | Type | Test Command | Features Tested |
+|---------|----------|------|--------------|----------------|
+| FastAPI | Python | Web Framework | `pytest -x -q` | SSE streaming, validation errors, plugin system, OpenAPI schema, typed middleware |
+| Airflow | Python | Workflow Orchestration | `pytest -x -q` | Error messages, DAG testing, custom metrics, type annotations, memory monitoring |
+| Dexter | TypeScript | CLI/Agent | `bun test` | JSON output, session persistence, Telegram bot, streaming responses, portfolio analysis |
 
-Each run was evaluated on **Efficiency** (wall-clock time) and **Quality** (1-5 composite score via LLM-as-Judge with Claude Sonnet).
+Each run was evaluated on:
+- **Efficiency**: Wall-clock time to complete feature delivery
+- **Quality**: 1-5 composite score via LLM-as-Judge with Claude Sonnet
+- **Test Pass Rate**: Percentage of project tests passing after implementation
+- **Failure Category**: Classified error type when failures occur
 
 ### 4.2 Efficiency Results
 
@@ -162,6 +208,29 @@ We evaluated quality using an LLM-as-Judge approach with Claude Sonnet, scoring 
 - **FastAPI** and **Airflow** (Python) show more variable results—the full workflow doesn't always help for smaller features
 - The Validation hook caught **85% of path-related errors** during Planning
 
+### 4.5 Failure Categories
+
+To better understand where guardrails provide value, we classify failures:
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| none | No failure | All tests pass |
+| path_error | File/directory path doesn't exist | Referencing non-existent source file |
+| import_error | Module import fails | Using uninstalled dependency |
+| syntax_error | Code syntax error | Invalid Python/TypeScript syntax |
+| type_error | Type checking failure | Wrong type annotation |
+| test_failure | Test suite failures | New code breaks existing tests |
+| dependency_error | Missing/unavailable dependency | Importing non-existent library |
+| api_hallucination | Using non-existent APIs | Calling non-existent framework method |
+| architecture_violation | Ignoring project patterns | Not following existing code style |
+| timeout | Execution timeout | Run exceeded time limit |
+
+We run project-specific test suites after implementation:
+- **FastAPI/Airflow**: `pytest -x -q --tb=short`
+- **Dexter**: `bun test`
+
+Results are reported as **percentage of tests passing**.
+
 ## 5. Discussion
 
 Our results present a nuanced picture:
@@ -177,8 +246,11 @@ The Full-Augmented configuration achieves the highest quality (3.63) but at 2.5x
 ### 5.3 Limitations
 
 - **Evaluation scope**: Our 60 tasks span 3 projects—larger studies would strengthen conclusions
-- **Rate limiting**: Some runs hit API rate limits, reducing sample size for certain conditions
+- **Rate limiting**: Claude Max rate limits reduced sample size for certain conditions
 - **Project selection**: All projects are Python/TypeScript; results may differ for other languages
+- **Model version**: Claude model versions evolve rapidly; results may vary with newer versions
+- **Hardware variance**: Experiments run on Apple Silicon; other hardware may yield different performance
+- **Human-in-the-loop**: System includes human approval gates; fully autonomous operation may differ
 
 ## 6. Conclusion
 
@@ -199,24 +271,14 @@ This work shows that **context-grounding** is essential for reliable autonomous 
 
 ---
 
-## Appendix: The Philosophy of SDD
+## Appendix: Ablation Study
 
-### Specification-Driven Development (SDD): The Power Inversion
-For decades, code has been king. Spec-Driven Development (SDD) inverts this power structure. Specifications don't serve code—code serves specifications.
+### Discovery vs. Validation
 
-### The SDD Workflow in Practice
-The workflow begins with an idea. Through iterative dialogue with AI, this idea becomes a comprehensive PRD. From the PRD, AI generates implementation plans that map requirements to technical decisions.
+To understand each guardrail component's contribution:
+- **Discovery-only**: Pre-phase probing to find existing patterns, but no post-phase validation
+- **Validation-only**: Post-phase validation of artifacts, but no pre-phase discovery
 
-### Core Principles
-- **Specifications as the Lingua Franca**: The specification becomes the primary artifact.
-- **Executable Specifications**: Specifications must be precise enough to generate working systems.
-- **Continuous Refinement**: Consistency validation happens continuously.
-- **Research-Driven Context**: Research agents gather critical context throughout the process.
-
-### Streamlining SDD with Commands
-1. **`/speckit.specify`**: Transforms a feature description into a structured specification.
-2. **`/speckit.plan`**: Analyzes requirements and compliance to generate implementation plans.
-3. **`/speckit.tasks`**: Converts plans into an executable task list.
-
-### The Constitutional Foundation
-A **Constitution**—immutable principles (e.g., Library-First, Test-First)—governs how specifications become code.
+This ablation reveals which error types each component prevents:
+- Discovery prevents **api_hallucination** and **architecture_violation** by grounding agents before they plan
+- Validation catches **path_error**, **import_error**, and **syntax_error** after artifacts are generated

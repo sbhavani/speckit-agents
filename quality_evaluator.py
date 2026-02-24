@@ -4,6 +4,8 @@
 Fetches PR diffs from GitHub, sends them to Claude with a judge prompt,
 and writes structured quality scores (4 dimensions, 1-5 each).
 
+Also runs project tests and captures failure categories for interpretability.
+
 Usage:
     uv run python quality_evaluator.py                          # evaluate all
     uv run python quality_evaluator.py --project dexter         # filter by project
@@ -12,6 +14,7 @@ Usage:
     uv run python quality_evaluator.py --model opus             # use opus instead of sonnet
     uv run python quality_evaluator.py --json                   # JSON output
     uv run python quality_evaluator.py --dry-run                # show what would be evaluated
+    uv run python quality_evaluator.py --run-tests              # also run project tests
 """
 
 import argparse
@@ -26,6 +29,289 @@ from pathlib import Path
 
 RESULTS_DIR = Path(__file__).parent / "experiments" / "results"
 CLAUDE_BIN = "claude"
+
+# Project to test command mapping
+PROJECT_TEST_CONFIG = {
+    "dexter": {
+        "test_cmd": ["bun", "test"],
+        "path": "/Users/sb/code/dexter",
+    },
+    "fastapi": {
+        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "path": "/Users/sb/code/fastapi/tests",
+    },
+    "airflow": {
+        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "path": "/Users/sb/code/airflow",
+    },
+    "finance-agent": {
+        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "path": "/Users/sb/code/finance-agent",
+    },
+    "live-set-revival": {
+        "test_cmd": ["python", "-m", "pytest", "-x", "-q", "--tb=short"],
+        "path": "/Users/sb/code/live-set-revival",
+    },
+}
+
+# Failure categories for classification
+FAILURE_CATEGORIES = [
+    "none",                    # No failures
+    "path_error",              # File/directory path doesn't exist
+    "import_error",             # Module import fails
+    "syntax_error",            # Code syntax error
+    "type_error",               # Type checking failure
+    "test_failure",             # Test suite failures
+    "dependency_error",         # Missing/unavailable dependency
+    "api_hallucination",        # Using non-existent APIs
+    "architecture_violation",   # Ignoring project patterns
+    "timeout",                  # Execution timeout
+    "auth_error",               # Authentication/authorization failure
+    "other",                    # Other/unknown failure
+]
+
+
+def find_related_tests(changed_files: list[str], project: str, project_path: str | Path) -> list[str]:
+    """Find test files related to the changed files.
+
+    Returns list of test file paths or patterns to run.
+    """
+    project_path = Path(project_path)
+    test_files = []
+
+    for f in changed_files:
+        f = f.strip()
+        if not f:
+            continue
+
+        # Check if it's already a test file
+        if f.endswith(".test.ts") or f.endswith(".test.tsx") or f.endswith(".test.js"):
+            test_files.append(f)
+            continue
+
+        # For source files, try to find corresponding test
+        if project == "dexter":
+            # TypeScript: src/cli/foo.ts -> src/cli/foo.test.ts
+            # Also check for .test.tsx for .tsx files
+            if f.endswith(".tsx"):
+                test_candidate = f.replace(".tsx", ".test.tsx")
+            else:
+                test_candidate = f.replace(".ts", ".test.ts")
+            test_path = project_path / test_candidate
+            if test_path.exists():
+                test_files.append(test_candidate)
+
+            # Also check for test files with same base name in same dir
+            base = Path(f).stem
+            parent = Path(f).parent
+            for ext in [".test.ts", ".test.tsx"]:
+                alt_test = parent / f"{base}{ext}"
+                if alt_test.exists() and str(alt_test) not in test_files:
+                    test_files.append(str(alt_test))
+
+        elif project in ("fastapi", "airflow", "finance-agent"):
+            # Python: fastapi/foo.py -> tests/test_foo.py
+            base = Path(f).stem
+            test_patterns = [
+                f"tests/test_{base}.py",
+                f"test_{base}.py",
+            ]
+            for pattern in test_patterns:
+                test_path = project_path / pattern
+                if test_path.exists():
+                    test_files.append(pattern)
+                    break
+
+    return list(set(test_files))  # Deduplicate
+
+
+def run_project_tests(project: str, changed_files: list[str] | None = None, timeout: int = 120) -> dict:
+    """Run project tests related to changed files and return results.
+
+    Args:
+        project: Project name (dexter, fastapi, airflow, etc.)
+        changed_files: List of files changed in the PR. If provided, runs only related tests.
+        timeout: Test execution timeout in seconds.
+
+    Returns:
+        dict with keys: passed (int), failed (int), total (int),
+                       percentage (float), output (str), category (str)
+    """
+    config = PROJECT_TEST_CONFIG.get(project)
+    if not config:
+        return {
+            "passed": 0, "failed": 0, "total": 0,
+            "percentage": None, "output": f"No test config for {project}",
+            "category": "other", "error": "no_config"
+        }
+
+    base_test_cmd = config["test_cmd"]
+    project_path = Path(config["path"])
+
+    if not project_path.exists():
+        return {
+            "passed": 0, "failed": 0, "total": 0,
+            "percentage": None, "output": f"Project path does not exist: {project_path}",
+            "category": "other", "error": "path_not_found"
+        }
+
+    # If no changed files, run all tests
+    if not changed_files:
+        test_args = base_test_cmd
+        test_description = "all tests"
+    else:
+        # Find related test files
+        related_tests = find_related_tests(changed_files, project, project_path)
+
+        if not related_tests:
+            return {
+                "passed": 0, "failed": 0, "total": 0,
+                "percentage": None,
+                "output": "No related test files found for changed files",
+                "category": "no_tests",
+                "changed_files": changed_files[:5],  # Sample
+            }
+
+        # Build test command with specific files
+        # Add ./ prefix for bun test
+        if project == "dexter":
+            test_args = base_test_cmd + [f"./{t}" for t in related_tests]
+        else:
+            test_args = base_test_cmd + related_tests
+
+        test_description = f"related tests: {', '.join(related_tests[:3])}"
+
+    try:
+        result = subprocess.run(
+            test_args,
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+        output = result.stdout + result.stderr
+
+        # Parse pytest output
+        if "pytest" in " ".join(base_test_cmd) or "pytest" in output:
+            # Try to parse pytest summary
+            # Format: "X passed" or "X passed, Y failed"
+            passed_match = re.search(r"(\d+) passed", output)
+            failed_match = re.search(r"(\d+) failed", output)
+
+            passed = int(passed_match.group(1)) if passed_match else 0
+            failed = int(failed_match.group(1)) if failed_match else 0
+            total = passed + failed
+
+            if failed > 0:
+                category = "test_failure"
+            elif passed > 0:
+                category = "none"
+            else:
+                category = "other"
+                output = output[:500] + "..." if len(output) > 500 else output
+
+            percentage = (passed / total * 100) if total > 0 else 0.0
+
+            return {
+                "passed": passed,
+                "failed": failed,
+                "total": total,
+                "percentage": round(percentage, 1),
+                "output": output[:1000],  # Limit output length
+                "category": category,
+            }
+
+        # Parse bun test output
+        elif "bun" in base_test_cmd[0] or "bun" in " ".join(base_test_cmd):
+            # Bun test: "X tests passed" or "X tests, Y failed" or "X pass"
+            passed_match = re.search(r"(\d+) tests? passed", output) or re.search(r"(\d+) pass", output)
+            failed_match = re.search(r"(\d+) tests? failed", output)
+
+            passed = int(passed_match.group(1)) if passed_match else 0
+            failed = int(failed_match.group(1)) if failed_match else 0
+            total = passed + failed
+
+            if failed > 0:
+                category = "test_failure"
+            elif passed > 0:
+                category = "none"
+            else:
+                category = "other"
+
+            percentage = (passed / total * 100) if total > 0 else 0.0
+
+            return {
+                "passed": passed,
+                "failed": failed,
+                "total": total,
+                "percentage": round(percentage, 1),
+                "output": output[:1000],
+                "category": category,
+            }
+
+        # Default: check return code
+        if result.returncode == 0:
+            return {
+                "passed": 1, "failed": 0, "total": 1,
+                "percentage": 100.0,
+                "output": output[:1000],
+                "category": "none",
+            }
+        else:
+            # Try to classify the failure
+            category = classify_failure(output, result.returncode)
+            return {
+                "passed": 0, "failed": 1, "total": 1,
+                "percentage": 0.0,
+                "output": output[:1000],
+                "category": category,
+            }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "passed": 0, "failed": 0, "total": 0,
+            "percentage": None,
+            "output": f"Tests timed out after {timeout}s",
+            "category": "timeout",
+            "error": "timeout"
+        }
+    except Exception as e:
+        return {
+            "passed": 0, "failed": 0, "total": 0,
+            "percentage": None,
+            "output": str(e)[:500],
+            "category": "other",
+            "error": str(e)
+        }
+
+
+def classify_failure(output: str, returncode: int) -> str:
+    """Classify failure based on output and return code."""
+    output_lower = output.lower()
+
+    if returncode == 1 and ("error" in output_lower or "failed" in output_lower):
+        if "importerror" in output_lower or "modulenotfounderror" in output_lower:
+            return "import_error"
+        if "syntaxerror" in output_lower:
+            return "syntax_error"
+        if "typeerror" in output_lower:
+            return "type_error"
+        if "no such file" in output_lower or "directory" in output_lower:
+            return "path_error"
+        if "test" in output_lower and ("fail" in output_lower or "error" in output_lower):
+            return "test_failure"
+
+    if returncode == 127:
+        return "dependency_error"
+
+    if "authentication" in output_lower or "unauthorized" in output_lower:
+        return "auth_error"
+
+    if "timeout" in output_lower:
+        return "timeout"
+
+    return "other"
 
 # Lock/generated files to strip from diffs
 LOCK_FILE_PATTERNS = [
@@ -540,6 +826,44 @@ def collect_all_results(runs: list[Path]) -> list[dict]:
 # Main
 # ---------------------------------------------------------------------------
 
+def add_test_results_to_existing(project: str | None = None, timeout: int = 120) -> None:
+    """Add test results to existing quality.json files without re-running quality eval."""
+    import sys
+
+    runs = discover_runs(project_filter=project, feature_filter=None)
+    print(f"Found {len(runs)} runs to add test results to")
+
+    for run_dir in runs:
+        quality_path = run_dir / "quality.json"
+        if not quality_path.exists():
+            continue
+
+        quality = json.loads(quality_path.read_text())
+        # Skip if already has test results
+        if quality.get("test_results"):
+            print(f"  [SKIP] {run_dir.name} - already has test results")
+            continue
+
+        # Get project from metadata
+        metadata = json.loads((run_dir / "metadata.json").read_text())
+        project_name = metadata.get("project", "")
+        changed_files = quality.get("changed_files", [])
+
+        print(f"  [TEST] {run_dir.name} ({project_name})...", end=" ", flush=True)
+
+        test_result = run_project_tests(project_name, changed_files=changed_files, timeout=timeout)
+
+        # Add test results to existing quality.json
+        quality["test_results"] = test_result
+        quality_path.write_text(json.dumps(quality, indent=2), encoding="utf-8")
+
+        pct = test_result.get("percentage")
+        if pct is not None:
+            print(f"{pct}% passed ({test_result.get('category', 'unknown')})")
+        else:
+            print(f"no tests ({test_result.get('category', 'unknown')})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="LLM-as-Judge quality evaluator for experiment runs"
@@ -562,6 +886,18 @@ def main() -> None:
         help="Model to use for judging (default: sonnet)",
     )
     parser.add_argument(
+        "--add-tests", action="store_true",
+        help="Add test results to existing quality.json files (no quality re-eval)",
+    )
+    parser.add_argument(
+        "--run-tests", action="store_true",
+        help="Run project tests after evaluation and include test results",
+    )
+    parser.add_argument(
+        "--test-timeout", type=int, default=120,
+        help="Timeout for test execution in seconds (default: 120)",
+    )
+    parser.add_argument(
         "--json", action="store_true",
         help="Output results as JSON",
     )
@@ -570,6 +906,11 @@ def main() -> None:
         help="Show what would be evaluated without running",
     )
     args = parser.parse_args()
+
+    # Handle --add-tests mode
+    if args.add_tests:
+        add_test_results_to_existing(project=args.project, timeout=args.test_timeout)
+        return
 
     runs = discover_runs(
         project_filter=args.project,
@@ -627,6 +968,15 @@ def main() -> None:
         result = evaluate_run(run_dir, model=args.model)
         elapsed = time.monotonic() - start
 
+        # Run tests if requested
+        if args.run_tests and result.get("pr_url"):
+            project = meta.get("project", "")
+            changed_files = result.get("changed_files", [])
+            print(f"\n  Running tests for {project}...", end=" ", flush=True)
+            test_result = run_project_tests(project, changed_files=changed_files, timeout=args.test_timeout)
+            result["test_results"] = test_result
+            print(f"{test_result.get('percentage', 'N/A')}% passed ({test_result.get('category', 'unknown')})")
+
         # Write quality.json
         quality_path = run_dir / "quality.json"
         quality_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -634,10 +984,14 @@ def main() -> None:
 
         if result.get("scores"):
             scores = result["scores"]
+            test_info = ""
+            if args.run_tests and result.get("test_results"):
+                pct = result["test_results"].get("percentage", "N/A")
+                test_info = f" tests:{pct}%"
             print(
                 f"C={scores['completeness']} R={scores['correctness']} "
                 f"S={scores['style']} Q={scores['quality']} "
-                f"({result['composite_score']}) [{elapsed:.1f}s]"
+                f"({result['composite_score']}){test_info} [{elapsed:.1f}s]"
             )
         else:
             print(f"error: {result.get('error', 'unknown')} [{elapsed:.1f}s]")
