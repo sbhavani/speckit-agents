@@ -232,3 +232,118 @@ features:
       Add portfolio analysis capability: accept multiple stock tickers and
       generate comparative analysis including relative performance, risk metrics,
       and correlation coefficients.
+
+  # ── fastapi ─────────────────────────────────────────────────
+  # Based on actual roadmap: https://github.com/fastapi/fastapi/blob/master/docs/ROADMAP.md
+
+  - id: fapi-01
+    project: fastapi
+    category: new_module
+    expected_complexity: medium
+    priority: P1
+    prd_ref: Roadmap - Ideas
+    description: >-
+      Implement Server-Sent Events (SSE) streaming response support: add an
+      StreamingResponse subclass for SSE with automatic event formatting, retry
+      configuration, and client disconnect handling.
+
+  - id: fapi-02
+    project: fastapi
+    category: refactor
+    expected_complexity: medium
+    priority: P1
+    prd_ref: Roadmap - Ideas
+    description: >-
+      Improve validation error messages with suggestions: extend ValidationError
+      to include field path context, similar field names suggestion, and
+      example corrections in the error detail.
+
+  - id: fapi-03
+    project: fastapi
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: Roadmap - Ideas
+    description: >-
+      Add a formal plugin system: create PluginProtocol interface with lifecycle
+      hooks (on_startup, on_shutdown, before_request, after_request) and
+      automatic OpenAPI schema extension capability.
+
+  - id: fapi-04
+    project: fastapi
+    category: api_endpoint
+    expected_complexity: low
+    priority: P2
+    prd_ref: Roadmap - Ideas
+    description: >-
+      Add enhanced OpenAPI schema options: support for custom schema examples,
+      discriminator mappings for polymorphic models, and deprecated flag propagation.
+
+  - id: fapi-05
+    project: fastapi
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: Roadmap - Ideas
+    description: >-
+      Implement typed middleware: create MiddlewareProtocol with type-safe
+      request/response handling, type hints for middleware dependencies, and
+      compile-time middleware ordering validation.
+
+  # ── airflow ─────────────────────────────────────────────────
+  # Based on actual roadmap: https://github.com/apache/airflow/blob/main/docs/ROADMAP.md
+
+  - id: af-01
+    project: airflow
+    category: new_module
+    expected_complexity: medium
+    priority: P1
+    prd_ref: User-Facing Enhancements
+    description: >-
+      Add improved error messages for task failures: extend TaskInstance
+      to include actionable error diagnostics, suggesting possible causes
+      and remediation steps in the UI.
+
+  - id: af-02
+    project: airflow
+    category: test
+    expected_complexity: medium
+    priority: P1
+    prd_ref: Developer Experience
+    description: >-
+      Add testing utilities for DAGs: create helper functions for DAG
+      unit testing including mock operators, task lifecycle simulation,
+      and assertion helpers for DAG structure validation.
+
+  - id: af-03
+    project: airflow
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: User-Facing Enhancements
+    description: >-
+      Implement custom metrics support: add UserDefinedMetrics class
+      that allows operators to emit custom metrics to the metadata
+      database with automatic aggregation functions.
+
+  - id: af-04
+    project: airflow
+    category: config_change
+    expected_complexity: low
+    priority: P1
+    prd_ref: Developer Experience
+    description: >-
+      Enhance type checking support: add comprehensive type annotations
+      to core operator classes with pyright/mypy compatibility, including
+      BaseOperator, Sensor, and Hook base classes.
+
+  - id: af-05
+    project: airflow
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: Platform & Infrastructure
+    description: >-
+      Add memory efficiency monitoring: implement memory profiling for
+      large DAG sets with configurable thresholds and warnings when
+      DAG parsing exceeds memory limits.
