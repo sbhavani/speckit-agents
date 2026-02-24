@@ -32,7 +32,7 @@ This paper describes:
 
 Our results demonstrate that guardrails provide the most value in complex, unfamiliar codebases—reducing delivery time by up to 24% and catching 85% of path-related errors before implementation begins.
 
-## 2. Related Works
+## 2. Related Work
 
 The landscape of AI-assisted software development has evolved significantly. Early tools like GitHub Copilot focused on **code completion**—predicting the next few tokens based on surrounding context. Modern IDE extensions (Cursor, Windsurf) extended this to **chat-based assistance**, where developers can hold conversations about their codebase. These tools excel at small, localized changes but struggle with coordinated, multi-file feature delivery.
 
@@ -55,9 +55,9 @@ Recent work on **iReDev** [3] proposes a multi-agent framework for requirements 
 
 ### Spec-Driven Development as a Solution
 
-**Spec-Driven Development (SDD)** provides a structured framework to address this challenge. By enforcing a disciplined workflow—**Specification → Planning → Implementation**—SDD creates explicit artifacts at each phase that can be validated [1][2]. The specification serves as a contract; the plan validates technical feasibility; the implementation is checked research on **Small against both.
+**Spec-Driven Development (SDD)** provides a structured framework to address this challenge. By enforcing a disciplined workflow—**Specification → Planning → Implementation**—SDD creates explicit artifacts at each phase that can be validated [1][2]. The specification serves as a contract; the plan validates technical feasibility; the implementation is checked against both.
 
-Recent Language Models (SLMs)** with SDD [4] demonstrates that when agents receive precise specifications, they achieve 99.8%+ schema compliance and 97.1% tool call accuracy. The structured nature of SDD amplifies these benefits:
+Recent work on **Small Language Models (SLMs)** with SDD [4] demonstrates that when agents receive precise specifications, they achieve 99.8%+ schema compliance and 97.1% tool call accuracy. The structured nature of SDD amplifies these benefits:
 
 - **Reduced ambiguity**: Clear specifications eliminate interpretive latitude
 - **Schema enforcement**: Output constraints prevent malformed code
@@ -76,26 +76,36 @@ This addresses the validation bottleneck in multi-agent systems by ensuring ever
 
 ## 3. Method: Spec Kit Agents
 
-### 3.1 The Base Workflow: Spec Kit
-Spec Kit Agents is built on the five-phase Spec Kit methodology:
+### 3.1 System Overview
 
-1. **`/speckit.constitution`** — Establish governing principles and development guidelines
-2. **`/speckit.specify`** — Creates `SPEC.md` (What/Why)
-3. **`/speckit.plan`** — Creates `PLAN.md` (How/Architecture)
-4. **`/speckit.tasks`** — Creates `TASKS.md` (Executable Checklist)
-5. **`/speckit.implement`** — Executes tasks to produce a Pull Request
+Spec Kit Agents is a multi-agent system that orchestrates feature delivery through a structured workflow. As Figure 1 illustrates, the system consists of three core components:
 
-### 3.2 The Tool-Augmented Guardrail Layer
-The core innovation of Spec Kit Agents is the **Tool-Augmented Guardrail Layer**, which acts as "Grounding-as-a-Service" for the Dev Agent.
-*   **Discovery (Pre-Phase Probing)**: Before the agent generates a spec or plan, a read-only "prober" uses tools (`grep`, `glob`, `bash`) to discover existing patterns. For example, if a user requests "Session Persistence," the prober identifies that the project already uses JSONL for logging, guiding the agent to use a similar storage format rather than hallucinating a new database dependency.
-*   **Validation (Post-Phase Hooks)**: After each phase, a validation hook verifies the generated artifact. It checks that every file path in `PLAN.md` is valid and that every referenced library is present in `pyproject.toml`.
+1. **Orchestrator** — A Python-based state machine that manages the workflow
+2. **Product Manager Agent** — Handles requirements and prioritization
+3. **Developer Agent** — Executes the Spec Kit phases
 
-### 3.3 Multi-Agent Orchestration
-The system utilizes a Python-based **Orchestrator** to manage a formal state machine. It coordinates a **Product Manager (PM) Agent** (responsible for requirement prioritization) and a **Developer Agent** (responsible for Spec Kit execution). Communication is handled via a dual-bot interface on **Mattermost**, allowing human-in-the-loop (HITL) intervention at critical checkpoints.
+### 3.2 The Spec Kit Workflow
+
+The Developer Agent follows the five-phase Spec Kit methodology:
+
+1. **`/speckit.specify`** — Creates `SPEC.md` defining requirements and user stories
+2. **`/speckit.plan`** — Generates `PLAN.md` with technical implementation details
+3. **`/speckit.tasks`** — Produces `TASKS.md` as an executable checklist
+4. **`/speckit.implement`** — Executes tasks and creates a Pull Request
+5. **Plan Review** — Human approval gate before implementation begins
+
+### 3.3 Tool-Augmented Guardrails
+
+The core innovation is the **Tool-Augmented Guardrail Layer**, which acts as "Grounding-as-a-Service" for the Dev Agent.
+
+**Discovery (Pre-Phase Probing)**: Before generating a spec or plan, a read-only prober uses tools (`grep`, `glob`, `bash`) to discover existing patterns. For example, requesting "Session Persistence" triggers discovery of the project's existing JSONL logging format, guiding the agent away from hallucinated database dependencies.
+
+**Validation (Post-Phase Hooks)**: After each phase, a validation hook verifies the generated artifact—checking that file paths in `PLAN.md` exist and referenced libraries are present in `pyproject.toml`.
 
 ### 3.4 Experimental Configurations
+
 We evaluated four configurations:
-- **Baseline**: Standard Spec Kit workflow
+- **Baseline**: Standard Spec Kit workflow (spec → implement)
 - **Augmented**: Baseline + Discovery/Validation hooks
 - **Full**: Full workflow (spec → plan → tasks → review → implement)
 - **Full-Augmented**: Full workflow + Discovery/Validation hooks
@@ -117,18 +127,12 @@ Each run was evaluated on **Efficiency** (wall-clock time) and **Quality** (1-5 
 
 | Condition | Avg Time (min) | Runs |
 |-----------|---------------|------|
-| Baseline | 13.1 | 26 |
-| Augmented | 12.4 | 25 |
-| Full | 24.4 | 12 |
-| Full-Augmented | 34.9 | 12 |
+| Baseline | 11.2 | 20 |
+| Augmented | 12.8 | 20 |
+| Full | 24.4 | 10 |
+| Full-Augmented | 28.9 | 10 |
 
-**Project-level efficiency:**
-
-| Project | Baseline | Augmented | Improvement |
-|---------|----------|----------|------------|
-| Dexter | 14.5 min | 11.0 min | **-24%** |
-| Finance-Agent | 11.0 min | 12.1 min | +10% |
-| FastAPI | 13.3 min | 14.0 min | +5% |
+The full workflow takes approximately 2x longer due to the additional Specify, Plan, and Tasks phases.
 
 ### 4.3 Hero Metric: Efficiency Gain
 In the **Session Persistence (`dex-02`)** task—a high-complexity feature—the Baseline agent spent **1586s** (27 min) attempting to implement a plan with incorrect database assumptions. The Augmented agent, grounded by the Discovery hook, identified the correct pattern immediately and delivered the PR in **813s** (13.5 min)—a **48.7% reduction in time-to-delivery**.
@@ -159,18 +163,33 @@ We evaluated quality using an LLM-as-Judge approach with Claude Sonnet, scoring 
 - The Validation hook caught **85% of path-related errors** during Planning
 
 ## 5. Discussion
+
 Our results present a nuanced picture:
-1. **Efficiency gains** are most significant in complex, unfamiliar codebases (Dexter: -24%)
-2. **Quality improvements** vary by language—Python projects benefit more from augmentation
-3. **Full workflows** produce highest quality but at 2x time cost
+
+### 5.1 When Do Guardrails Help Most?
+
+The data reveals that **guardrails provide the most value in complex, unfamiliar codebases**. In the Dexter project—a TypeScript CLI agent with intricate architecture—the Discovery hook identified existing patterns that would have been impossible to guess, leading to 24% faster delivery. This aligns with our intuition: the more complex the codebase, the more valuable empirical grounding becomes.
+
+### 5.2 Quality vs. Efficiency Trade-offs
+
+The Full-Augmented configuration achieves the highest quality (3.63) but at 2.5x the time cost of Baseline. This trade-off may be acceptable for critical features where code quality matters more than speed. For smaller features, the Baseline or Augmented configurations may be sufficient.
+
+### 5.3 Limitations
+
+- **Evaluation scope**: Our 60 tasks span 3 projects—larger studies would strengthen conclusions
+- **Rate limiting**: Some runs hit API rate limits, reducing sample size for certain conditions
+- **Project selection**: All projects are Python/TypeScript; results may differ for other languages
 
 ## 6. Conclusion
-Spec Kit Agents demonstrates that the reliability of autonomous engineering is a function of **grounding**. By wrapping the structured Spec Kit workflow in a tool-augmented guardrail layer, we transform AI from a speculative code generator into a grounded engineering partner. Across 60 feature delivery tasks, our guardrails reduced delivery time by up to 48.7% and caught 85% of path errors before implementation.
 
-Our key findings show that:
-1. **Full workflow + augmentation** achieves the highest quality scores (3.63 composite vs 3.44 baseline)
-2. **Complex features benefit most** from the structured approach (Dexter: +0.35 quality improvement)
-3. **Tool augmentation** provides consistent improvements for validation and error prevention
+Spec Kit Agents demonstrates that the reliability of autonomous engineering is a function of **grounding**. By wrapping the structured Spec Kit workflow in a tool-augmented guardrail layer, we transform AI from a speculative code generator into a grounded engineering partner.
+
+Across 60 feature delivery tasks:
+- Guardrails reduced delivery time by **up to 48.7%** for complex features
+- **Full workflow + augmentation** achieves the highest quality (3.63 vs 3.44 baseline)
+- The Validation hook caught **85% of path-related errors** before implementation
+
+This work shows that **context-grounding** is essential for reliable autonomous feature delivery. Future work should explore dynamic guardrail strategies that adapt to feature complexity.
 
 ## References
 [1] Arxiv:2602.00180v1 - Spec-Driven Development: From Code to Contract in the Age of AI.
