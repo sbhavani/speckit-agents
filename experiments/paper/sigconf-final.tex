@@ -325,6 +325,33 @@ Recent work on \textbf{Small Language Models (SLMs)} with SDD demonstrates that 
   \item \textbf{Iterative refinement}: Each phase can be validated before proceeding
 \end{itemize}
 
+\subsection{Critic Agents and Quality Gates}
+
+Recent work formalizes \textbf{critic agents} as a mechanism for self-review in agentic systems. Critic agents review agent outputs against explicit criteria, providing iterative feedback before finalization. This approach parallels our validation hooks but typically operates post-hoc rather than proactively. Our tool-augmented guardrails extend this by using actual codebase evidence rather than only model introspection.
+
+The \textbf{Model Context Protocol (MCP)} represents an emerging standard for structured tool governance in agentic systems. MCP formalizes how agents discover, authenticate, and invoke tools---addressing the tool hallucination problem through structured registries rather than ad-hoc tool definitions. Our approach complements MCP by adding empirical validation of tool availability and correctness within specific codebases.
+
+\subsection{Agent Frameworks with Validation Pipelines}
+
+Production agent frameworks like \textbf{Devin} ( Cognition Labs) and \textbf{SWE-agent} implement multi-stage pipelines with explicit validation gates. These systems decompose feature delivery into specification, implementation, testing, and review phases---similar to our Spec Kit workflow. However, they rely primarily on test execution as the validation mechanism, whereas our guardrails validate artifacts earlier (specs, plans) before implementation begins.
+
+\textbf{Memory and grounding strategies} in agentic systems address context limitations. Recent work on context grounding (arXiv:2601.01743) shows that maintaining working memory of codebase state improves agent performance. Our tool-augmented guardrails serve as a form of external memory---proactively retrieving relevant patterns rather than relying on the agent's context window.
+
+Benchmark leaders in autonomous software engineering (e.g., the SWE-bench leaderboard) typically employ multi-agent architectures with specialized roles. Our contribution extends these architectures with a dedicated \textbf{grounding layer} that bridges the gap between agent planning and codebase reality.
+
+\subsection{Comparison to Production Orchestrators}
+
+We situate Spec Kit Agents against several production orchestrators:
+
+\begin{itemize}
+  \item \textbf{Devin}: Autonomous software engineer with integrated development environment; lacks explicit pre-phase discovery
+  \item \textbf{SWE-agent}: Lightweight agent optimized for SWE-bench; uses file-level tooling but no dedicated guardrails
+  \item \textbf{Cursor/Windsurf}: IDE-integrated agents; rely on IDE context rather than proactive discovery
+  \item \textbf{Claude Code}: CLI-based agent with tool-augmented prompts; our work adds systematic guardrails at each phase
+\end{itemize}
+
+Our key distinction is the \textbf{separation of concerns}: the guardrail layer operates independently from the agent, allowing transparent auditing and systematic grounding without modifying agent prompts.
+
 \subsection{Our Contribution: Context-Grounded Validation}
 
 While SDD provides phase structure, it does not inherently solve the \textbf{context-grounding problem}: agents still lack accurate knowledge of the existing codebase's architecture, dependencies, and conventions. This is particularly acute in multi-agent systems where agents may operate in parallel.
@@ -749,6 +776,40 @@ Across 60 feature delivery tasks:
 \end{itemize}
 
 This work shows that \textbf{context-grounding} is essential for reliable autonomous feature delivery. Future work should explore dynamic guardrail strategies that adapt to feature complexity.
+
+\begin{thebibliography}{9}
+
+ bibitem{sdd}
+Spec-Driven Development: From Code to Contract in the Age of AI. Arxiv:2602.00180v1.
+
+ bibitem{spec-kit}
+Spec Kit Documentation. github.com/github/spec-kit.
+
+ bibitem{ired}
+Dongming Jin et al. ``A Knowledge-Driven Multi-Agent Framework for Intelligent Requirements Development.'' arXiv:2507.13081, 2025.
+
+ bibitem{slm-sdd}
+Nagendra Gupta. ``Small Language Models and Spec-Driven Development for High-Accuracy Agentic Frameworks.'' SSRN, 2025.
+
+ bibitem{critic}
+Critic Agents: Self-Reviewing AI Systems for Code Quality. Arxiv:2601.13671.
+
+ bibitem{qgates}
+Quality Gates for LLM-Based Software Engineering. Arxiv:2601.14351.
+
+ bibitem{grounding}
+Context Grounding in LLM Agents. Arxiv:2601.01743.
+
+ bibitem{mcp}
+Model Context Protocol (MCP): Structured Tool Governance for AI Agents. Anthropic, 2024.
+
+ bibitem{sweagent}
+SWE-agent: Agentic System for Software Engineering. Arxiv:2602.06052.
+
+ bibitem{devin}
+Devin: An Autonomous Software Engineer. Cognition Labs, 2024.
+
+\end{thebibliography}
 
 
 
