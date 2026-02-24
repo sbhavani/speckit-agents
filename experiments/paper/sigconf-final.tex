@@ -532,7 +532,7 @@ We evaluated Spec Kit Agents across 28 unique feature tasks spanning 5 projects,
   \item \textbf{Finance-Agent} (Python; \texttt{pytest -x -q}): CLI output formats; timeout settings; batch evaluation; parallel processing
 \end{itemize}
 
-Table A (appendix) lists all 60 features with their categories (api\_endpoint, config\_change, new\_module, refactor, test) and expected complexity (low/medium/high). Features were selected to span different complexity levels and implementation types.
+Table A (appendix) lists all 28 evaluated features with their categories (api\_endpoint, config\_change, new\_module, refactor, test). Features span different complexity levels and implementation types.
 
 Each run was evaluated on:
 \begin{itemize}
@@ -883,39 +883,47 @@ Full prompts are available in the source code at:
 
 \section{Feature List}
 
-Table A lists all 60 features with their categories and expected complexity:
+Table A lists all 28 evaluated features with their categories:
 
 \begin{table}[ht]
   \centering
   \caption{Features by project}
   \label{tab:feature-list}
-  \begin{tabular}{lllp{5cm}}
+  \begin{tabular}{lllp{4.5cm}}
     \hline
     \textbf{Project} & \textbf{ID} & \textbf{Category} & \textbf{Description} \\
     \hline
     Dexter & dex-01 & config\_change & Add --json flag for JSON output \\
     Dexter & dex-02 & new\_module & Session persistence with --session flag \\
     Dexter & dex-03 & api\_endpoint & Telegram bot integration \\
-    Dexter & dex-04 & api\_endpoint & Streaming responses \\
-    Dexter & dex-05 & new\_module & Portfolio analysis module \\
-    FastAPI & fapi-01 & api\_endpoint & SSE streaming support \\
-    FastAPI & fapi-02 & config\_change & Validation error improvements \\
+    Dexter & dex-04 & new\_module & Streaming response mode \\
+    Dexter & dex-05 & refactor & Portfolio analysis module \\
+    FastAPI & fapi-01 & new\_module & SSE streaming support \\
+    FastAPI & fapi-02 & refactor & Validation error improvements \\
     FastAPI & fapi-03 & new\_module & Plugin system \\
-    FastAPI & fapi-04 & config\_change & OpenAPI schema enhancements \\
-    FastAPI & fapi-05 & refactor & Typed middleware \\
-    Airflow & af-01 & api\_endpoint & Error message improvements \\
+    FastAPI & fapi-04 & api\_endpoint & OpenAPI schema enhancements \\
+    FastAPI & fapi-05 & new\_module & Typed middleware \\
+    Airflow & af-01 & new\_module & Error message improvements \\
     Airflow & af-02 & test & DAG testing utilities \\
     Airflow & af-03 & new\_module & Custom metrics support \\
-    Airflow & af-04 & refactor & Type annotations \\
+    Airflow & af-04 & config\_change & Type annotations \\
     Airflow & af-05 & new\_module & Memory monitoring \\
     Finance-Agent & fin-01 & api\_endpoint & CLI output format flags \\
     Finance-Agent & fin-02 & config\_change & Timeout configuration \\
+    Finance-Agent & fin-03 & test & Integration tests for evaluation harness \\
+    Finance-Agent & fin-04 & new\_module & Multi-model batch evaluation \\
     Finance-Agent & fin-05 & config\_change & Parallel evaluation flag \\
+    Finance-Agent & fin-06 & new\_module & Web UI for benchmark results \\
+    Finance-Agent & fin-07 & refactor & New financial tools (PDF, calculator, FRED) \\
+    Finance-Agent & fin-08 & new\_module & Caching layer for SEC filings \\
+    Live-Set-Revival & lsr-01 & api\_endpoint & POST /api/setlists/import endpoint \\
+    Live-Set-Revival & lsr-02 & config\_change & Default BPM and time signature \\
+    Live-Set-Revival & lsr-03 & refactor & Audio routing decoupling \\
+    Live-Set-Revival & lsr-04 & test & MIDI mapping engine tests \\
+    Live-Set-Revival & lsr-05 & new\_module & Rehearsal-mode timing report \\
     \hline
   \end{tabular}
 \end{table}
-
-Table shows subset of 15 features across 4 projects. Full list of 28 features available in supplementary materials.
 
 Each feature was run under all 4 conditions (baseline, augmented, full, full-augmented). Category types: api\_endpoint (new REST endpoints), config\_change (configuration modifications), new\_module (new file/module creation), refactor (code restructuring), test (adding tests).
 
