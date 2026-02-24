@@ -1,0 +1,43 @@
+{
+  "run_id": "dex-04_baseline_20260222T044153_22497b60",
+  "feature_id": "dex-04",
+  "project": "dexter",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:47:56.670204+00:00",
+  "pr_number": 7,
+  "pr_repo": "sbhavani/dexter",
+  "pr_url": "https://github.com/sbhavani/dexter/pull/7",
+  "changed_files": [
+    "src/agent/agent.ts",
+    "src/agent/index.ts",
+    "src/agent/types.ts",
+    "src/controllers/agent-runner.ts",
+    "src/model/llm.ts",
+    "src/utils/index.ts",
+    "src/utils/streaming-output.ts",
+    "src/utils/tty.ts"
+  ],
+  "diff_lines": 808,
+  "scores": {
+    "completeness": 4,
+    "correctness": 3,
+    "style": 4,
+    "quality": 4
+  },
+  "composite_score": 3.75,
+  "rationale": {
+    "completeness": "Core streaming functionality is implemented (thinking and answer tokens stream to terminal with ANSI codes). However, tool result streaming is incomplete - the code defines 'tool' and 'tool_result' modes but doesn't actually stream tool execution results token-by-token.",
+    "correctness": "Has a logic issue: the `done` field is always `false` when yielding tokens in the loop, making it misleading since it's never true. Also, the `mode` parameter in `callModelStreaming` only accepts 'thinking'|'answer' but the event type allows four modes.",
+    "style": "Follows TypeScript conventions well with good JSDoc comments and consistent patterns. The new files (streaming-output.ts, tty.ts) are well-organized. Minor inconsistency: Ansi uses const assertions but some type annotations could be cleaner.",
+    "quality": "Code is readable with good separation of concerns (dedicated streaming-output.ts, tty.ts). Missing error handling during streaming and no tests included. Some code duplication between streaming and non-streaming paths in Agent."
+  },
+  "test_results": {
+    "passed": 23,
+    "failed": 0,
+    "total": 23,
+    "percentage": 100.0,
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [68.00ms]\n",
+    "category": "none"
+  }
+}

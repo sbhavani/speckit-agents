@@ -1,0 +1,15 @@
+{
+  "run_id": "lsr-04_baseline_20260222T023533_323c03b2",
+  "project": "live-set-revival",
+  "pr": 11,
+  "code_files": [
+    "src/__tests__/midi.test.ts",
+    "src/lib/midi.ts"
+  ],
+  "doc_files": [],
+  "code_changed": true,
+  "main_tests": 7,
+  "pr_tests": 61,
+  "tests_improve": true,
+  "score": 5
+}

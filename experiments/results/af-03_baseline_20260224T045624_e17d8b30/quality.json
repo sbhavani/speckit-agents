@@ -1,0 +1,13 @@
+{
+  "run_id": "af-03_baseline_20260224T045624_e17d8b30",
+  "feature_id": "af-03",
+  "project": "airflow",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:26:49.398072+00:00",
+  "pr_number": 8,
+  "pr_repo": "sbhavani/airflow",
+  "pr_url": "https://github.com/sbhavani/airflow/pull/8",
+  "scores": null,
+  "error": "diff_fetch_failed"
+}

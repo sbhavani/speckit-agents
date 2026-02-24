@@ -1,0 +1,30 @@
+{
+  "run_id": "af-04_full-augmented_20260224T072111_73d45e58",
+  "feature_id": "af-04",
+  "project": "airflow",
+  "condition": "full-augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:28:37.602528+00:00",
+  "pr_number": 14,
+  "pr_repo": "sbhavani/airflow",
+  "pr_url": "https://github.com/sbhavani/airflow/pull/14",
+  "changed_files": [
+    "task-sdk/src/airflow/sdk/bases/hook.py",
+    "task-sdk/src/airflow/sdk/bases/operator.py",
+    "task-sdk/src/airflow/sdk/bases/sensor.py"
+  ],
+  "diff_lines": 49,
+  "scores": {
+    "completeness": 2,
+    "correctness": 4,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.25,
+  "rationale": {
+    "completeness": "Only touches 3 methods across 3 files - far from comprehensive type annotation coverage for BaseOperator, Sensor, and Hook base classes as described.",
+    "correctness": "Type changes are technically sound - Context type is appropriate for execute hooks, and BaseHook return type for get_hook is correct. Sensor execute returning None aligns with sensor behavior.",
+    "style": "Follows Python 3.10+ type annotation conventions using | syntax, consistent with codebase style.",
+    "quality": "Changes are clean and focused, but minimal scope limits overall impact. Only surface-level annotations added without addressing deeper type hierarchy needs."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "run_id": "fin-01_baseline_20260221T054456_b3948adf",
+  "feature_id": "fin-01",
+  "project": "finance-agent",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-22T07:39:36.595917+00:00",
+  "pr_number": 10,
+  "pr_repo": "sbhavani/finance-agent",
+  "pr_url": "https://github.com/sbhavani/finance-agent/pull/10",
+  "changed_files": [
+    "finance_agent/evaluate.py"
+  ],
+  "diff_lines": 325,
+  "scores": {
+    "completeness": 5,
+    "correctness": 3,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.75,
+  "rationale": {
+    "completeness": "Fully addresses all requirements: adds --output-format CLI flag, implements JSON/CSV/markdown formats, and includes summary statistics in all three formats.",
+    "correctness": "The CSV format uses comment lines starting with '#' which are non-standard and will break most CSV parsers; also, values containing commas (e.g. question text, categories) are only partially escaped since the manual string formatting doesn't handle all edge cases that Python's csv module would handle correctly.",
+    "style": "Follows project conventions reasonably well\u2014type hints, docstrings, argparse patterns match existing code; minor issue is lazy imports of 'io' inside functions rather than at module level with other imports.",
+    "quality": "The three format functions are cleanly separated with good abstraction via save_results(), but generate_summary_stats() duplicates data already present in the results dict, and the CSV formatter manually builds output line-by-line instead of using Python's built-in csv module, making it fragile and harder to maintain."
+  }
+}

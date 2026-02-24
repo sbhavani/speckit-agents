@@ -1,0 +1,20 @@
+{
+  "run_id": "lsr-03_baseline_20260222T021700_6e9600db",
+  "project": "live-set-revival",
+  "pr": 9,
+  "code_files": [
+    ".agent-team-state.json",
+    "src/__tests__/audio-routing.test.ts",
+    "src/lib/audio/channel.ts",
+    "src/lib/audio/index.ts",
+    "src/lib/audio/loader.ts",
+    "src/lib/audio/router.ts",
+    "src/lib/audio/types.ts"
+  ],
+  "doc_files": [],
+  "code_changed": true,
+  "main_tests": 7,
+  "pr_tests": 65,
+  "tests_improve": true,
+  "score": 5
+}

@@ -1,0 +1,23 @@
+{
+  "run_id": "dex-03_full_20260223T005458_f38024b1",
+  "feature_id": "dex-03",
+  "project": "dexter",
+  "category": "api_endpoint",
+  "expected_complexity": "medium",
+  "description": "Add Telegram bot integration: accept messages via Telegram webhooks, process them through the agent, and respond in the same chat.",
+  "condition": "full",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Add Telegram bot integration: accept messages via Telegram webhooks, process them through the agent, and respond in the same chat.",
+    "--project",
+    "dexter",
+    "--approve",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 1496.57,
+  "timestamp": "2026-02-23T01:19:55.254029+00:00"
+}

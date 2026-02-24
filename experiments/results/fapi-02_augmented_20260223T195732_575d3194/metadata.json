@@ -1,0 +1,23 @@
+{
+  "run_id": "fapi-02_augmented_20260223T195732_575d3194",
+  "feature_id": "fapi-02",
+  "project": "fastapi",
+  "category": "refactor",
+  "expected_complexity": "medium",
+  "description": "Improve validation error messages with suggestions: extend ValidationError to include field path context, similar field names suggestion, and example corrections in the error detail.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Improve validation error messages with suggestions: extend ValidationError to include field path context, similar field names suggestion, and example corrections in the error detail.",
+    "--project",
+    "fastapi",
+    "--simple",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 815.95,
+  "timestamp": "2026-02-23T20:11:08.184798+00:00"
+}

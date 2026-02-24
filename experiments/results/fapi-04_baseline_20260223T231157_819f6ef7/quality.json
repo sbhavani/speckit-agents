@@ -1,0 +1,31 @@
+{
+  "run_id": "fapi-04_baseline_20260223T231157_819f6ef7",
+  "feature_id": "fapi-04",
+  "project": "fastapi",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:17:52.107738+00:00",
+  "pr_number": 15,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/15",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "tests/test_enhanced_openapi_options.py"
+  ],
+  "diff_lines": 628,
+  "scores": {
+    "completeness": 1,
+    "correctness": 1,
+    "style": 3,
+    "quality": 2
+  },
+  "composite_score": 1.75,
+  "rationale": {
+    "completeness": "This PR adds only tests and documentation but no actual implementation code. The feature requires code changes to propagate Field examples, discriminator mappings, and deprecated flags to OpenAPI schema generation - none of which are present.",
+    "correctness": "Cannot evaluate correctness since there's no implementation code to review. The tests would fail without the corresponding implementation changes to FastAPI's schema generation logic.",
+    "style": "The test file follows reasonable Python and FastAPI testing conventions, using proper pytest patterns and TestClient usage. However, the unrelated constitution/PRD/ROADMAP files about FastAPI are confusingly added to this speckit-agents repository.",
+    "quality": "The tests are well-structured and cover multiple scenarios, but without any implementation, the PR is incomplete. Adding FastAPI framework documentation to a non-FastAPI repo also seems misplaced."
+  }
+}

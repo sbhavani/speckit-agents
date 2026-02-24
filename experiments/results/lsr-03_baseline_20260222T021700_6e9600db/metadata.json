@@ -1,0 +1,23 @@
+{
+  "run_id": "lsr-03_baseline_20260222T021700_6e9600db",
+  "feature_id": "lsr-03",
+  "project": "live-set-revival",
+  "category": "refactor",
+  "expected_complexity": "high",
+  "description": "Refactor the audio routing logic to decouple channel assignment from song loading, allowing channels to be pre-configured independently.",
+  "condition": "baseline",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Refactor the audio routing logic to decouple channel assignment from song loading, allowing channels to be pre-configured independently.",
+    "--project",
+    "live-set-revival",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 784.41,
+  "timestamp": "2026-02-22T02:30:04.776404+00:00"
+}

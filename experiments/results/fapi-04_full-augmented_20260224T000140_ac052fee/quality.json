@@ -1,0 +1,31 @@
+{
+  "run_id": "fapi-04_full-augmented_20260224T000140_ac052fee",
+  "feature_id": "fapi-04",
+  "project": "fastapi",
+  "condition": "full-augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:18:32.888099+00:00",
+  "pr_number": 17,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/17",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "fastapi/_compat/v2.py"
+  ],
+  "diff_lines": 414,
+  "scores": {
+    "completeness": 2,
+    "correctness": 3,
+    "style": 3,
+    "quality": 2
+  },
+  "composite_score": 2.5,
+  "rationale": {
+    "completeness": "Missing discriminator mappings for polymorphic models entirely - only custom examples and partial deprecated flag support are implemented. Three new unrelated files (constitution.md, PRD.md, ROADMAP.md) were added that don't relate to the feature.",
+    "correctness": "The examples conversion logic has edge cases (e.g., doesn't handle None values in dict), and deprecation only works via json_schema_extra not direct field metadata. No discriminator handling.",
+    "style": "Follows basic Python conventions but uses magic string '\f' without explanation. Function mixes multiple responsibilities (examples + deprecation).",
+    "quality": "No tests included. Limited comments. The code structure is reasonable but lacks robustness for edge cases and error handling."
+  }
+}

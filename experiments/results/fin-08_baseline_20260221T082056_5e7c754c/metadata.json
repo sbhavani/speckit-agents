@@ -1,0 +1,23 @@
+{
+  "run_id": "fin-08_baseline_20260221T082056_5e7c754c",
+  "feature_id": "fin-08",
+  "project": "finance-agent",
+  "category": "new_module",
+  "expected_complexity": "high",
+  "description": "Implement caching layer for SEC filings and web content. Add support for user-provided custom datasets in JSON format.",
+  "condition": "baseline",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Implement caching layer for SEC filings and web content. Add support for user-provided custom datasets in JSON format.",
+    "--project",
+    "finance-agent",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 774.09,
+  "timestamp": "2026-02-21T08:33:50.225672+00:00"
+}

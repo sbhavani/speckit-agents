@@ -1,0 +1,13 @@
+{
+  "run_id": "af-03_augmented_20260224T050846_f2e88154",
+  "feature_id": "af-03",
+  "project": "airflow",
+  "condition": "augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:26:48.993511+00:00",
+  "pr_number": 8,
+  "pr_repo": "sbhavani/airflow",
+  "pr_url": "https://github.com/sbhavani/airflow/pull/8",
+  "scores": null,
+  "error": "diff_fetch_failed"
+}

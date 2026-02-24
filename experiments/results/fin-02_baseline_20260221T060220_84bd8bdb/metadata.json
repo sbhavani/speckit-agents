@@ -1,0 +1,23 @@
+{
+  "run_id": "fin-02_baseline_20260221T060220_84bd8bdb",
+  "feature_id": "fin-02",
+  "project": "finance-agent",
+  "category": "config_change",
+  "expected_complexity": "low",
+  "description": "Add configurable timeout settings: per-question timeout (default 120s) and per-turn timeout. These should be configurable via CLI flags --question-timeout and --turn-timeout.",
+  "condition": "baseline",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add configurable timeout settings: per-question timeout (default 120s) and per-turn timeout. These should be configurable via CLI flags --question-timeout and --turn-timeout.",
+    "--project",
+    "finance-agent",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 690.86,
+  "timestamp": "2026-02-21T06:13:51.271898+00:00"
+}

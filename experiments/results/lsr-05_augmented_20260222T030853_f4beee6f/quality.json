@@ -1,0 +1,24 @@
+{
+  "run_id": "lsr-05_augmented_20260222T030853_f4beee6f",
+  "project": "live-set-revival",
+  "pr": 13,
+  "code_files": [
+    ".agent-team-state.json",
+    "app/api/rehearsal/route.ts",
+    "app/rehearsal/page.tsx",
+    "src/__tests__/rehearsal-types.test.ts",
+    "src/components/AccuracyReport.tsx",
+    "src/components/ClickTrack.tsx",
+    "src/components/Header.tsx",
+    "src/components/RehearsalMode.tsx",
+    "src/hooks/useTimingRecorder.ts",
+    "src/lib/db.ts",
+    "src/lib/rehearsal-types.ts"
+  ],
+  "doc_files": [],
+  "code_changed": true,
+  "main_tests": 7,
+  "pr_tests": 25,
+  "tests_improve": true,
+  "score": 5
+}

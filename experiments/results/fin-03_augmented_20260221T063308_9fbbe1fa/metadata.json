@@ -1,0 +1,23 @@
+{
+  "run_id": "fin-03_augmented_20260221T063308_9fbbe1fa",
+  "feature_id": "fin-03",
+  "project": "finance-agent",
+  "category": "test",
+  "expected_complexity": "medium",
+  "description": "Add integration tests for the evaluation harness covering: accuracy calculation, per-type breakdown, cost tracking, latency metrics, and failure categorization.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add integration tests for the evaluation harness covering: accuracy calculation, per-type breakdown, cost tracking, latency metrics, and failure categorization.",
+    "--project",
+    "finance-agent",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 725.86,
+  "timestamp": "2026-02-21T06:45:14.112356+00:00"
+}

@@ -1,0 +1,20 @@
+{
+  "run_id": "lsr-02_baseline_20260222T014625_190ef0ab",
+  "project": "live-set-revival",
+  "pr": 7,
+  "code_files": [
+    "app/api/tracks/route.ts",
+    "app/settings/page.tsx",
+    "src/__tests__/track-bpm.test.ts",
+    "src/components/Header.tsx",
+    "src/hooks/use-user-preferences.ts",
+    "src/lib/db.ts",
+    "src/views/Settings.tsx"
+  ],
+  "doc_files": [],
+  "code_changed": true,
+  "main_tests": 7,
+  "pr_tests": 7,
+  "tests_improve": false,
+  "score": 4
+}

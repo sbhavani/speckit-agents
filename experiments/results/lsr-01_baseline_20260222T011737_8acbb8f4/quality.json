@@ -1,0 +1,17 @@
+{
+  "run_id": "lsr-01_baseline_20260222T011737_8acbb8f4",
+  "project": "live-set-revival",
+  "pr": 5,
+  "code_files": [
+    ".agent-team-state.json",
+    "app/api/setlists/import/route.ts",
+    "src/__tests__/api/setlists-import.test.ts",
+    "src/lib/db.ts"
+  ],
+  "doc_files": [],
+  "code_changed": true,
+  "main_tests": 7,
+  "pr_tests": 7,
+  "tests_improve": false,
+  "score": 4
+}

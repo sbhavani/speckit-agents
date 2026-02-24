@@ -1,0 +1,29 @@
+{
+  "run_id": "fin-01_baseline_20260221T050324_fde3956f",
+  "feature_id": "fin-01",
+  "project": "finance-agent",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-22T07:39:27.244716+00:00",
+  "pr_number": 9,
+  "pr_repo": "sbhavani/finance-agent",
+  "pr_url": "https://github.com/sbhavani/finance-agent/pull/9",
+  "changed_files": [
+    "finance_agent/evaluate.py",
+    "finance_agent/evaluate_analyst_benchmark.py"
+  ],
+  "diff_lines": 386,
+  "scores": {
+    "completeness": 5,
+    "correctness": 3,
+    "style": 3,
+    "quality": 2
+  },
+  "composite_score": 3.25,
+  "rationale": {
+    "completeness": "All three required formats (JSON, CSV, markdown) are implemented with summary statistics in each, and the CLI flag is properly wired up in both evaluation scripts.",
+    "correctness": "The happy path works, but CSV format lacks summary statistics (only per-question rows, no totals), contradicting the feature requirement; also, the markdown per-question table includes a `question_snippet` variable that's computed but never used in the output line.",
+    "style": "The `import csv` and `import io` statements are placed inside the function body rather than at the module top-level which is unconventional; f-strings are used inconsistently with plain string literals for table separators.",
+    "quality": "The two files contain near-identical implementations of `format_results_csv`, `format_results_markdown`, and `save_results_in_format` with no shared module or utility\u2014significant code duplication that hurts maintainability; a shared helper module would be the cleaner design."
+  }
+}

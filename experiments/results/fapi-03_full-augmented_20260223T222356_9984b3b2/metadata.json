@@ -1,0 +1,23 @@
+{
+  "run_id": "fapi-03_full-augmented_20260223T222356_9984b3b2",
+  "feature_id": "fapi-03",
+  "project": "fastapi",
+  "category": "new_module",
+  "expected_complexity": "high",
+  "description": "Add a formal plugin system: create PluginProtocol interface with lifecycle hooks (on_startup, on_shutdown, before_request, after_request) and automatic OpenAPI schema extension capability.",
+  "condition": "full-augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Add a formal plugin system: create PluginProtocol interface with lifecycle hooks (on_startup, on_shutdown, before_request, after_request) and automatic OpenAPI schema extension capability.",
+    "--project",
+    "fastapi",
+    "--approve",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 2875.78,
+  "timestamp": "2026-02-23T23:11:52.863619+00:00"
+}

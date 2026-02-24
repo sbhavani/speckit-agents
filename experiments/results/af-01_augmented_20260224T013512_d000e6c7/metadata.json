@@ -1,0 +1,23 @@
+{
+  "run_id": "af-01_augmented_20260224T013512_d000e6c7",
+  "feature_id": "af-01",
+  "project": "airflow",
+  "category": "new_module",
+  "expected_complexity": "medium",
+  "description": "Add improved error messages for task failures: extend TaskInstance to include actionable error diagnostics, suggesting possible causes and remediation steps in the UI.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Add improved error messages for task failures: extend TaskInstance to include actionable error diagnostics, suggesting possible causes and remediation steps in the UI.",
+    "--project",
+    "airflow",
+    "--simple",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 1183.27,
+  "timestamp": "2026-02-24T01:54:56.085193+00:00"
+}

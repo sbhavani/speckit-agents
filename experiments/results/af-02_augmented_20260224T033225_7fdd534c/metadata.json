@@ -1,0 +1,23 @@
+{
+  "run_id": "af-02_augmented_20260224T033225_7fdd534c",
+  "feature_id": "af-02",
+  "project": "airflow",
+  "category": "test",
+  "expected_complexity": "medium",
+  "description": "Add testing utilities for DAGs: create helper functions for DAG unit testing including mock operators, task lifecycle simulation, and assertion helpers for DAG structure validation.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Add testing utilities for DAGs: create helper functions for DAG unit testing including mock operators, task lifecycle simulation, and assertion helpers for DAG structure validation.",
+    "--project",
+    "airflow",
+    "--simple",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 1101.0,
+  "timestamp": "2026-02-24T03:50:46.191923+00:00"
+}

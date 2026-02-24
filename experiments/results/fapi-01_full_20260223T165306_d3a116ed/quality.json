@@ -1,0 +1,33 @@
+{
+  "run_id": "fapi-01_full_20260223T165306_d3a116ed",
+  "feature_id": "fapi-01",
+  "project": "fastapi",
+  "condition": "full",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:12:07.333297+00:00",
+  "pr_number": 1,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/1",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "fastapi/__init__.py",
+    "fastapi/responses.py",
+    "tests/test_sse.py"
+  ],
+  "diff_lines": 831,
+  "scores": {
+    "completeness": 3,
+    "correctness": 3,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.25,
+  "rationale": {
+    "completeness": "Core SSE requirements are met (SSEResponse, SSEEvent, retry, disconnect handling), but the PR inexplicably includes three unrelated files (constitution.md, PRD.md, ROADMAP.md) that appear to be for a FastAPI framework project rather than this SSE feature.",
+    "correctness": "The SSE encoding follows the spec correctly, but the generator cleanup in _stream_events is problematic - the finally block calls aclose() on async generators which isn't standard (async generators auto-cleanup via async for), and the hasattr check suggests uncertainty about the API.",
+    "style": "Imports are well-organized (stdlib, third-party, local), type hints are used throughout, and code follows Python/FastAPI conventions. The unrelated documentation files hurt consistency.",
+    "quality": "Tests are comprehensive but some are flaky (disconnect handler test uses ThreadPoolExecutor with cancel() which may not reliably interrupt), and the code has some redundancy (the finally block cleanup overlaps with async for's automatic cleanup)."
+  }
+}

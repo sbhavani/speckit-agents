@@ -1,0 +1,31 @@
+{
+  "run_id": "af-03_full_20260224T052626_677e0939",
+  "feature_id": "af-03",
+  "project": "airflow",
+  "condition": "full",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:27:15.488549+00:00",
+  "pr_number": 9,
+  "pr_repo": "sbhavani/airflow",
+  "pr_url": "https://github.com/sbhavani/airflow/pull/9",
+  "changed_files": [
+    "task-sdk/src/airflow/sdk/observability/__init__.py",
+    "task-sdk/src/airflow/sdk/observability/metrics/__init__.py",
+    "task-sdk/src/airflow/sdk/observability/metrics/user_defined_metrics.py",
+    "task-sdk/src/airflow/sdk/observability/user_defined_metrics.py"
+  ],
+  "diff_lines": 217,
+  "scores": {
+    "completeness": 3,
+    "correctness": 3,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.25,
+  "rationale": {
+    "completeness": "The PR implements the core UserDefinedMetrics class with automatic aggregation via MetricType, but the diff is truncated and shows no tests or documentation. The emit() method implementation appears incomplete in the diff.",
+    "correctness": "Logic is mostly sound with proper enum usage, but there's ambiguity: if both metric_type and aggregation are provided, metric_type wins without warning. Also, MetricType.default_aggregation could raise KeyError for custom metric types not in the mapping.",
+    "style": "Follows Python conventions with proper type hints, docstrings, and imports. The separation of AggregationFunction and MetricType into a dedicated module is clean.",
+    "quality": "Code is readable and well-organized with good separation of concerns, but lacks tests and has a truncated implementation. The emit() method changes are minimal and don't show the full payload construction."
+  }
+}

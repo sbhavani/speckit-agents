@@ -1,0 +1,23 @@
+{
+  "run_id": "lsr-04_augmented_20260222T024635_9774e9cf",
+  "feature_id": "lsr-04",
+  "project": "live-set-revival",
+  "category": "test",
+  "expected_complexity": "medium",
+  "description": "Add unit tests for the MIDI mapping engine covering velocity curves, CC message routing, and program change handling.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add unit tests for the MIDI mapping engine covering velocity curves, CC message routing, and program change handling.",
+    "--project",
+    "live-set-revival",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 397.4,
+  "timestamp": "2026-02-22T02:53:13.230856+00:00"
+}

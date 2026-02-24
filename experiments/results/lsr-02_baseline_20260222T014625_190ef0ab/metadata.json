@@ -1,0 +1,23 @@
+{
+  "run_id": "lsr-02_baseline_20260222T014625_190ef0ab",
+  "feature_id": "lsr-02",
+  "project": "live-set-revival",
+  "category": "config_change",
+  "expected_complexity": "low",
+  "description": "Add a user-configurable default BPM and time signature that apply when creating new songs without explicit tempo information.",
+  "condition": "baseline",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add a user-configurable default BPM and time signature that apply when creating new songs without explicit tempo information.",
+    "--project",
+    "live-set-revival",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 812.23,
+  "timestamp": "2026-02-22T01:59:57.501549+00:00"
+}

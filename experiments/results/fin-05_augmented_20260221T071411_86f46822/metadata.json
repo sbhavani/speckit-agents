@@ -1,0 +1,23 @@
+{
+  "run_id": "fin-05_augmented_20260221T071411_86f46822",
+  "feature_id": "fin-05",
+  "project": "finance-agent",
+  "category": "config_change",
+  "expected_complexity": "low",
+  "description": "Add --parallel flag to control concurrent question evaluation (1-10). Currently supports parallel evaluation but needs better configuration and tool call success rate tracking.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add --parallel flag to control concurrent question evaluation (1-10). Currently supports parallel evaluation but needs better configuration and tool call success rate tracking.",
+    "--project",
+    "finance-agent",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 700.16,
+  "timestamp": "2026-02-21T07:25:51.939163+00:00"
+}

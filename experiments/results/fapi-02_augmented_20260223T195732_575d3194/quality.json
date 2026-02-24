@@ -1,0 +1,34 @@
+{
+  "run_id": "fapi-02_augmented_20260223T195732_575d3194",
+  "feature_id": "fapi-02",
+  "project": "fastapi",
+  "condition": "augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:13:12.469782+00:00",
+  "pr_number": 8,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/8",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "fastapi/exception_handlers.py",
+    "fastapi/exceptions.py",
+    "fastapi/openapi/utils.py",
+    "tests/test_validation_error_suggestions.py"
+  ],
+  "diff_lines": 817,
+  "scores": {
+    "completeness": 4,
+    "correctness": 3,
+    "style": 3,
+    "quality": 4
+  },
+  "composite_score": 3.5,
+  "rationale": {
+    "completeness": "The PR implements field path context (via existing loc), similar field name suggestions, and example corrections. However, there's a gap: the expected_fields parameter is added to exception classes but I don't see where it's actually populated from the routing layer - it's only passed to errors_with_suggestions() which then falls back to inferring from input data.",
+    "correctness": "The implementation has edge case issues: the module-level cache grows unbounded with no eviction, the string-matching type inference can produce incorrect examples for complex types like Optional[int], and there's a fragile special case in _extract_fields_from_input for 'body' handling that may fail in edge cases.",
+    "style": "The code follows most existing conventions and uses helper functions appropriately. However, the three new documentation files (constitution.md, PRD.md, ROADMAP.md) seem unrelated to the feature and look like they were accidentally included. The test file uses intentional typos like 'usernmae' which is confusing.",
+    "quality": "The code is generally well-structured with good separation of concerns (helpers extracted, clear naming). The main concern is the global cache without bounds, but overall it's readable and maintainable."
+  }
+}

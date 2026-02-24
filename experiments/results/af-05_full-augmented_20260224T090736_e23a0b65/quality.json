@@ -1,0 +1,30 @@
+{
+  "run_id": "af-05_full-augmented_20260224T090736_e23a0b65",
+  "feature_id": "af-05",
+  "project": "airflow",
+  "condition": "full-augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:30:08.001868+00:00",
+  "pr_number": 18,
+  "pr_repo": "sbhavani/airflow",
+  "pr_url": "https://github.com/sbhavani/airflow/pull/18",
+  "changed_files": [
+    "airflow-core/src/airflow/config_templates/config.yml",
+    "airflow-core/src/airflow/dag_processing/memory_profiler.py",
+    "airflow-core/src/airflow/dag_processing/processor.py"
+  ],
+  "diff_lines": 374,
+  "scores": {
+    "completeness": 3,
+    "correctness": 3,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.25,
+  "rationale": {
+    "completeness": "Implements core memory profiling with configurable thresholds and warnings, but misses runtime reconfiguration support and has unbounded growth in global state structures (_warning_last_emitted dict grows indefinitely).",
+    "correctness": "Has several bugs: should_emit_warning() incorrectly updates _warning_last_emitted even when returning False, global state is not thread-safe for parallel DAG processing, and config caching never invalidates on runtime config changes.",
+    "style": "Mostly follows Airflow conventions with proper licensing, structlog usage, and config structure, but imports platform inside a function rather than at module level.",
+    "quality": "Readable code with good dataclass abstractions, but relies heavily on module-level global mutable state which harms testability and thread-safety; the profiling and warning logic could be better separated."
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "run_id": "af-01_full-augmented_20260224T022448_cbb076c1",
+  "feature_id": "af-01",
+  "project": "airflow",
+  "condition": "full-augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:24:12.661292+00:00",
+  "scores": null,
+  "error": "no_pr_found"
+}

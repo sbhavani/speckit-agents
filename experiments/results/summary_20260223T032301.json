@@ -1,0 +1,163 @@
+[
+  {
+    "run_id": "dex-02_full-augmented_20260223T003246_e1d361ab",
+    "feature_id": "dex-02",
+    "project": "dexter",
+    "category": "new_module",
+    "expected_complexity": "medium",
+    "description": "Implement session persistence: save conversation history to disk and allow resuming previous sessions with --session <id> flag.",
+    "condition": "full-augmented",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Implement session persistence: save conversation history to disk and allow resuming previous sessions with --session <id> flag.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1327.1,
+    "timestamp": "2026-02-23T00:54:53.647105+00:00"
+  },
+  {
+    "run_id": "dex-03_full_20260223T005458_f38024b1",
+    "feature_id": "dex-03",
+    "project": "dexter",
+    "category": "api_endpoint",
+    "expected_complexity": "medium",
+    "description": "Add Telegram bot integration: accept messages via Telegram webhooks, process them through the agent, and respond in the same chat.",
+    "condition": "full",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Add Telegram bot integration: accept messages via Telegram webhooks, process them through the agent, and respond in the same chat.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--no-tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1496.57,
+    "timestamp": "2026-02-23T01:19:55.254029+00:00"
+  },
+  {
+    "run_id": "dex-03_full-augmented_20260223T012000_ea5db716",
+    "feature_id": "dex-03",
+    "project": "dexter",
+    "category": "api_endpoint",
+    "expected_complexity": "medium",
+    "description": "Add Telegram bot integration: accept messages via Telegram webhooks, process them through the agent, and respond in the same chat.",
+    "condition": "full-augmented",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Add Telegram bot integration: accept messages via Telegram webhooks, process them through the agent, and respond in the same chat.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1451.71,
+    "timestamp": "2026-02-23T01:44:11.979577+00:00"
+  },
+  {
+    "run_id": "dex-04_full_20260223T014416_1fe2e9d8",
+    "feature_id": "dex-04",
+    "project": "dexter",
+    "category": "new_module",
+    "expected_complexity": "high",
+    "description": "Implement streaming response mode: stream agent thinking and tool results token-by-token to the terminal using ANSI escape codes.",
+    "condition": "full",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Implement streaming response mode: stream agent thinking and tool results token-by-token to the terminal using ANSI escape codes.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--no-tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1214.76,
+    "timestamp": "2026-02-23T02:04:31.757564+00:00"
+  },
+  {
+    "run_id": "dex-04_full-augmented_20260223T020436_080e895e",
+    "feature_id": "dex-04",
+    "project": "dexter",
+    "category": "new_module",
+    "expected_complexity": "high",
+    "description": "Implement streaming response mode: stream agent thinking and tool results token-by-token to the terminal using ANSI escape codes.",
+    "condition": "full-augmented",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Implement streaming response mode: stream agent thinking and tool results token-by-token to the terminal using ANSI escape codes.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1734.28,
+    "timestamp": "2026-02-23T02:33:31.092949+00:00"
+  },
+  {
+    "run_id": "dex-05_full_20260223T023336_60c0ca43",
+    "feature_id": "dex-05",
+    "project": "dexter",
+    "category": "refactor",
+    "expected_complexity": "high",
+    "description": "Add portfolio analysis capability: accept multiple stock tickers and generate comparative analysis including relative performance, risk metrics, and correlation coefficients.",
+    "condition": "full",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Add portfolio analysis capability: accept multiple stock tickers and generate comparative analysis including relative performance, risk metrics, and correlation coefficients.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--no-tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1209.75,
+    "timestamp": "2026-02-23T02:53:45.893037+00:00"
+  },
+  {
+    "run_id": "dex-05_full-augmented_20260223T025350_e1fbb2f6",
+    "feature_id": "dex-05",
+    "project": "dexter",
+    "category": "refactor",
+    "expected_complexity": "high",
+    "description": "Add portfolio analysis capability: accept multiple stock tickers and generate comparative analysis including relative performance, risk metrics, and correlation coefficients.",
+    "condition": "full-augmented",
+    "command": [
+      "/Users/sb/code/speckit-agents/.venv/bin/python3",
+      "orchestrator.py",
+      "--dry-run",
+      "--feature",
+      "Add portfolio analysis capability: accept multiple stock tickers and generate comparative analysis including relative performance, risk metrics, and correlation coefficients.",
+      "--project",
+      "dexter",
+      "--approve",
+      "--tools"
+    ],
+    "exit_code": 0,
+    "duration_s": 1750.47,
+    "timestamp": "2026-02-23T03:23:01.419052+00:00"
+  }
+]

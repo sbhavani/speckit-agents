@@ -1,0 +1,30 @@
+{
+  "run_id": "af-04_baseline_20260224T062951_2670aba9",
+  "feature_id": "af-04",
+  "project": "airflow",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:28:01.426816+00:00",
+  "pr_number": 11,
+  "pr_repo": "sbhavani/airflow",
+  "pr_url": "https://github.com/sbhavani/airflow/pull/11",
+  "changed_files": [
+    "task-sdk/src/airflow/sdk/bases/hook.py",
+    "task-sdk/src/airflow/sdk/bases/operator.py",
+    "task-sdk/src/airflow/sdk/bases/sensor.py"
+  ],
+  "diff_lines": 196,
+  "scores": {
+    "completeness": 3,
+    "correctness": 4,
+    "style": 4,
+    "quality": 4
+  },
+  "composite_score": 3.75,
+  "rationale": {
+    "completeness": "Adds type annotations to BaseOperator, Sensor, and Hook base classes as requested, but some methods like get_conn still return Any and Context type is used without visible import in operator.py.",
+    "correctness": "Type annotations are technically sound - Mapping[str, Any] is more flexible than dict, frozenset return is correct, and __slots__ addition is appropriate. However, the hash_components annotation list[type | Any] is unusual.",
+    "style": "Follows Python 3.10+ union syntax conventions and existing code style. Docstrings added to some methods are appropriate but inconsistently applied across all modified methods.",
+    "quality": "Code is clean and well-structured with good improvements like __slots__ and __repr__ on PokeReturnValue. Minor quality gaps exist but overall maintainable."
+  }
+}

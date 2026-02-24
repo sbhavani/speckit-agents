@@ -1,0 +1,31 @@
+{
+  "run_id": "fapi-04_full_20260223T234113_4226fd99",
+  "feature_id": "fapi-04",
+  "project": "fastapi",
+  "condition": "full",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:18:48.167555+00:00",
+  "pr_number": 17,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/17",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "fastapi/_compat/v2.py"
+  ],
+  "diff_lines": 414,
+  "scores": {
+    "completeness": 2,
+    "correctness": 3,
+    "style": 3,
+    "quality": 3
+  },
+  "composite_score": 2.75,
+  "rationale": {
+    "completeness": "Implements custom schema examples and deprecated flag propagation, but explicitly misses discriminator mappings for polymorphic models which was part of the feature description. Additionally, three unrelated files (constitution.md, PRD.md, ROADMAP.md) were added as noise.",
+    "correctness": "The examples conversion logic and deprecation handling work for the happy path, but uses .pop() which mutates input dicts potentially causing issues elsewhere, and has convoluted branching logic that could lead to edge case bugs.",
+    "style": "Follows existing code patterns in the file, but contains significant code duplication where the same example conversion logic appears in multiple places with slight variations.",
+    "quality": "Readable but would benefit from extracting the duplicated conversion logic into a reusable helper function. The three unrelated documentation files dilute the PR's focus."
+  }
+}

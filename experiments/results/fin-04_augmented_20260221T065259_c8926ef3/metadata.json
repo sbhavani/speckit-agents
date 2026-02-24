@@ -1,0 +1,23 @@
+{
+  "run_id": "fin-04_augmented_20260221T065259_c8926ef3",
+  "feature_id": "fin-04",
+  "project": "finance-agent",
+  "category": "new_module",
+  "expected_complexity": "high",
+  "description": "Add multi-model batch evaluation capability: accept a --models flag with comma-separated model names, run evaluation for each model on the same dataset, output combined results with side-by-side comparison table showing accuracy, cost, latency per model.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add multi-model batch evaluation capability: accept a --models flag with comma-separated model names, run evaluation for each model on the same dataset, output combined results with side-by-side comparison table showing accuracy, cost, latency per model.",
+    "--project",
+    "finance-agent",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 761.05,
+  "timestamp": "2026-02-21T07:05:40.727474+00:00"
+}

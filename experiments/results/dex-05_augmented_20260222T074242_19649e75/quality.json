@@ -1,0 +1,18 @@
+{
+  "run_id": "dex-05_augmented_20260222T074242_19649e75",
+  "feature_id": "dex-05",
+  "project": "dexter",
+  "condition": "augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:50:10.500144+00:00",
+  "scores": null,
+  "error": "no_pr_found",
+  "test_results": {
+    "passed": 23,
+    "failed": 0,
+    "total": 23,
+    "percentage": 100.0,
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [68.00ms]\n",
+    "category": "none"
+  }
+}

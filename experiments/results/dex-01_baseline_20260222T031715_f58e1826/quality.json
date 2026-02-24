@@ -1,0 +1,37 @@
+{
+  "run_id": "dex-01_baseline_20260222T031715_f58e1826",
+  "feature_id": "dex-01",
+  "project": "dexter",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:41:21.275255+00:00",
+  "pr_number": 1,
+  "pr_repo": "sbhavani/dexter",
+  "pr_url": "https://github.com/sbhavani/dexter/pull/1",
+  "changed_files": [
+    "src/cli.ts",
+    "src/index.tsx"
+  ],
+  "diff_lines": 154,
+  "scores": {
+    "completeness": 3,
+    "correctness": 3,
+    "style": 3,
+    "quality": 3
+  },
+  "composite_score": 3.0,
+  "rationale": {
+    "completeness": "Core --json flag functionality is implemented with argument parsing and JSON output, but the toolsUsed array is declared but never populated - there's a comment about needing to patch the agent runner but this is incomplete.",
+    "correctness": "The main happy path works: flag parsing, model initialization, query execution, and JSON output. However, the argument parsing logic is convoluted and edge cases like `dexter-ts \"query\" --json` may not work correctly.",
+    "style": "Follows TypeScript conventions with camelCase and clear naming, but the manual argument parsing using array index manipulation is unidiomatic compared to using a proper CLI parsing library.",
+    "quality": "Readable code with good error handling structure, but the unimplemented toolsUsed feature (commented as needing patching) and the complex argument parsing logic reduce overall quality."
+  },
+  "test_results": {
+    "passed": 23,
+    "failed": 0,
+    "total": 23,
+    "percentage": 100.0,
+    "output": "bun test v1.3.9 (cf6cdbbb)\n\n 23 pass\n 0 fail\n 46 expect() calls\nRan 23 tests across 6 files. [68.00ms]\n",
+    "category": "none"
+  }
+}

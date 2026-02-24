@@ -1,0 +1,33 @@
+{
+  "run_id": "fin-06_baseline_20260221T072556_06f7d1fb",
+  "feature_id": "fin-06",
+  "project": "finance-agent",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-22T07:41:16.217096+00:00",
+  "pr_number": 20,
+  "pr_repo": "sbhavani/finance-agent",
+  "pr_url": "https://github.com/sbhavani/finance-agent/pull/20",
+  "changed_files": [
+    "docker-compose.yml",
+    "finance_agent/templates/index.html",
+    "finance_agent/test_web_ui.py",
+    "finance_agent/web_ui.py",
+    "pyproject.toml",
+    "requirements.txt"
+  ],
+  "diff_lines": 1192,
+  "scores": {
+    "completeness": 4,
+    "correctness": 3,
+    "style": 3,
+    "quality": 3
+  },
+  "composite_score": 3.25,
+  "rationale": {
+    "completeness": "Implements all three required features (accuracy rankings table, filter by question type/model/date, basic search) plus a bonus detail endpoint and Docker integration, but the rankings endpoint doesn't apply the same filters as the results endpoint, leaving filter functionality incomplete on that tab.",
+    "correctness": "The happy path works, but there are notable issues: `results_dir` is accepted as a user-controlled query param in all routes (path traversal risk), `extract_model_name` only checks for 'gpt' in filenames so other models fall through to 'Unknown Model', the `model` field is mutated directly on the shared result dict in `api_results` which can cause cross-request contamination if results were cached, and the `DEFAULT_RESULTS_DIR` global mutation in `main()` is not thread-safe.",
+    "style": "Mostly follows Python conventions and the project uses conventional commits, but `requirements.txt` mixes runtime (flask) and dev (pytest) dependencies in the same file rather than separating them, and `sys.path.insert` in the test file is a code smell when the package should be installed via uv.",
+    "quality": "The separation into load/extract/filter/render functions is reasonable, and the frontend JS is clean with debouncing and proper async handling, but the sample data fallback is embedded as a large hardcoded list making the module harder to maintain, and the rankings endpoint duplicates nearly all filtering logic from api_results rather than sharing a common filter function."
+  }
+}

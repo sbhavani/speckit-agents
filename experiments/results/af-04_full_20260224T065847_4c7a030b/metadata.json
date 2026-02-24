@@ -1,0 +1,23 @@
+{
+  "run_id": "af-04_full_20260224T065847_4c7a030b",
+  "feature_id": "af-04",
+  "project": "airflow",
+  "category": "config_change",
+  "expected_complexity": "low",
+  "description": "Enhance type checking support: add comprehensive type annotations to core operator classes with pyright/mypy compatibility, including BaseOperator, Sensor, and Hook base classes.",
+  "condition": "full",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Enhance type checking support: add comprehensive type annotations to core operator classes with pyright/mypy compatibility, including BaseOperator, Sensor, and Hook base classes.",
+    "--project",
+    "airflow",
+    "--approve",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 1338.51,
+  "timestamp": "2026-02-24T07:21:06.393653+00:00"
+}

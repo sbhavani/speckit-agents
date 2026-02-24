@@ -1,0 +1,34 @@
+{
+  "run_id": "fin-08_augmented_20260221T083355_f3726fc5",
+  "feature_id": "fin-08",
+  "project": "finance-agent",
+  "condition": "augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-22T07:41:55.884272+00:00",
+  "pr_number": 25,
+  "pr_repo": "sbhavani/finance-agent",
+  "pr_url": "https://github.com/sbhavani/finance-agent/pull/25",
+  "changed_files": [
+    "finance_agent/cache.py",
+    "finance_agent/cache_cli.py",
+    "finance_agent/data/custom_sample.json",
+    "finance_agent/data/custom_with_metadata.json",
+    "finance_agent/evaluate.py",
+    "finance_agent/run_agent.py",
+    "finance_agent/tools.py"
+  ],
+  "diff_lines": 692,
+  "scores": {
+    "completeness": 5,
+    "correctness": 3,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.75,
+  "rationale": {
+    "completeness": "Fully addresses both requirements: disk-based caching for SEC filings and web content with TTL support, plus JSON custom dataset support in evaluate.py and run_agent.py.",
+    "correctness": "The global singleton pattern for caches is not thread-safe, and get_cache() ignores arguments if already initialized (subsequent calls with different cache_dir/ttl_days silently return the stale instance). In run_agent.py the JSON fallback reads from an already-consumed file handle (json.load consumed it, then falls back to iterating lines which yields nothing). The EDGAR cache returns cached_results[:int(top_n_results)] but caches the full filings list, so different top_n values hit the same cache key and may return wrong counts.",
+    "style": "Follows existing patterns well: module-level logger, lazy init helpers, inline cache checks before API calls. Minor inconsistency: get_cache() in cache.py vs separate get_*_cache() helpers in tools.py that bypass the global registry.",
+    "quality": "Specialized subclasses (WebSearchCache, HtmlPageCache, EdgarSearchCache) are a reasonable abstraction but add little over direct ContentCache usage. The set() signature (value first, then *args/**kwargs) is unintuitive and error-prone. clear_expired() double-counts memory entries that also have disk files as two separate removals."
+  }
+}

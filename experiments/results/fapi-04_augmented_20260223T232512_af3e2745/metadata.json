@@ -1,0 +1,23 @@
+{
+  "run_id": "fapi-04_augmented_20260223T232512_af3e2745",
+  "feature_id": "fapi-04",
+  "project": "fastapi",
+  "category": "api_endpoint",
+  "expected_complexity": "low",
+  "description": "Add enhanced OpenAPI schema options: support for custom schema examples, discriminator mappings for polymorphic models, and deprecated flag propagation.",
+  "condition": "augmented",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Add enhanced OpenAPI schema options: support for custom schema examples, discriminator mappings for polymorphic models, and deprecated flag propagation.",
+    "--project",
+    "fastapi",
+    "--simple",
+    "--tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 956.42,
+  "timestamp": "2026-02-23T23:41:08.577569+00:00"
+}

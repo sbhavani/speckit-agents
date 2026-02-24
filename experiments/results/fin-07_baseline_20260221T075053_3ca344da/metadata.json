@@ -1,0 +1,23 @@
+{
+  "run_id": "fin-07_baseline_20260221T075053_3ca344da",
+  "feature_id": "fin-07",
+  "project": "finance-agent",
+  "category": "refactor",
+  "expected_complexity": "medium",
+  "description": "Add new financial tools: PDF Parser for 10-K/10-Q PDFs, Financial Calculator for CAGR/ROE/ROIC/WACC calculations, and FRED API integration for macroeconomic data.",
+  "condition": "baseline",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--simple",
+    "--dry-run",
+    "--feature",
+    "Add new financial tools: PDF Parser for 10-K/10-Q PDFs, Financial Calculator for CAGR/ROE/ROIC/WACC calculations, and FRED API integration for macroeconomic data.",
+    "--project",
+    "finance-agent",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 1159.88,
+  "timestamp": "2026-02-21T08:10:13.430485+00:00"
+}

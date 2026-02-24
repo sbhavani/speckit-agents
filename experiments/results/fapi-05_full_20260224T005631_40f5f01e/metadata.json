@@ -1,0 +1,23 @@
+{
+  "run_id": "fapi-05_full_20260224T005631_40f5f01e",
+  "feature_id": "fapi-05",
+  "project": "fastapi",
+  "category": "new_module",
+  "expected_complexity": "high",
+  "description": "Implement typed middleware: create MiddlewareProtocol with type-safe request/response handling, type hints for middleware dependencies, and compile-time middleware ordering validation.",
+  "condition": "full",
+  "command": [
+    "/Users/sb/code/speckit-agents/.venv/bin/python3",
+    "orchestrator.py",
+    "--dry-run",
+    "--feature",
+    "Implement typed middleware: create MiddlewareProtocol with type-safe request/response handling, type hints for middleware dependencies, and compile-time middleware ordering validation.",
+    "--project",
+    "fastapi",
+    "--approve",
+    "--no-tools"
+  ],
+  "exit_code": 0,
+  "duration_s": 1632.57,
+  "timestamp": "2026-02-24T01:23:44.377583+00:00"
+}

@@ -71,66 +71,14 @@ FAILURE_CATEGORIES = [
 ]
 
 
-def find_related_tests(changed_files: list[str], project: str, project_path: str | Path) -> list[str]:
-    """Find test files related to the changed files.
-
-    Returns list of test file paths or patterns to run.
-    """
-    project_path = Path(project_path)
-    test_files = []
-
-    for f in changed_files:
-        f = f.strip()
-        if not f:
-            continue
-
-        # Check if it's already a test file
-        if f.endswith(".test.ts") or f.endswith(".test.tsx") or f.endswith(".test.js"):
-            test_files.append(f)
-            continue
-
-        # For source files, try to find corresponding test
-        if project == "dexter":
-            # TypeScript: src/cli/foo.ts -> src/cli/foo.test.ts
-            # Also check for .test.tsx for .tsx files
-            if f.endswith(".tsx"):
-                test_candidate = f.replace(".tsx", ".test.tsx")
-            else:
-                test_candidate = f.replace(".ts", ".test.ts")
-            test_path = project_path / test_candidate
-            if test_path.exists():
-                test_files.append(test_candidate)
-
-            # Also check for test files with same base name in same dir
-            base = Path(f).stem
-            parent = Path(f).parent
-            for ext in [".test.ts", ".test.tsx"]:
-                alt_test = parent / f"{base}{ext}"
-                if alt_test.exists() and str(alt_test) not in test_files:
-                    test_files.append(str(alt_test))
-
-        elif project in ("fastapi", "airflow", "finance-agent"):
-            # Python: fastapi/foo.py -> tests/test_foo.py
-            base = Path(f).stem
-            test_patterns = [
-                f"tests/test_{base}.py",
-                f"test_{base}.py",
-            ]
-            for pattern in test_patterns:
-                test_path = project_path / pattern
-                if test_path.exists():
-                    test_files.append(pattern)
-                    break
-
-    return list(set(test_files))  # Deduplicate
+# Removed find_related_tests - we always run ALL tests to verify no regressions
 
 
-def run_project_tests(project: str, changed_files: list[str] | None = None, timeout: int = 120) -> dict:
-    """Run project tests related to changed files and return results.
+def run_project_tests(project: str, timeout: int = 120) -> dict:
+    """Run ALL project tests to verify no regressions.
 
     Args:
         project: Project name (dexter, fastapi, airflow, etc.)
-        changed_files: List of files changed in the PR. If provided, runs only related tests.
         timeout: Test execution timeout in seconds.
 
     Returns:
@@ -155,31 +103,8 @@ def run_project_tests(project: str, changed_files: list[str] | None = None, time
             "category": "other", "error": "path_not_found"
         }
 
-    # If no changed files, run all tests
-    if not changed_files:
-        test_args = base_test_cmd
-        test_description = "all tests"
-    else:
-        # Find related test files
-        related_tests = find_related_tests(changed_files, project, project_path)
-
-        if not related_tests:
-            return {
-                "passed": 0, "failed": 0, "total": 0,
-                "percentage": None,
-                "output": "No related test files found for changed files",
-                "category": "no_tests",
-                "changed_files": changed_files[:5],  # Sample
-            }
-
-        # Build test command with specific files
-        # Add ./ prefix for bun test
-        if project == "dexter":
-            test_args = base_test_cmd + [f"./{t}" for t in related_tests]
-        else:
-            test_args = base_test_cmd + related_tests
-
-        test_description = f"related tests: {', '.join(related_tests[:3])}"
+    # Always run ALL tests to verify no regressions
+    test_args = base_test_cmd
 
     try:
         result = subprocess.run(
@@ -851,7 +776,7 @@ def add_test_results_to_existing(project: str | None = None, timeout: int = 120)
 
         print(f"  [TEST] {run_dir.name} ({project_name})...", end=" ", flush=True)
 
-        test_result = run_project_tests(project_name, changed_files=changed_files, timeout=timeout)
+        test_result = run_project_tests(project_name, timeout=timeout)
 
         # Add test results to existing quality.json
         quality["test_results"] = test_result
@@ -973,7 +898,7 @@ def main() -> None:
             project = meta.get("project", "")
             changed_files = result.get("changed_files", [])
             print(f"\n  Running tests for {project}...", end=" ", flush=True)
-            test_result = run_project_tests(project, changed_files=changed_files, timeout=args.test_timeout)
+            test_result = run_project_tests(project, timeout=args.test_timeout)
             result["test_results"] = test_result
             print(f"{test_result.get('percentage', 'N/A')}% passed ({test_result.get('category', 'unknown')})")
 

@@ -1,0 +1,30 @@
+{
+  "run_id": "fapi-04_augmented_20260223T232512_af3e2745",
+  "feature_id": "fapi-04",
+  "project": "fastapi",
+  "condition": "augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:17:32.282492+00:00",
+  "pr_number": 16,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/16",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md"
+  ],
+  "diff_lines": 321,
+  "scores": {
+    "completeness": 1,
+    "correctness": 3,
+    "style": 4,
+    "quality": 4
+  },
+  "composite_score": 3.0,
+  "rationale": {
+    "completeness": "The PR completely ignores the feature requirements. It adds Constitution, PRD, and Roadmap documentation but provides no implementation for custom schema examples, discriminator mappings, or deprecated flag propagation - the three features explicitly requested.",
+    "correctness": "The documentation files are internally consistent and well-structured, but there is no actual code implementation to evaluate for correctness against the feature requirements.",
+    "style": "The documentation follows standard formats (user stories with acceptance criteria, structured roadmap, markdown conventions). The Constitution follows typical framework governance documents.",
+    "quality": "The documentation quality is high - clear sections, logical organization, proper markdown formatting, and coherent structure. However, it's documentation for a different purpose than the stated feature."
+  }
+}

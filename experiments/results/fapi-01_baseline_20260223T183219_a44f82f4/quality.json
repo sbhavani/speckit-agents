@@ -1,0 +1,32 @@
+{
+  "run_id": "fapi-01_baseline_20260223T183219_a44f82f4",
+  "feature_id": "fapi-01",
+  "project": "fastapi",
+  "condition": "baseline",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:10:43.545826+00:00",
+  "pr_number": 3,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/3",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "fastapi/responses.py",
+    "tests/test_sse_response.py"
+  ],
+  "diff_lines": 734,
+  "scores": {
+    "completeness": 4,
+    "correctness": 3,
+    "style": 4,
+    "quality": 3
+  },
+  "composite_score": 3.5,
+  "rationale": {
+    "completeness": "Implements core SSE requirements: ServerSentEvent class with all fields, SSEResponse with automatic formatting, retry config, and disconnect handling. However, the ping/keepalive feature has unreachable code and disconnect callback requires manual invocation.",
+    "correctness": "ServerSentEvent encoding is correct, but there are bugs: the ping code at lines 228-230 is unreachable (after raise TypeError), and the disconnect_callback is never automatically invoked during streaming - users must manually call listen_for_disconnect().",
+    "style": "Follows Python/FastAPI conventions with type hints, docstrings, and proper imports. Minor inconsistency: ping_interval is documented as alias but handled with slightly different logic.",
+    "quality": "Code is readable with good test coverage (20 tests). Issues: unreachable ping code, awkward disconnect callback design requiring manual intervention, and the TypeError message has a typo ('got {type(event)}' should be {type(event).__name__})."
+  }
+}

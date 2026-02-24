@@ -1,0 +1,33 @@
+{
+  "run_id": "fapi-05_augmented_20260224T004613_69eaf33b",
+  "feature_id": "fapi-05",
+  "project": "fastapi",
+  "condition": "augmented",
+  "evaluator_model": "sonnet",
+  "evaluated_at": "2026-02-24T17:20:01.438026+00:00",
+  "pr_number": 19,
+  "pr_repo": "sbhavani/fastapi",
+  "pr_url": "https://github.com/sbhavani/fastapi/pull/19",
+  "changed_files": [
+    ".specify/memory/constitution.md",
+    "docs/PRD.md",
+    "docs/ROADMAP.md",
+    "fastapi/middleware/__init__.py",
+    "fastapi/middleware/_typed.py",
+    "tests/test_typed_middleware.py"
+  ],
+  "diff_lines": 779,
+  "scores": {
+    "completeness": 3,
+    "correctness": 3,
+    "style": 2,
+    "quality": 3
+  },
+  "composite_score": 2.75,
+  "rationale": {
+    "completeness": "Implements MiddlewareProtocol, MiddlewareDependencies, and MiddlewareStack which cover the core requirements, but 'compile-time ordering validation' is misleading since it's runtime sorting, not true compile-time validation. The constitution/PRD/ROADMAP files appear unrelated to this codebase.",
+    "correctness": "The typed middleware classes are implemented correctly, but there are bugs: the test has a malformed lambda type annotation in TestFunctionMiddlewareProtocol, and FunctionMiddlewareProtocol uses an invalid signature with bare ellipsis. The MiddlewareStack.build() logic appears correct.",
+    "style": "The _typed.py follows Python typing conventions with proper protocols, but the PR incorrectly adds unrelated FastAPI documentation files (constitution.md, PRD.md, ROADMAP.md) that don't match this project's structure, indicating scope creep.",
+    "quality": "Code structure is reasonable with protocols and builder pattern, but quality issues exist: the test has runtime bugs, the 'compile-time' claim is inaccurate, and documentation files are misplace."
+  }
+}
