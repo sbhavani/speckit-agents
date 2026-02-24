@@ -392,13 +392,14 @@ We clarify the roles of different models in our pipeline:
     \hline
     \textbf{Component} & \textbf{Model} & \textbf{Version} & \textbf{Role} \\
     \hline
-    Agent Executor & Claude Code CLI & 2.1.50 & Executes spec-driven workflow (specify, plan, tasks, implement) \\
+    Agent Executor & MiniMax-M2.5 & - & Generates plans and code edits via Claude Code CLI \\
+    Agent Executor & Claude Code CLI & 2.1.50 & Execution wrapper (invoked via \texttt{claude -p}) \\
     Judge Evaluator & Claude Opus 4.6 & 20250501 & LLM-as-Judge for quality scoring \\
     \hline
   \end{tabular}
 \end{table}
 
-\textbf{Agent execution}: The \texttt{claude -p} command invokes Claude Code CLI (v2.1.50), which provides the underlying LLM for generating plans and code edits. Claude Code uses the default model configured in the user's Claude settings. In our experiments, this was configured to use Anthropic's Claude Sonnet (or equivalent default).
+\textbf{Agent execution}: The \texttt{claude -p} command invokes Claude Code CLI (v2.1.50) as the execution wrapper. Through environment variables (\texttt{ANTHROPIC\_API\_KEY}, \texttt{ANTHROPIC\_BASE\_URL}), Claude Code is configured to route API calls to MiniMax's Anthropic-compatible endpoint, using \textbf{MiniMax-M2.5} as the underlying LLM for generating specifications, plans, and code edits.
 
 \textbf{Quality evaluation}: All quality assessments use Claude Opus 4.6 as the judge model, with explicit model ID \texttt{claude-opus-4-6-20250501} to ensure reproducibility.
 
@@ -792,7 +793,7 @@ The tool-augmented guardrails add latency to the workflow. Table 6 shows the eff
 
 The augmented condition adds minimal overhead (-1.3\%) because it only adds pre/post hooks to a simple workflow. The full workflow adds the Specify, Plan, and Tasks phases, increasing time by 79\%. The Full-Augmented configuration adds both the full workflow and guardrails, resulting in 2.8x relative cost.
 
-Assuming Claude Sonnet pricing (~\$3/1M input, \$15/1M output tokens) and roughly 1,000 tokens/minute of active generation, the per-run cost is approximately:
+Assuming MiniMax-M2.5 pricing (~\$3/1M tokens) and roughly 1,000 tokens/minute of active generation, the per-run cost is approximately:
 \begin{itemize}
   \item Baseline: ~\$0.40/run
   \item Augmented: ~\$0.40/run
@@ -808,7 +809,7 @@ The quality improvement (+0.19 composite score, p<0.05) may justify the 2.8x cos
   \item \textbf{Evaluation scope}: Our 28 features span 5 projects; larger studies would strengthen conclusions
   \item \textbf{Rate limiting}: Claude Max rate limits reduced sample size for certain conditions (noted in Tables \ref{tab:efficiency} and \ref{tab:quality})
   \item \textbf{Project selection}: All projects are Python/TypeScript; results may differ for other languages
-  \item \textbf{Model versions}: Agent LLM (Claude Code CLI default) and judge LLM (Opus 4.6) versions evolve rapidly; results may vary with newer versions
+  \item \textbf{Model versions}: Agent LLM (MiniMax-M2.5) and judge LLM (Opus 4.6) versions evolve rapidly; results may vary with newer versions
   \item \textbf{Hardware variance}: Experiments run on Apple Silicon; other hardware may yield different performance characteristics
   \item \textbf{Human-in-the-loop}: The system includes human approval gates; fully autonomous operation may produce different results
   \item \textbf{Cost analysis}: Token counts are estimated; actual costs may vary based on prompt length and model pricing
