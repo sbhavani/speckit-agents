@@ -357,7 +357,7 @@ Communication is handled via Mattermost, allowing human-in-the-loop intervention
 
 \subsection{Model Configuration}
 
-All agents are powered by \textbf{Claude Code CLI} (version used in experiments: default configuration, typically Sonnet 4). The LLM-as-Judge quality evaluation uses \textbf{Claude Sonnet 4-6} (model ID: \texttt{claude-sonnet-4-6}).
+All agents are powered by \textbf{Claude Code CLI} as the execution tool. The underlying LLM for agent reasoning is \textbf{MiniMax-M2.5}. The LLM-as-Judge quality evaluation uses \textbf{Claude Opus 4.6} (model ID: \texttt{claude-opus-4-6-20250501}).
 
 For quality evaluation, we use the following scoring dimensions on a 1-5 scale:
 \begin{itemize}
@@ -511,7 +511,7 @@ Table A (appendix) lists all 60 features with their categories (api\_endpoint, c
 Each run was evaluated on:
 \begin{itemize}
   \item \textbf{Efficiency}: Wall-clock time to complete feature delivery
-  \item \textbf{Quality}: 1-5 composite score via LLM-as-Judge with Claude Sonnet
+  \item \textbf{Quality}: 1-5 composite score via LLM-as-Judge with Claude Opus 4.6
   \item \textbf{Test Pass Rate}: Percentage of project tests passing after implementation
   \item \textbf{Failure Category}: Classified error type when failures occur
 \end{itemize}
@@ -585,7 +585,7 @@ The most consistent improvement is in code quality. The \textbf{Full-Augmented} 
 
 \subsection{Quality Results}
 
-We evaluated quality using an LLM-as-Judge approach with Claude Sonnet, scoring on four dimensions (Completeness, Correctness, Style, Quality) on a 1-5 scale.
+We evaluated quality using an LLM-as-Judge approach with Claude Opus 4.6, scoring on four dimensions (Completeness, Correctness, Style, Quality) on a 1-5 scale.
 
 \begin{table}[ht]
   \centering
@@ -732,7 +732,7 @@ The Full-Augmented configuration achieves the highest quality (3.63) but at 2.5x
   \item \textbf{Evaluation scope}: Our 60 tasks span 3 projects; larger studies would strengthen conclusions
   \item \textbf{Rate limiting}: Claude Max rate limits reduced sample size for certain conditions (noted in Tables \ref{tab:efficiency} and \ref{tab:quality})
   \item \textbf{Project selection}: All projects are Python/TypeScript; results may differ for other languages
-  \item \textbf{Model version}: Claude model versions evolve rapidly; results may vary with newer versions
+  \item \textbf{Model versions}: Agent LLM (MiniMax-M2.5) and judge LLM (Opus 4.6) versions evolve rapidly; results may vary with newer versions
   \item \textbf{Hardware variance}: Experiments run on Apple Silicon; other hardware may yield different performance characteristics
   \item \textbf{Human-in-the-loop}: The system includes human approval gates; fully autonomous operation may produce different results
 \end{itemize}
