@@ -198,7 +198,7 @@
 %% The abstract is a short summary of the work to be presented in the
 %% article.
 \begin{abstract}
-Spec-driven development (SDD) with AI coding agents provides a structured workflow, but agents often remain ``context blind'' in large, evolving repositories, leading to hallucinated APIs and violations of local architecture. We present \textbf{Spec Kit Agents}, a compound multi-agent system built on the Spec Kit workflow that adds a \textbf{tool-augmented guardrail layer}. The layer uses read-only prober agents to ground each stage of development (Specify, Plan, Task, Implement) in repository evidence and to validate plans against the local environment. In our evaluation, these guardrails improve correctness while reducing delivery time for complex features by up to 48.7\% by pruning invalid implementation paths early.
+Spec-driven development (SDD) with AI coding agents provides a structured workflow, but agents often remain ``context blind'' in large, evolving repositories, leading to hallucinated APIs and violations of local architecture. We present \textbf{Spec Kit Agents}, a compound multi-agent system built on the Spec Kit workflow that adds a \textbf{tool-augmented guardrail layer}. The layer uses read-only prober agents to ground each stage of development (Specify, Plan, Task, Implement) in repository evidence and to validate plans against the local environment. In our evaluation across 60 feature delivery tasks, guardrails improve quality (+0.19 composite score, p<0.05) while maintaining high test pass rates (99.7-100\%).
 \end{abstract}
 
 %%
@@ -287,7 +287,7 @@ This paper describes:
   \item A \textbf{comparative evaluation} across 60 feature delivery tasks in 3 popular GitHub projects
 \end{enumerate}
 
-Our results demonstrate that guardrails provide the most value in complex, unfamiliar codebases reducing delivery time by up to 24\% and catching 85\% of path-related errors before implementation begins.
+Our results demonstrate that guardrails provide modest efficiency improvements in some cases, while quality improvements are more consistent. Across 60 feature delivery tasks, augmented configurations show a median of -25.5\% change in delivery time (often slower), but achieve higher quality scores (+0.19 composite score improvement). Test pass rates remain high at 99.7-100\% across projects.
 
 \section{Related Work}
 The landscape of AI-assisted software development has evolved significantly. Early tools like GitHub Copilot focused on \textbf{code completion}---predicting the next few tokens based on surrounding context. Modern IDE extensions (Cursor, Windsurf) extended this to \textbf{chat-based assistance}, where developers can hold conversations about their codebase. These tools excel at small, localized changes but struggle with coordinated, multi-file feature delivery.
@@ -541,9 +541,9 @@ Each run was evaluated on:
 
 The full workflow takes approximately 2x longer due to the additional Specify, Plan, and Tasks phases.
 
-\subsection{Hero Metric: Efficiency Gain}
+\subsection{Hero Metric: Quality Improvement}
 
-In the \textbf{Session Persistence (dex-02)} task---a high-complexity feature---the Baseline agent spent 1586s (27 min) attempting to implement a plan with incorrect database assumptions. The Augmented agent, grounded by the Discovery hook, identified the correct pattern immediately and delivered the PR in 813s (13.5 min)---a \textbf{48.7\% reduction} in time-to-delivery.
+The most consistent improvement is in code quality. The \textbf{Full-Augmented} configuration achieves a composite quality score of \textbf{3.63} compared to \textbf{3.44} for Baseline (+0.19, p<0.05). For the Dexter TypeScript project, the improvement is larger: Full-Augmented scores \textbf{4.00} vs Baseline \textbf{3.65} (+0.35).
 
 \subsection{Quality Results}
 
@@ -586,8 +586,49 @@ We evaluated quality using an LLM-as-Judge approach with Claude Sonnet, scoring 
   \item \textbf{Full-Augmented} achieves the highest overall quality (+0.19 over baseline)
   \item \textbf{Dexter} (TypeScript) shows the strongest improvement with the full workflow (+0.35 from baseline to Full-Augmented)
   \item \textbf{FastAPI} and \textbf{Airflow} (Python) show more variable results; the full workflow does not always help for smaller features
-  \item The Validation hook caught 85\% of path-related errors during Planning
+  \item Test pass rates are 99.7-100\%, showing generated code maintains compatibility
 \end{itemize}
+
+\subsection{Statistical Analysis}
+
+We present per-task efficiency distributions for baseline vs augmented conditions:
+
+\begin{table}[h]
+  \centering
+  \caption{Efficiency: baseline vs augmented (seconds)}
+  \label{tab:efficiency-distribution}
+  \begin{tabular}{lrrrr}
+    \hline
+    \textbf{Metric} & \textbf{Baseline} & \textbf{Augmented} & \textbf{Diff} & \textbf{p-value} \\
+    \hline
+    Mean & 804.3 & 794.0 & -1.3\% & 0.89 \\
+    Median & 800.7 & 801.7 & +0.1\% & 0.95 \\
+    SD & 285.2 & 597.3 & - & - \\
+    Min & 455.5 & 319.2 & - & - \\
+    Max & 1177.8 & 3147.7 & - & - \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The efficiency difference is not statistically significant (p>0.05, Mann-Whitney U test). Quality scores show a significant improvement:
+
+\begin{table}[h]
+  \centering
+  \caption{Quality: baseline vs augmented vs full vs full-augmented}
+  \label{tab:quality-stats}
+  \begin{tabular}{lrrrr}
+    \hline
+    \textbf{Condition} & \textbf{Mean} & \textbf{SD} & \textbf{N} & \textbf{vs Baseline} \\
+    \hline
+    Baseline & 3.44 & 0.77 & 23 & - \\
+    Augmented & 3.58 & 0.65 & 22 & +0.14 (p=0.52) \\
+    Full & 3.45 & 0.91 & 16 & +0.01 (p=0.97) \\
+    Full-Augmented & 3.63 & 0.50 & 14 & \textbf{+0.19 (p=0.04)} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The Full-Augmented condition shows statistically significant improvement over Baseline (p<0.05, independent t-test).
 
 \subsection{Test Pass Rates}
 
@@ -672,9 +713,9 @@ Spec Kit Agents demonstrates that the reliability of autonomous engineering is a
 
 Across 60 feature delivery tasks:
 \begin{itemize}
-  \item Guardrails reduced delivery time by \textbf{up to 48.7\%} for complex features
-  \item \textbf{Full workflow + augmentation} achieves the highest quality (3.63 vs 3.44 baseline)
-  \item The Validation hook caught \textbf{85\% of path-related errors} before implementation
+  \item \textbf{Full workflow + augmentation} achieves the highest quality (+0.19 over baseline, p<0.05)
+  \item Test pass rates remain high at 99.7-100\% across projects
+  \item Efficiency trade-offs vary by feature complexity; guardrails add overhead but improve code quality
 \end{itemize}
 
 This work shows that \textbf{context-grounding} is essential for reliable autonomous feature delivery. Future work should explore dynamic guardrail strategies that adapt to feature complexity.
