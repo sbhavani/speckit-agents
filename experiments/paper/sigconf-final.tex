@@ -506,6 +506,8 @@ We evaluated Spec Kit Agents across 60 autonomous feature delivery tasks spannin
   \item \textbf{Dexter} (TypeScript; \texttt{bun test}): JSON output; session persistence; Telegram bot; streaming responses; portfolio analysis
 \end{itemize}
 
+Table A (appendix) lists all 60 features with their categories (api\_endpoint, config\_change, new\_module, refactor, test) and expected complexity (low/medium/high). Features were selected to span different complexity levels and implementation types.
+
 Each run was evaluated on:
 \begin{itemize}
   \item \textbf{Efficiency}: Wall-clock time to complete feature delivery
@@ -516,7 +518,7 @@ Each run was evaluated on:
 
 \subsection{Run Accounting}
 
-We evaluate 4 conditions across 3 projects. Table 2 shows the run accounting:
+We evaluate 4 conditions across 3 projects. Each project has 5 feature tasks (e.g., dex-01 through dex-05 for Dexter). Table 2 shows the run accounting:
 
 \begin{table}[ht]
   \centering
@@ -535,7 +537,27 @@ We evaluate 4 conditions across 3 projects. Table 2 shows the run accounting:
   \end{tabular}
 \end{table}
 
-We pair runs by (project, feature) across conditions for statistical comparison. Missing pairs due to failures are excluded from paired analysis.
+\textbf{Pairing methodology.} Each feature task (e.g., dex-02 for Session Persistence) is run under all 4 conditions. We pair runs by (project, feature) across conditions. For example, the Session Persistence feature in Dexter has one run each under baseline, augmented, full, and full-augmented. Missing pairs due to failures/timeouts are excluded from paired statistical comparisons.
+
+\textbf{PR complexity.} Table 3 shows PR size by condition:
+
+\begin{table}[ht]
+  \centering
+  \caption{PR complexity by condition}
+  \label{tab:pr-complexity}
+  \begin{tabular}{lrrrr}
+    \hline
+    \textbf{Condition} & \textbf{Files Changed (mean)} & \textbf{N} & \textbf{Diff Lines (mean)} & \textbf{N} \\
+    \hline
+    Baseline & 5.0 & 23 & 741 & 23 \\
+    Augmented & 5.4 & 22 & 657 & 22 \\
+    Full & 13.1 & 16 & 1,748 & 16 \\
+    Full-Augmented & 11.1 & 14 & 1,512 & 14 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Full workflow conditions (Full, Full-Augmented) produce larger PRs due to additional phases generating more artifacts.
 
 \subsection{Efficiency Results}
 
@@ -768,6 +790,39 @@ Output: A summary of discovered patterns relevant to this feature.
 
 Full prompts are available in the source code at:
 \texttt{tool\_augment.py} (lines 176-310).
+
+\section{Feature List}
+
+Table A lists all 60 features with their categories and expected complexity:
+
+\begin{table}[ht]
+  \centering
+  \caption{Features by project}
+  \label{tab:feature-list}
+  \begin{tabular}{lllp{5cm}}
+    \hline
+    \textbf{Project} & \textbf{ID} & \textbf{Category} & \textbf{Description} \\
+    \hline
+    Dexter & dex-01 & config\_change & Add --json flag for JSON output \\
+    Dexter & dex-02 & new\_module & Session persistence with --session flag \\
+    Dexter & dex-03 & api\_endpoint & Telegram bot integration \\
+    Dexter & dex-04 & api\_endpoint & Streaming responses \\
+    Dexter & dex-05 & new\_module & Portfolio analysis module \\
+    FastAPI & fapi-01 & api\_endpoint & SSE streaming support \\
+    FastAPI & fapi-02 & config\_change & Validation error improvements \\
+    FastAPI & fapi-03 & new\_module & Plugin system \\
+    FastAPI & fapi-04 & config\_change & OpenAPI schema enhancements \\
+    FastAPI & fapi-05 & refactor & Typed middleware \\
+    Airflow & af-01 & api\_endpoint & Error message improvements \\
+    Airflow & af-02 & test & DAG testing utilities \\
+    Airflow & af-03 & new\_module & Custom metrics support \\
+    Airflow & af-04 & refactor & Type annotations \\
+    Airflow & af-05 & new\_module & Memory monitoring \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Each feature was run under all 4 conditions (baseline, augmented, full, full-augmented). Category types: api\_endpoint (new REST endpoints), config\_change (configuration modifications), new\_module (new file/module creation), refactor (code restructuring), test (adding tests).
 
 \section{Experiment Configuration}
 
