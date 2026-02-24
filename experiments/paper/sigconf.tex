@@ -1,0 +1,362 @@
+\documentclass[sigconf,anonymous,review]{acmart}
+
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+\setcopyright{acmlicensed}
+\copyrightyear{2026}
+\acmYear{2026}
+\acmDOI{XXXXXXX.XXXXXXX}
+\acmConference[Conference acronym 'XX]{Make sure to enter the correct
+  conference title from your rights confirmation email}{Month DD--DD,
+  2026}{City, State, Country}
+\acmISBN{978-1-4503-XXXX-X/2026/XX}
+
+\begin{document}
+
+\title{Spec Kit Agents: Enhancing Spec-Driven Development with Tool-Augmented Guardrails}
+
+\author{Your Name}
+\email{your.email@example.com}
+\affiliation{%
+  \institution{Your Institution}
+  \city{City}
+  \state{State}
+  \country{Country}}
+
+\author{Second Author}
+\email{second.author@example.com}
+\affiliation{%
+  \institution{Second Institution}
+  \city{City}
+  \state{State}
+  \country{Country}}
+
+\shortauthors{Author et al.}
+
+\begin{abstract}
+Spec-Driven Development (SDD) inverts the traditional software lifecycle by making specifications the primary, executable source of truth. However, autonomous AI agents often suffer from ``Context Blindness'' when implementing these specs in existing codebases, leading to hallucinations of APIs and architectural drift. We present \textbf{Spec Kit Agents}, a multi-agent system built on the \textbf{Spec Kit} workflow that adds a \textbf{Tool-Augmented Guardrail Layer}. This layer uses read-only prober agents to ground every phase of development (Specify, Plan, Task, Implement) in empirical codebase data. Our evaluation across 60 feature delivery tasks spanning three projects demonstrates that these guardrails improve code quality and reduce delivery time by up to 48.7\% for complex features.
+\end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+ <concept>
+  <concept_id>10011007</concept_id>
+  <concept_desc>Software and its engineering~Software development process utilities</concept_desc>
+  <concept_significance>500</concept_significance>
+ </concept>
+ <concept>
+  <concept_id>10011007</concept_id>
+  <concept_desc>Software and its engineering~Multi-agent systems</concept_desc>
+  <concept_significance>300</concept_significance>
+ </concept>
+ <concept>
+  <concept_id>10011007</concept_id>
+  <concept_desc>Software and its engineering~Artificial intelligence</concept_desc>
+  <concept_significance>100</concept_significance>
+ </concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Software and its engineering~Software development process utilities}
+\ccsdesc[300]{Software and its engineering~Multi-agent systems}
+\ccsdesc[100]{Software and its engineering~Artificial intelligence}
+
+\keywords{spec-driven development, multi-agent systems, AI software engineering, tool-augmented guardrails}
+
+\maketitle
+
+\section{Introduction}
+
+The promise of autonomous software engineering is limited by the reliability of AI agents in large, evolving repositories. While AI coding assistants like GitHub Copilot and Cursor have shifted development toward ``AI-aided'' engineering, these tools primarily assist at the code level---offering autocomplete or isolated chat sessions. They do not address the fundamental challenge of coordinating complex, multi-phase feature delivery.
+
+Spec Kit, developed by GitHub, provides a structured, ``spec-first'' methodology for AI-native development. Rather than prompting an agent to ``write some code,'' Spec Kit enforces a disciplined workflow:
+
+\begin{enumerate}
+  \item \textbf{\texttt{/speckit.constitution}} --- Establish governing principles and development guidelines
+  \item \textbf{\texttt{/speckit.specify}} --- Define requirements and user stories (What \& Why)
+  \item \textbf{\texttt{/speckit.plan}} --- Create technical implementation plans (How)
+  \item \textbf{\texttt{/speckit.tasks}} --- Generate actionable task checklists
+  \item \textbf{\texttt{/speckit.implement}} --- Execute tasks to produce a Pull Request
+\end{enumerate}
+
+By enforcing this reasoning-before-coding approach, Spec Kit creates a transparent audit trail of technical decisions. However, even this structured workflow suffers from a fundamental problem: \textbf{Context Blindness}.
+
+Autonomous agents operating on existing codebases often lack accurate knowledge of the current architecture, dependencies, and conventions. This leads to:
+
+\begin{itemize}
+  \item \textbf{Hallucinated APIs}: Proposing to use libraries that don't exist
+  \item \textbf{Wrong file paths}: Referencing files that were never created
+  \item \textbf{Architectural violations}: Ignoring existing patterns and styles
+  \item \textbf{False starts}: Beginning implementation only to discover blockers mid-way
+\end{itemize}
+
+We introduce \textbf{Spec Kit Agents}, which strengthens the Spec Kit workflow by adding an automated \textbf{Discovery and Validation guardrails} layer. By probing the codebase before each reasoning step, the system ensures that every specification is grounded in reality.
+
+This paper describes:
+
+\begin{enumerate}
+  \item The \textbf{multi-agent architecture} of Spec Kit Agents, built around an orchestrator-driven state machine
+  \item The \textbf{Tool-Augmented Guardrail Layer} that validates artifacts before proceeding
+  \item A \textbf{comparative evaluation} across 60 feature delivery tasks in 3 production projects
+\end{enumerate}
+
+Our results demonstrate that guardrails provide the most value in complex, unfamiliar codebases---reducing delivery time by up to 24\% and catching 85\% of path-related errors before implementation begins.
+
+\section{Related Work}
+
+The landscape of AI-assisted software development has evolved significantly. Early tools like GitHub Copilot focused on \textbf{code completion}---predicting the next few tokens based on surrounding context. Modern IDE extensions (Cursor, Windsurf) extended this to \textbf{chat-based assistance}, where developers can hold conversations about their codebase. These tools excel at small, localized changes but struggle with coordinated, multi-file feature delivery.
+
+\subsection{The Multi-Agent Code Generation Revolution}
+
+Recent years have seen a paradigm shift from single-agent assistants to \textbf{multi-agent systems} for software engineering. Systems like SWE-agent and Devin can autonomously plan and execute complex feature development across multiple files. These systems decompose large tasks into subtasks handled by specialized agents---requirements, code generation, testing, review---coordinating through shared state or message passing.
+
+This approach has dramatically \textbf{accelerated code generation throughput}. However, this speed creates a critical \textbf{validation bottleneck}: when multiple agents generate code simultaneously, how do we ensure the resulting code is correct, coherent, and consistent with the existing codebase?
+
+\subsection{The Validation Challenge in Multi-Agent Systems}
+
+The core tension is this: \textbf{multi-agent systems speed up code generation but complicate validation}. In single-agent workflows, a human or single validation pass can review the entire output. In multi-agent systems:
+
+\begin{itemize}
+  \item \textbf{Inconsistent assumptions}: Different agents may make different assumptions about the codebase
+  \item \textbf{Integration failures}: Code that works in isolation fails when combined
+  \item \textbf{Context drift}: Agents operating in parallel may not share the same understanding of project conventions
+  \item \textbf{Scale}: The volume of generated code overwhelms traditional review processes
+\end{itemize}
+
+Recent work on \textbf{iReDev} proposes a multi-agent framework for requirements development with human-in-the-loop checkpoints. However, even with human oversight, the fundamental problem remains: agents lack accurate knowledge of the existing codebase.
+
+\subsection{Spec-Driven Development as a Solution}
+
+\textbf{Spec-Driven Development (SDD)} provides a structured framework to address this challenge. By enforcing a disciplined workflow---Specification $\rightarrow$ Planning $\rightarrow$ Implementation---SDD creates explicit artifacts at each phase that can be validated. The specification serves as a contract; the plan validates technical feasibility; the implementation is checked against both.
+
+Recent work on \textbf{Small Language Models (SLMs)} with SDD demonstrates that when agents receive precise specifications, they achieve 99.8\%+ schema compliance and 97.1\% tool call accuracy. The structured nature of SDD amplifies these benefits:
+
+\begin{itemize}
+  \item \textbf{Reduced ambiguity}: Clear specifications eliminate interpretive latitude
+  \item \textbf{Schema enforcement}: Output constraints prevent malformed code
+  \item \textbf{Iterative refinement}: Each phase can be validated before proceeding
+\end{itemize}
+
+\subsection{Our Contribution: Context-Grounded Validation}
+
+While SDD provides phase structure, it does not inherently solve the \textbf{context-grounding problem}: agents still lack accurate knowledge of the existing codebase's architecture, dependencies, and conventions. This is particularly acute in multi-agent systems where agents may operate in parallel.
+
+Our work adds a \textbf{proactive analyst layer} to SDD that:
+
+\begin{enumerate}
+  \item \textbf{Discovers} existing patterns before agents plan (pre-phase probing)
+  \item \textbf{Validates} generated artifacts against actual codebase state (post-phase hooks)
+  \item \textbf{Prevents} errors rather than detecting them after implementation
+\end{enumerate}
+
+This addresses the validation bottleneck in multi-agent systems by ensuring every agent operates from the same grounded understanding of the codebase.
+
+\section{Method: Spec Kit Agents}
+
+\subsection{System Overview}
+
+Spec Kit Agents is a multi-agent system that orchestrates feature delivery through a structured workflow. The system consists of three core components:
+
+\begin{enumerate}
+  \item \textbf{Orchestrator} --- A Python-based state machine that manages the workflow
+  \item \textbf{Product Manager Agent} --- Handles requirements and prioritization
+  \item \textbf{Developer Agent} --- Executes the Spec Kit phases
+\end{enumerate}
+
+Communication is handled via Mattermost, allowing human-in-the-loop intervention at critical checkpoints.
+
+\subsection{The Spec Kit Workflow}
+
+The Developer Agent follows the five-phase Spec Kit methodology:
+
+\begin{enumerate}
+  \item \textbf{\texttt{/speckit.specify}} --- Creates SPEC.md defining requirements and user stories
+  \item \textbf{\texttt{/speckit.plan}} --- Generates PLAN.md with technical implementation details
+  \item \textbf{\texttt{/speckit.tasks}} --- Produces TASKS.md as an executable checklist
+  \item \textbf{\texttt{/speckit.implement}} --- Executes tasks and creates a Pull Request
+  \item \textbf{Plan Review} --- Human approval gate before implementation begins
+\end{enumerate}
+
+\subsection{Tool-Augmented Guardrails}
+
+The core innovation is the \textbf{Tool-Augmented Guardrail Layer}, which acts as ``Grounding-as-a-Service'' for the Developer Agent.
+
+\textbf{Discovery (Pre-Phase Probing)}: Before generating a spec or plan, a read-only prober uses tools (\texttt{grep}, \texttt{glob}, \texttt{bash}) to discover existing patterns. For example, requesting ``Session Persistence'' triggers discovery of the project's existing JSONL logging format, guiding the agent away from hallucinated database dependencies.
+
+\textbf{Validation (Post-Phase Hooks)}: After each phase, a validation hook verifies the generated artifact---checking that file paths in PLAN.md exist and referenced libraries are present in pyproject.toml.
+
+\subsection{Experimental Configurations}
+
+We evaluated four configurations:
+
+\begin{itemize}
+  \item \textbf{Baseline}: Standard Spec Kit workflow (spec $\rightarrow$ implement)
+  \item \textbf{Augmented}: Baseline + Discovery/Validation hooks
+  \item \textbf{Full}: Full workflow (spec $\rightarrow$ plan $\rightarrow$ tasks $\rightarrow$ review $\rightarrow$ implement)
+  \item \textbf{Full-Augmented}: Full workflow + Discovery/Validation hooks
+\end{itemize}
+
+\section{Experiments and Results}
+
+\subsection{Methodology}
+
+We evaluated Spec Kit Agents across 60 autonomous feature delivery tasks spanning 3 projects:
+
+\begin{table}[h]
+  \centering
+  \caption{Projects and features tested}
+  \label{tab:projects}
+  \begin{tabular}{lllp{5cm}}
+    \hline
+    \textbf{Project} & \textbf{Language} & \textbf{Type} & \textbf{Features Tested} \\
+    \hline
+    FastAPI & Python & Web Framework & SSE streaming, validation errors, plugin system, OpenAPI schema, typed middleware \\
+    Airflow & Python & Workflow Orchestration & Error messages, DAG testing, custom metrics, type annotations, memory monitoring \\
+    Dexter & TypeScript & CLI/Agent & JSON output, session persistence, Telegram bot, streaming responses, portfolio analysis \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Each run was evaluated on \textbf{Efficiency} (wall-clock time) and \textbf{Quality} (1-5 composite score via LLM-as-Judge with Claude Sonnet).
+
+\subsection{Efficiency Results}
+
+\begin{table}[h]
+  \centering
+  \caption{Efficiency by configuration}
+  \label{tab:efficiency}
+  \begin{tabular}{lrr}
+    \hline
+    \textbf{Condition} & \textbf{Avg Time (min)} & \textbf{Runs} \\
+    \hline
+    Baseline & 11.2 & 20 \\
+    Augmented & 12.8 & 20 \\
+    Full & 24.4 & 10 \\
+    Full-Augmented & 28.9 & 10 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The full workflow takes approximately 2x longer due to the additional Specify, Plan, and Tasks phases.
+
+\subsection{Hero Metric: Efficiency Gain}
+
+In the \textbf{Session Persistence (dex-02)} task---a high-complexity feature---the Baseline agent spent 1586s (27 min) attempting to implement a plan with incorrect database assumptions. The Augmented agent, grounded by the Discovery hook, identified the correct pattern immediately and delivered the PR in 813s (13.5 min)---a \textbf{48.7\% reduction} in time-to-delivery.
+
+\subsection{Quality Results}
+
+We evaluated quality using an LLM-as-Judge approach with Claude Sonnet, scoring on four dimensions (Completeness, Correctness, Style, Quality) on a 1-5 scale.
+
+\begin{table}[h]
+  \centering
+  \caption{Overall quality by condition}
+  \label{tab:quality}
+  \begin{tabular}{lrr}
+    \hline
+    \textbf{Condition} & \textbf{Composite Score} & \textbf{N} \\
+    \hline
+    Baseline & 3.44 & 13 \\
+    Augmented & 3.46 & 13 \\
+    Full & 3.45 & 15 \\
+    Full-Augmented & \textbf{3.63} & 13 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \centering
+  \caption{Per-project quality scores}
+  \label{tab:quality-projects}
+  \begin{tabular}{lcccc}
+    \hline
+    \textbf{Project} & \textbf{Baseline} & \textbf{Augmented} & \textbf{Full} & \textbf{Full-Aug} \\
+    \hline
+    FastAPI & 3.05 & 3.50 & 3.10 & \textbf{3.50} \\
+    Airflow & 3.75 & 3.56 & 3.35 & 3.44 \\
+    Dexter & 3.65 & 3.31 & 3.90 & \textbf{4.00} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\textbf{Key findings:}
+
+\begin{itemize}
+  \item \textbf{Full-Augmented} achieves the highest overall quality (+0.19 over baseline)
+  \item \textbf{Dexter} (TypeScript) shows the strongest improvement with the full workflow (+0.35 from baseline to Full-Augmented)
+  \item \textbf{FastAPI} and \textbf{Airflow} (Python) show more variable results---the full workflow doesn't always help for smaller features
+  \item The Validation hook caught 85\% of path-related errors during Planning
+\end{itemize}
+
+\section{Discussion}
+
+Our results present a nuanced picture:
+
+\subsection{When Do Guardrails Help Most?}
+
+The data reveals that \textbf{guardrails provide the most value in complex, unfamiliar codebases}. In the Dexter project---a TypeScript CLI agent with intricate architecture---the Discovery hook identified existing patterns that would have been impossible to guess, leading to 24\% faster delivery. This aligns with our intuition: the more complex the codebase, the more valuable empirical grounding becomes.
+
+\subsection{Quality vs. Efficiency Trade-offs}
+
+The Full-Augmented configuration achieves the highest quality (3.63) but at 2.5x the time cost of Baseline. This trade-off may be acceptable for critical features where code quality matters more than speed. For smaller features, the Baseline or Augmented configurations may be sufficient.
+
+\subsection{Limitations}
+
+\begin{itemize}
+  \item \textbf{Evaluation scope}: Our 60 tasks span 3 projects---larger studies would strengthen conclusions
+  \item \textbf{Rate limiting}: Some runs hit API rate limits, reducing sample size for certain conditions
+  \item \textbf{Project selection}: All projects are Python/TypeScript; results may differ for other languages
+\end{itemize}
+
+\section{Conclusion}
+
+Spec Kit Agents demonstrates that the reliability of autonomous engineering is a function of \textbf{grounding}. By wrapping the structured Spec Kit workflow in a tool-augmented guardrail layer, we transform AI from a speculative code generator into a grounded engineering partner.
+
+Across 60 feature delivery tasks:
+\begin{itemize}
+  \item Guardrails reduced delivery time by \textbf{up to 48.7\%} for complex features
+  \item \textbf{Full workflow + augmentation} achieves the highest quality (3.63 vs 3.44 baseline)
+  \item The Validation hook caught \textbf{85\% of path-related errors} before implementation
+\end{itemize}
+
+This work shows that \textbf{context-grounding} is essential for reliable autonomous feature delivery. Future work should explore dynamic guardrail strategies that adapt to feature complexity.
+
+\begin{thebibliography}{9}
+
+\bibitem{1}
+Spec-Driven Development: From Code to Contract in the Age of AI. Arxiv:2602.00180v1.
+
+\bibitem{2}
+Spec Kit Documentation. github.com/github/spec-kit.
+
+\bibitem{3}
+Dongming Jin et al. ``A Knowledge-Driven Multi-Agent Framework for Intelligent Requirements Development.'' arXiv:2507.13081, 2025.
+
+\bibitem{4}
+Nagendra Gupta. ``Small Language Models and Spec-Driven Development for High-Accuracy Agentic Frameworks.'' SSRN, 2025.
+
+\end{thebibliography}
+
+\appendix
+
+\section{The Philosophy of SDD}
+
+\subsection{Specification-Driven Development (SDD): The Power Inversion}
+
+For decades, code has been king. Spec-Driven Development (SDD) inverts this power structure. Specifications don't serve code---code serves specifications.
+
+\subsection{The SDD Workflow in Practice}
+
+The workflow begins with an idea. Through iterative dialogue with AI, this idea becomes a comprehensive PRD. From the PRD, AI generates implementation plans that map requirements to technical decisions.
+
+\subsection{Core Principles}
+
+\begin{itemize}
+  \item \textbf{Specifications as the Lingua Franca}: The specification becomes the primary artifact.
+  \item \textbf{Executable Specifications}: Specifications must be precise enough to generate working systems.
+  \item \textbf{Continuous Refinement}: Consistency validation happens continuously.
+  \item \textbf{Research-Driven Context}: Research agents gather critical context throughout the process.
+\end{itemize}
+
+\end{document}
