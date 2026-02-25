@@ -29,6 +29,9 @@ projects:
   airflow:
     path: /Users/sb/code/airflow
     prd_path: docs/PRD.md
+  plausible:
+    path: /Users/sb/code/analytics
+    prd_path: docs/PRD.md
   # example:
   #   path: /Users/sbhavani/code/another-project
   #   prd_path: docs/SPEC.md

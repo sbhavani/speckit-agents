@@ -290,6 +290,90 @@ features:
       request/response handling, type hints for middleware dependencies, and
       compile-time middleware ordering validation.
 
+  # ── plausible ────────────────────────────────────────────────
+  # Based on plausible/analytics ROADMAP.md
+
+  - id: pla-01
+    project: plausible
+    category: new_module
+    expected_complexity: high
+    priority: P1
+    prd_ref: M1 - Funnels & Advanced Analysis
+    description: >-
+      Implement funnel visualization: create a module that tracks user conversion
+      through a defined sequence of events and displays drop-off rates at each step
+      in the analytics dashboard.
+
+  - id: pla-02
+    project: plausible
+    category: new_module
+    expected_complexity: high
+    priority: P1
+    prd_ref: M1 - Funnels & Advanced Analysis
+    description: >-
+      Add cohort analysis: implement a feature that groups users by acquisition
+      date and tracks retention over time, displaying cohort retention tables in the UI.
+
+  - id: pla-03
+    project: plausible
+    category: new_module
+    expected_complexity: medium
+    priority: P2
+    prd_ref: M2 - Advanced Filtering & Segmentation
+    description: >-
+      Add advanced filter builder: create a UI component that allows users to
+      combine multiple filter conditions (AND/OR) for custom visitor segments.
+
+  - id: pla-04
+    project: plausible
+    category: new_module
+    expected_complexity: medium
+    priority: P2
+    prd_ref: M2 - Advanced Filtering & Segmentation
+    description: >-
+      Implement time period comparison: add ability to compare metrics between
+      two date ranges (e.g., this week vs last week) with percentage change display.
+
+  - id: pla-05
+    project: plausible
+    category: api_endpoint
+    expected_complexity: medium
+    priority: P1
+    prd_ref: M3 - API & Developer Experience
+    description: >-
+      Add GraphQL API: implement a GraphQL endpoint that exposes analytics data
+      including pageviews, events, and custom metrics with filtering and aggregation.
+
+  - id: pla-06
+    project: plausible
+    category: new_module
+    expected_complexity: medium
+    priority: P2
+    prd_ref: M3 - API & Developer Experience
+    description: >-
+      Add webhook notifications: implement a webhook system that sends HTTP POST
+      events when configured triggers occur (e.g., spike in visitors, goal completions).
+
+  - id: pla-07
+    project: plausible
+    category: new_module
+    expected_complexity: high
+    priority: P2
+    prd_ref: M4 - Enterprise & Compliance
+    description: >-
+      Implement SSO/SAML authentication: add support for enterprise single sign-on
+      with SAML 2.0 identity providers.
+
+  - id: pla-08
+    project: plausible
+    category: new_module
+    expected_complexity: medium
+    priority: P2
+    prd_ref: M6 - UI/UX Improvements
+    description: >-
+      Add dark mode: implement theme switching with dark mode option that persists
+      user preference and applies consistent styling across the dashboard.
+
   # ── airflow ─────────────────────────────────────────────────
   # Based on actual roadmap: https://github.com/apache/airflow/blob/main/docs/ROADMAP.md
 

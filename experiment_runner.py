@@ -169,14 +169,17 @@ def run_experiment(
     features: list[dict],
     resume: bool = False,
     dry_run: bool = False,
+    conditions: list[str] = None,
 ) -> list[dict]:
     """Run all features under both conditions."""
     results = []
-    total = len(features) * len(CONDITIONS)
+    if conditions is None:
+        conditions = CONDITIONS
+    total = len(features) * len(conditions)
     completed = 0
 
     for feature in features:
-        for condition in CONDITIONS:
+        for condition in conditions:
             completed += 1
             label = f"[{completed}/{total}] {feature['id']} ({condition})"
 
@@ -219,6 +222,11 @@ def main() -> None:
         "--features-file", type=str, default=None,
         help="Path to features YAML (default: experiments/features.yaml)",
     )
+    parser.add_argument(
+        "--condition", type=str, action="append", default=None,
+        choices=CONDITIONS,
+        help="Run only specific condition(s) (can be repeated). Default: all conditions",
+    )
     args = parser.parse_args()
 
     features_path = Path(args.features_file) if args.features_file else FEATURES_FILE
@@ -234,15 +242,16 @@ def main() -> None:
         print("No features match the given filters.", file=sys.stderr)
         sys.exit(1)
 
-    n_runs = len(features) * len(CONDITIONS)
-    print(f"Experiment: {len(features)} features x {len(CONDITIONS)} conditions = {n_runs} runs")
+    conditions = args.condition if args.condition else CONDITIONS
+    n_runs = len(features) * len(conditions)
+    print(f"Experiment: {len(features)} features x {len(conditions)} conditions = {n_runs} runs")
     if args.dry_run:
         print("(DRY RUN - nothing will be executed)\n")
     print()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    results = run_experiment(features, resume=args.resume, dry_run=args.dry_run)
+    results = run_experiment(features, resume=args.resume, dry_run=args.dry_run, conditions=conditions)
 
     if results:
         ok = sum(1 for r in results if r["exit_code"] == 0)
