@@ -36,6 +36,16 @@ workflow:
   loop: false
   impl_poll_interval: 15
   user_mention: ""
+  # Tool-augmented discovery and validation hooks (enabled by default)
+  tool_augmentation:
+    enabled: true              # Enable pre/post phase hooks
+    pre_stages: true          # Run discovery before each phase
+    post_stages: true         # Run validation after each phase
+    run_tests_before_impl: true
+    run_tests_after_impl: true
+    timeout_per_hook: 120     # Seconds per Claude invocation
+    log_dir: "logs/augment"   # JSONL log output directory
+    redis_url: "redis://localhost:6379"  # Optional Redis for streaming
 ```
 
 ## Environment Variables
