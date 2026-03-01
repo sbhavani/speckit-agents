@@ -132,11 +132,9 @@ projects:
     prd_path: docs/PRD.md
     channel_id: <channel-id>
 
-openclaw:
-  ssh_host: localhost
-  openclaw_account: productManager
-  anthropic_base_url: https://api.minimax.io/anthropic
-  anthropic_model: MiniMax-M2.1
+llm:
+  base_url: https://api.minimax.io/anthropic
+  model: MiniMax-M2.1
 
 mattermost:
   url: "http://localhost:8065"
@@ -188,7 +186,6 @@ docker compose -f deploy/docker-compose.yml up -d
 | `mattermost_bridge.py` | Dual-bot Mattermost API client |
 | `state_redis.py` | Redis-backed state persistence |
 | `tool_augment.py` | Pre/post phase discovery and validation hooks |
-| `analyze_augment.py` | JSONL log analysis for augmentation metrics |
 | `src/redis_streams/` | Redis Streams library (consumer, producer, checkpoint, monitoring) |
 | `.claude/agents/pm-agent.md` | PM Agent definition |
 | `.claude/agents/dev-agent.md` | Dev Agent definition |
