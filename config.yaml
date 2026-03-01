@@ -30,7 +30,10 @@ projects:
     path: /Users/sb/code/airflow
     prd_path: docs/PRD.md
   plausible:
-    path: /Users/sb/code/analytics
+    path: /Volumes/SSD-PGU3/code/analytics
+    prd_path: docs/PRD.md
+  strapi:
+    path: /Volumes/SSD-PGU3/code/strapi
     prd_path: docs/PRD.md
   # example:
   #   path: /Users/sbhavani/code/another-project
@@ -42,27 +45,24 @@ projects:
 host_path_map:
   /Users/sb/code: /Users/sb/code
 
-openclaw:
-  ssh_host: localhost
-  # OpenClaw account ID used for sending via openclaw CLI
-  openclaw_account: productManager
-  # Minimax API (Anthropic-compatible) for responder questions
-  # Move to config.local.yaml: anthropic_api_key
-  anthropic_base_url: https://api.minimax.io/anthropic
-  anthropic_model: MiniMax-M2.1
+# LLM Configuration (Anthropic-compatible API)
+# Move to config.local.yaml: anthropic_api_key
+llm:
+  base_url: https://api.minimax.io/anthropic
+  model: MiniMax-M2.1
 
 mattermost:
   # Channel ID should be set per-project in projects section
   # Mattermost server URL (as seen from the remote host)
   url: "http://localhost:8065"
 
-  # Dev Agent bot (openclaw bot — used for dev messages and general reads)
+  # Dev Agent bot (automation bot for implementation tasks)
   # Move to config.local.yaml: dev_bot_token
-  dev_bot_user_id: prmnsceu8bg8tm1kmb3zzhbdwr
+  dev_bot_user_id: <dev-bot-user-id>
 
-  # PM Agent bot (product-manager — separate identity for PM messages)
+  # PM Agent bot (separate identity for PM messages)
   # Move to config.local.yaml: pm_bot_token
-  pm_bot_user_id: osnrc8yrpffifj56friubo5dxr
+  pm_bot_user_id: <pm-bot-user-id>
 
 redis_streams:
   # Redis connection URL

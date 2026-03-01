@@ -30,9 +30,9 @@ uv run python orchestrator.py --doctor
 
 ### Overview
 
-agent-team communicates with Mattermost via its REST API. OpenClaw is optional—it's one way to send messages, but you can also use the API directly.
+speckit-agents communicates with Mattermost via its REST API. The PM Agent and Dev Agent bots post messages to channels, and can also respond to human questions.
 
-### Option 1: Direct API (Recommended)
+### Direct API (Recommended)
 
 The simplest setup uses Mattermost's REST API directly:
 
@@ -49,17 +49,6 @@ mattermost:
   pm_bot_token: <pm-bot-token>
   pm_bot_user_id: <pm-bot-user-id>
 ```
-
-### Option 2: OpenClaw Bridge
-
-OpenClaw provides SSH-based access to Mattermost. Use this if you already have OpenClaw configured:
-
-```yaml
-openclaw:
-  ssh_host: localhost  # SSH server with OpenClaw
-```
-
-When using OpenClaw, the orchestrator can still read messages via the API directly—OpenClaw is only needed for sending.
 
 ### Creating Bots
 

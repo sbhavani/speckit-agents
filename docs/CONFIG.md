@@ -1,6 +1,6 @@
 # Configuration
 
-Configuration reference for agent-team.
+Configuration reference for speckit-agents.
 
 ## config.yaml
 
@@ -12,16 +12,15 @@ projects:
   finance-agent:
     path: /Users/sb/code/finance-agent
     prd_path: docs/PRD.md
-    channel_id: bhpbt6h6tnt3nrnq8yi6n9k7br
+    channel_id: <channel-id>
 
-openclaw:
-  ssh_host: localhost
-  anthropic_api_key: sk-cp-...
-  anthropic_base_url: https://api.minimax.io/anthropic
-  anthropic_model: MiniMax-M2.1
+# LLM Configuration (Anthropic-compatible API)
+llm:
+  api_key: sk-cp-...
+  base_url: https://api.minimax.io/anthropic
+  model: MiniMax-M2.1
 
 mattermost:
-  channel_id: bhpbt6h4xtnem8int5ccmbo4dw
   url: "http://localhost:8065"
   dev_bot_token: <token>
   dev_bot_user_id: <user_id>
@@ -51,9 +50,9 @@ workflow:
 ## Mattermost Setup
 
 - **Server**: `http://localhost:8065`
-- **Dev bot**: `openclaw` (ID: `prmnsceu8bg8tm1kmb3zzhbdwr`)
-- **PM bot**: `product-manager` (ID: `osnrc8yrpffifj56friubo5dxr`)
-- **Channel**: `#product-dev` (ID: `bhpbt6h4xtnem8int5ccmbo4dw`)
+- **Dev bot**: `dev-agent` - automation bot for implementation
+- **PM bot**: `product-manager` - separate identity for PM messages
+- **Channel**: One channel per project (create via Mattermost UI or API)
 
 ## Redis Keys
 
@@ -70,11 +69,11 @@ python orchestrator.py --config config.yaml   # Custom config
 python orchestrator.py --dry-run              # Print to stdout
 python orchestrator.py --loop                 # Run multiple features
 python orchestrator.py --feature "Add X"     # Skip PM
-python orchestrator.py --simple               # Skip specify/plan/tasks
-python orchestrator.py --resume               # Resume from state
-python orchestrator.py --project name          # Target project
-python orchestrator.py --doctor                # Validate setup
+python orchestrator.py --simple              # Skip specify/plan/tasks
+python orchestrator.py --resume              # Resume from state
+python orchestrator.py --project name         # Target project
+python orchestrator.py --doctor               # Validate setup
 python orchestrator.py --verbose              # Debug logging
-python orchestrator.py --tools                # Enable tool augmentation
-python orchestrator.py --no-tools             # Disable tool augmentation
+python orchestrator.py --tools               # Enable tool augmentation
+python orchestrator.py --no-tools            # Disable tool augmentation
 ```
