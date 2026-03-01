@@ -48,7 +48,7 @@ def make_run_id(feature_id: str, condition: str) -> str:
 
 
 def find_completed_runs(feature_id: str, condition: str) -> list[Path]:
-    """Find existing result dirs for a feature+condition pair."""
+    """Find existing result dirs for a feature+condition pair (orchestrator completion = metadata.json exists)."""
     if not RESULTS_DIR.exists():
         return []
     prefix = f"{feature_id}_{condition}_"

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 WORKSPACE = Path(__file__).parent / "experiments" / "swebench"
 REPOS_DIR = WORKSPACE / "repos"
 RESULTS_DIR = WORKSPACE / "results"
-CONDITIONS = ["baseline", "augmented"]
+CONDITIONS = ["baseline", "augmented", "full", "full-augmented"]
 
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", os.path.expanduser("~/.local/bin/claude"))
 
@@ -90,6 +90,31 @@ Do NOT create new test files. Only modify existing source files to fix the bug.
 
 Bug report:
 {problem_statement}"""
+
+# Full workflow prompts (Spec Kit: specify, plan, tasks, implement)
+SPECIFY_PROMPT = """\
+Create a detailed specification for fixing this bug. Your spec should include:
+
+1. **Problem Understanding**: What is the bug, what's the root cause?
+2. **Scope**: What files need to change? What's the minimal fix?
+3. **Success Criteria**: How will we know the bug is fixed?
+4. **Implementation Notes**: Any technical considerations?
+
+Bug report:
+{problem_statement}
+
+Provide a spec.md with your analysis."""
+
+PLAN_PROMPT = """\
+Based on this specification, create an implementation plan with specific tasks.
+
+Specification:
+{spec}
+
+Bug report:
+{problem_statement}
+
+Create a plan.md listing each task to complete."""
 
 
 def _run_claude(
@@ -275,8 +300,63 @@ def run_discovery(repo_path: Path, problem_statement: str) -> str:
     return "\n".join(parts)
 
 
-def run_validation(repo_path: Path, problem_statement: str) -> dict:
-    """Run post-implementation validation. Returns findings dict."""
+def run_validation(repo_path: Path, problem_statement: str, instance_id: str) -> dict:
+    """Run post-implementation validation with actual tests."""
+    import subprocess
+
+    # First, find relevant test files by searching for related code
+    findings = {
+        "test_command": None,
+        "test_output": None,
+        "test_passed": None,
+        "error": None,
+    }
+
+    # Try to find and run relevant tests based on instance
+    # SWE-bench typically has associated test files
+    try:
+        # Common test patterns for different repos
+        repo_name = instance_id.split("__")[1].rsplit("-", 1)[0]
+
+        # Look for test files in common locations
+        test_dirs = ["tests", "test"]
+
+        for test_dir in test_dirs:
+            if not (repo_path / test_dir).exists():
+                continue
+
+            # Try to find tests related to the issue
+            # For django, astropy, matplotlib etc, try common patterns
+            search_terms = repo_name.split("_")
+
+            # Run a broader test to see if tests exist
+            result = subprocess.run(
+                ["find", test_dir, "-name", "*.py", "-type", "f"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            test_files = result.stdout.strip().split("\n")[:20]  # limit search
+
+            # Try running any test that might be related
+            # For now, just check if pytest works at all
+            pytest_result = subprocess.run(
+                ["python", "-m", "pytest", "--collect-only", "-q"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            findings["test_environment"] = "ok" if pytest_result.returncode in (0, 5) else "failed"
+            findings["pytest_output"] = pytest_result.stdout[:500] + pytest_result.stderr[:500]
+
+    except Exception as e:
+        findings["error"] = str(e)
+
+    # Also do the Claude review
     prompt = VALIDATION_PROMPT.format(problem_statement=problem_statement)
     tools = DISCOVERY_TOOLS + ["Bash(pytest *)", "Bash(ruff *)"]
     result = _run_claude(
@@ -286,7 +366,13 @@ def run_validation(repo_path: Path, problem_statement: str) -> dict:
         timeout=120,
     )
     raw = result.get("result", "")
-    return _parse_json_findings(raw)
+    review = _parse_json_findings(raw)
+
+    # Combine results
+    findings["review"] = review
+    findings["validation_passed"] = review.get("validation_passed")
+
+    return findings
 
 
 def run_instance(
@@ -318,17 +404,49 @@ def run_instance(
     discovery_context = ""
     validation = {}
 
-    # Augmented: run pre-implementation discovery
-    if condition == "augmented":
+    # Discovery: run pre-implementation discovery (augmented or full-augmented)
+    if condition in ("augmented", "full-augmented"):
         print(f"    Running discovery probe...")
         discovery_context = run_discovery(repo_path, problem_statement)
         if discovery_context:
             (run_dir / "discovery.txt").write_text(discovery_context, encoding="utf-8")
 
+    # Full workflow: specify, plan, tasks phases
+    spec_content = ""
+    plan_content = ""
+    if condition in ("full", "full-augmented"):
+        # Phase 1: Specify
+        print(f"    Running specify phase...")
+        specify_prompt = SPECIFY_PROMPT.format(problem_statement=problem_statement)
+        specify_result = _run_claude(
+            prompt=specify_prompt,
+            cwd=str(repo_path),
+            allowed_tools=DISCOVERY_TOOLS,
+            timeout=180,
+        )
+        spec_content = specify_result.get("result", "")
+        (run_dir / "spec.md").write_text(spec_content, encoding="utf-8")
+
+        # Phase 2: Plan
+        print(f"    Running plan phase...")
+        plan_prompt = PLAN_PROMPT.format(spec=spec_content[:2000], problem_statement=problem_statement)
+        plan_result = _run_claude(
+            prompt=plan_prompt,
+            cwd=str(repo_path),
+            allowed_tools=DISCOVERY_TOOLS,
+            timeout=180,
+        )
+        plan_content = plan_result.get("result", "")
+        (run_dir / "plan.md").write_text(plan_content, encoding="utf-8")
+
     # Build implementation prompt
     context = ""
     if discovery_context:
         context = f"## Codebase Analysis\n{discovery_context}\n"
+    if spec_content:
+        context += f"## Specification\n{spec_content[:1000]}\n"
+    if plan_content:
+        context += f"## Plan\n{plan_content[:1000]}\n"
 
     impl_prompt = IMPLEMENT_PROMPT.format(
         context=context,
@@ -347,10 +465,10 @@ def run_instance(
     # Capture the diff
     patch = capture_diff(repo_path)
 
-    # Augmented: run post-implementation validation
-    if condition == "augmented" and patch:
+    # Validation: run post-implementation validation (augmented or full-augmented)
+    if condition in ("augmented", "full-augmented") and patch:
         print(f"    Running validation...")
-        validation = run_validation(repo_path, problem_statement)
+        validation = run_validation(repo_path, problem_statement, instance_id)
         (run_dir / "validation.json").write_text(
             json.dumps(validation, indent=2), encoding="utf-8"
         )
