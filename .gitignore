@@ -14,3 +14,7 @@ specs/
 .agent/
 logs/
 settings.json.backup
+# SWE-bench evaluation results (large, experimental)
+speckit-agents*.json
+my_judgments.json
+
