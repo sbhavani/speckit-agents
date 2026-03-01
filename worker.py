@@ -235,14 +235,16 @@ class Worker:
                 cmd.extend([f"--feature={feature}"])
             if payload.get("tools") == "enabled":
                 cmd.append("--tools")
-            if command == "resume":
+            if command == "resume" or payload.get("approve"):
                 cmd.extend(["--resume", "--approve"])
 
 
             logger.info(f"Running orchestrator: {' '.join(cmd)}")
 
             # Clear CLAUDECODE env var so orchestrator can spawn claude -p
+            # Set WORKER_MODE to prevent orchestrator from publishing back to Redis (avoids loop)
             env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+            env["WORKER_MODE"] = "1"
             logger.info(f"CLAUDECODE in subprocess env: {'CLAUDECODE' in env}")
 
             # Run the orchestrator and wait for completion

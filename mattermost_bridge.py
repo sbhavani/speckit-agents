@@ -1,11 +1,10 @@
 """Mattermost communication bridge with dual bot identities.
 
-Sends messages via either:
-- OpenClaw CLI (over SSH) for the Dev Agent (openclaw bot)
-- Mattermost REST API (over SSH + curl) for the PM Agent (product-manager bot)
+Sends messages via the Mattermost REST API using either:
+- Dev Agent bot (for implementation messages)
+- PM Agent bot (for product management messages)
 
-Reads messages via the Mattermost REST API, since OpenClaw's ``message read``
-is not supported for the Mattermost channel plugin.
+Reads messages via the Mattermost REST API.
 """
 
 import json
@@ -17,33 +16,27 @@ logger = logging.getLogger(__name__)
 
 
 class MattermostBridge:
-    """Send and receive Mattermost messages through a remote host.
+    """Send and receive Mattermost messages via REST API.
 
-    Supports two bot identities: a Dev bot (via OpenClaw) and a PM bot
-    (via Mattermost API). Human messages are those from neither bot.
+    Supports two bot identities: Dev bot and PM bot.
+    Human messages are those from neither bot.
     """
 
     def __init__(
         self,
-        ssh_host: str,
         channel_id: str,
         mattermost_url: str = "http://localhost:8065",
         dev_bot_token: str = "",
         dev_bot_user_id: str = "",
         pm_bot_token: str = "",
         pm_bot_user_id: str = "",
-        openclaw_account: str | None = None,
-        use_ssh: bool = True,
     ):
-        self.ssh_host = ssh_host
         self.channel_id = channel_id
         self.mattermost_url = mattermost_url
         self.dev_bot_token = dev_bot_token
         self.dev_bot_user_id = dev_bot_user_id
         self.pm_bot_token = pm_bot_token
         self.pm_bot_user_id = pm_bot_user_id
-        self.openclaw_account = openclaw_account
-        self.use_ssh = use_ssh
         self.bot_user_ids = {dev_bot_user_id, pm_bot_user_id} - {""}
         self._last_seen_ts: int = 0  # create_at timestamp of last seen post
 
@@ -59,16 +52,7 @@ class MattermostBridge:
         """
         errors: list[str] = []
 
-        # 1. Check SSH connectivity
-        try:
-            result = self._ssh(["echo", "ok"], timeout=10)
-            if "ok" not in result:
-                errors.append("SSH connection test failed")
-        except Exception as e:
-            errors.append(f"SSH connection failed: {e}")
-            return False, errors
-
-        # 2. Check Mattermost channel exists and bot token works
+        # Check Mattermost channel exists and bot token works
         try:
             # Try to read from the channel
             _ = self.read_posts(limit=1)
@@ -76,19 +60,6 @@ class MattermostBridge:
             logger.info("Mattermost validation passed")
         except Exception as e:
             errors.append(f"Mattermost API failed: {e}")
-
-        # 3. Check OpenClaw if configured (skip for localhost)
-        # Note: OpenClaw validation is optional - it may not be reachable
-        # if running locally or SSH isn't set up
-        if self.openclaw_account and self.ssh_host != "localhost":
-            try:
-                result = self._ssh(
-                    ["openclaw", "status"],
-                    timeout=10,
-                )
-                logger.info("OpenClaw validation passed")
-            except Exception as e:
-                logger.warning("OpenClaw check failed (continuing anyway): %s", e)
 
         return len(errors) == 0, errors
 
@@ -99,166 +70,149 @@ class MattermostBridge:
     def send(self, message: str, sender: str | None = None, root_id: str | None = None, channel_id: str | None = None) -> dict:
         """Send a message to the channel (optionally as a thread reply).
 
-        Uses Mattermost API directly (no OpenClaw dependency).
+        Uses the Dev Agent bot by default, or PM Agent bot if sender is "PM Agent".
         """
-        # Use provided channel_id or fall back to default
         target_channel = channel_id or self.channel_id
+        token = self.pm_bot_token if sender == "PM Agent" else self.dev_bot_token
 
-        # Choose token based on sender
-        if sender == "PM Agent" and self.pm_bot_token:
-            token = self.pm_bot_token
-        else:
-            token = self.dev_bot_token
-
-        return self._send_via_api(message, token, root_id, target_channel)
-
-    def _send_via_openclaw(self, message: str, sender: str | None = None, channel_id: str | None = None) -> dict:
-        """Send via OpenClaw CLI (appears as the openclaw/dev bot)."""
-        if sender:
-            text = f"**[{sender}]** {message}"
-        else:
-            text = message
-
-        target_channel = channel_id or self.channel_id
-
-        # Use shell quotes only for SSH; for local, use plain args
-        if self.use_ssh:
-            args = [
-                "openclaw", "message", "send",
-                "--channel", "mattermost",
-                "--target", f"channel:{target_channel}",
-                "-m", self._shell_quote(text),
-                "--json",
-            ]
-        else:
-            args = [
-                "openclaw", "message", "send",
-                "--channel", "mattermost",
-                "--target", f"channel:{target_channel}",
-                "-m", text,
-                "--json",
-            ]
-        if self.openclaw_account:
-            args.extend(["--account", self.openclaw_account])
-
-        output = self._ssh(args)
-        logger.info("Sent (dev): %s", text[:100])
-        try:
-            return json.loads(output)
-        except json.JSONDecodeError:
-            return {"raw": output}
+        return self._send_via_api(message, token, root_id=root_id, channel_id=target_channel)
 
     def _send_via_api(self, message: str, bot_token: str, root_id: str | None = None, channel_id: str | None = None) -> dict:
-        """Send via Mattermost REST API (appears as the specified bot).
-
-        If root_id is provided, posts as a reply to that post's thread.
-        """
-        target_channel = channel_id or self.channel_id
-        payload = {"channel_id": target_channel, "message": message}
+        """Send via Mattermost API."""
+        data = {
+            "channel_id": channel_id or self.channel_id,
+            "message": message,
+        }
         if root_id:
-            payload["root_id"] = root_id
+            data["root_id"] = root_id
 
-        payload_json = json.dumps(payload)
-        # Use shell quotes only for SSH; for local, use plain args
-        if self.use_ssh:
-            curl_cmd = [
-                "curl", "-sf",
-                "-X", "POST",
-                f"'{self.mattermost_url}/api/v4/posts'",
-                "-H", f"'Authorization: Bearer {bot_token}'",
-                "-H", "'Content-Type: application/json'",
-                "-d", self._shell_quote(payload_json),
-            ]
-        else:
-            curl_cmd = [
-                "curl", "-sf",
-                "-X", "POST",
+        result = subprocess.run(
+            [
+                "curl", "-s", "-X", "POST",
                 f"{self.mattermost_url}/api/v4/posts",
                 "-H", f"Authorization: Bearer {bot_token}",
                 "-H", "Content-Type: application/json",
-                "-d", payload_json,
-            ]
-        output = self._ssh(curl_cmd, timeout=15)
-        logger.info("Sent (api%s): %s", f" thread:{root_id}" if root_id else "", message[:100])
-        try:
-            return json.loads(output)
-        except json.JSONDecodeError:
-            return {"raw": output}
+                "-d", json.dumps(data),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
-    # ------------------------------------------------------------------
-    # Read (via Mattermost REST API)
-    # ------------------------------------------------------------------
-
-    def read_posts(self, limit: int = 10, after: int = 0) -> list[dict]:
-        """Read recent posts from the channel via the Mattermost API.
-
-        Returns a list of post dicts sorted oldest-first, each containing:
-        ``id``, ``message``, ``user_id``, ``create_at``, ``type``.
-        """
-        return self.read_posts_from_channel(self.channel_id, limit, after)
-
-    def read_posts_from_channel(self, channel_id: str, limit: int = 10, after: int = 0) -> list[dict]:
-        """Read recent posts from a specific channel via the Mattermost API."""
-        url = f"{self.mattermost_url}/api/v4/channels/{channel_id}/posts?per_page={limit}"
-        if after:
-            url += f"&since={after}"
-
-        # Use shell quotes only for SSH; for local, use plain args
-        if self.use_ssh:
-            curl_cmd = [
-                "curl", "-sf", f"'{url}'",
-                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
-            ]
-        else:
-            curl_cmd = [
-                "curl", "-sf", url,
-                "-H", f"Authorization: Bearer {self.dev_bot_token}",
-            ]
-        output = self._ssh(curl_cmd, timeout=15)
+        if result.returncode != 0:
+            logger.error(f"Failed to send message: {result.stderr}")
+            return {"error": result.stderr}
 
         try:
-            data = json.loads(output)
+            response = json.loads(result.stdout)
+            if "id" in response:
+                logger.info(f"Message sent successfully: {response['id']}")
+            return response
         except json.JSONDecodeError:
-            logger.warning("Could not parse Mattermost API response: %s", output[:200])
+            logger.error(f"Failed to parse response: {result.stdout}")
+            return {"error": "Failed to parse response"}
+
+    # ------------------------------------------------------------------
+    # Read
+    # ------------------------------------------------------------------
+
+    def read_posts(self, limit: int = 100) -> list[dict]:
+        """Read recent posts from the channel."""
+        if not self.dev_bot_token:
+            logger.warning("No dev_bot_token configured, cannot read posts")
             return []
 
-        posts = []
-        for pid in data.get("order", []):
-            p = data["posts"][pid]
-            posts.append({
-                "id": p["id"],
-                "message": p.get("message", ""),
-                "user_id": p.get("user_id", ""),
-                "create_at": p.get("create_at", 0),
-                "type": p.get("type", ""),
-                "channel_id": channel_id,
-            })
+        result = subprocess.run(
+            [
+                "curl", "-s",
+                f"{self.mattermost_url}/api/v4/channels/{self.channel_id}/posts?per_page={limit}",
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
-        # Sort oldest first
-        posts.sort(key=lambda x: x["create_at"])
-        return posts
+        if result.returncode != 0:
+            logger.error(f"Failed to read posts: {result.stderr}")
+            return []
+
+        try:
+            data = json.loads(result.stdout)
+            posts = data.get("posts", {})
+            order = data.get("order", [])
+            return [posts[post_id] for post_id in order if post_id in posts]
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse posts: {result.stdout}")
+            return []
+
+    def get_unprocessed_messages(self) -> list[dict]:
+        """Get new messages since last check."""
+        posts = self.read_posts(limit=100)
+
+        # Filter to messages we haven't processed
+        new_messages = []
+        for post in posts:
+            post_ts = post.get("create_at", 0)
+            if post_ts > self._last_seen_ts and post.get("user_id") in self.bot_user_ids:
+                continue  # Skip bot messages
+            if post_ts > self._last_seen_ts:
+                new_messages.append(post)
+
+        if posts:
+            self._last_seen_ts = max(p.get("create_at", 0) for p in posts)
+
+        return new_messages
+
+    def wait_for_reply(self, root_id: str, timeout: int = 120) -> dict | None:
+        """Wait for a reply to a thread."""
+        start = time.time()
+        while time.time() - start < timeout:
+            posts = self.read_posts(limit=100)
+            for post in posts:
+                if post.get("root_id") == root_id and post.get("user_id") not in self.bot_user_ids:
+                    return post
+            time.sleep(2)
+        return None
+
+    def wait_for_response(self, timeout: int = 300) -> str | None:
+        """Wait for a human response in the channel (any message not from bots)."""
+        start = time.time()
+        while time.time() - start < timeout:
+            posts = self.read_posts(limit=50)
+            for post in posts:
+                # Skip bot messages
+                if post.get("user_id") in self.bot_user_ids:
+                    continue
+                # Skip system messages
+                if post.get("type"):
+                    continue
+                # Skip messages we already processed
+                if post.get("create_at", 0) <= self._last_seen_ts:
+                    continue
+                # Found a human message
+                self._last_seen_ts = max(self._last_seen_ts, post.get("create_at", 0))
+                return post.get("message", "")
+            time.sleep(2)
+        return None
+
+    # ------------------------------------------------------------------
+    # Channels
+    # ------------------------------------------------------------------
 
     def get_channels(self) -> list[dict]:
         """Get all channels the bot is a member of."""
         # Use the Mattermost API to get channels for this user
         url = f"{self.mattermost_url}/api/v4/users/{self.dev_bot_user_id}/teams"
-        # Use shell quotes only for SSH; for local, use plain args
-        if self.use_ssh:
-            curl_cmd = [
-                "curl", "-sf", f"'{url}'",
-                "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
-            ]
-        else:
-            curl_cmd = [
-                "curl", "-sf", url,
-                "-H", f"Authorization: Bearer {self.dev_bot_token}",
-            ]
+        curl_cmd = [
+            "curl", "-sf", url,
+            "-H", f"Authorization: Bearer {self.dev_bot_token}",
+        ]
         try:
-            output = self._ssh(curl_cmd, timeout=30)
+            output = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=30).stdout
             teams = json.loads(output)
         except Exception as e:
             logger.warning(f"Failed to get teams: {e}")
-            # Fallback to just the default channel
             return [{"id": self.channel_id, "name": "default"}]
 
         all_channels = []
@@ -266,18 +220,12 @@ class MattermostBridge:
             team_id = team.get("id")
             # Get channels for this team
             url = f"{self.mattermost_url}/api/v4/users/{self.dev_bot_user_id}/teams/{team_id}/channels"
-            if self.use_ssh:
-                curl_cmd = [
-                    "curl", "-sf", f"'{url}'",
-                    "-H", f"'Authorization: Bearer {self.dev_bot_token}'",
-                ]
-            else:
-                curl_cmd = [
-                    "curl", "-sf", url,
-                    "-H", f"Authorization: Bearer {self.dev_bot_token}",
-                ]
+            curl_cmd = [
+                "curl", "-sf", url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ]
             try:
-                output = self._ssh(curl_cmd, timeout=30)
+                output = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=30).stdout
                 channels = json.loads(output)
                 all_channels.extend(channels)
             except Exception as e:
@@ -289,137 +237,82 @@ class MattermostBridge:
         logger.info(f"Found {len(all_channels)} channels")
         return all_channels
 
-    def read_new_human_messages(self) -> list[dict]:
-        """Read new non-bot, non-system messages since the last check."""
-        posts = self.read_posts(limit=20, after=self._last_seen_ts)
+    def read_posts_from_channel(self, channel_id: str, limit: int = 100, after: int = 0) -> list[dict]:
+        """Read recent posts from a specific channel."""
+        if not self.dev_bot_token:
+            logger.warning("No dev_bot_token configured, cannot read posts")
+            return []
 
-        human = []
-        for p in posts:
+        # Note: Mattermost's "after" param expects a post ID, not timestamp
+        # For simplicity, we just read the latest posts and filter client-side
+        url = f"{self.mattermost_url}/api/v4/channels/{channel_id}/posts?per_page={limit}"
+
+        result = subprocess.run(
+            [
+                "curl", "-s", url,
+                "-H", f"Authorization: Bearer {self.dev_bot_token}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            logger.error(f"Failed to read posts: {result.stderr}")
+            return []
+
+        try:
+            data = json.loads(result.stdout)
+            posts = data.get("posts", {})
+            order = data.get("order", [])
+            all_posts = [posts[post_id] for post_id in order if post_id in posts]
+
+            # Filter by timestamp if after is provided (workaround for post ID issue)
+            if after > 0:
+                all_posts = [p for p in all_posts if p.get("create_at", 0) > after]
+
+            return all_posts
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse posts: {result.stdout}")
+            return []
+
+    def read_new_human_messages(self, channel_id: str = None) -> list[dict]:
+        """Read new human messages (not bot messages) from the channel since last check."""
+        ch_id = channel_id or self.channel_id
+        if not self.dev_bot_token:
+            logger.warning("No dev_bot_token configured, cannot read messages")
+            return []
+
+        # Read posts from channel
+        posts = self.read_posts_from_channel(ch_id, limit=20)
+
+        # Filter to only human messages (not from bots)
+        human_posts = []
+        for post in posts:
+            user_id = post.get("user_id")
+            # Skip bot messages
+            if user_id in self.bot_user_ids:
+                continue
             # Skip system messages
-            if p["type"]:
+            if post.get("type"):
                 continue
-            # Skip all bot messages
-            if p["user_id"] in self.bot_user_ids:
+            # Skip if we already processed this (based on timestamp)
+            post_ts = post.get("create_at", 0)
+            if post_ts <= self._last_seen_ts:
                 continue
-            # Skip posts we already saw
-            if p["create_at"] <= self._last_seen_ts:
-                continue
-            human.append(p)
+            human_posts.append(post)
 
+        # Update last seen timestamp
         if posts:
-            self._last_seen_ts = max(p["create_at"] for p in posts)
+            self._last_seen_ts = max(self._last_seen_ts, max(p.get("create_at", 0) for p in posts))
 
-        return human
+        return human_posts
 
     def mark_current_position(self) -> None:
-        """Set the read cursor to now so wait_for_response only sees new messages."""
-        posts = self.read_posts(limit=1)
+        """Mark the current position in the channel by reading the latest post."""
+        # This is used to track where we are in the conversation
+        # Just read the latest posts to update _last_seen_ts
+        posts = self.read_posts(limit=5)
         if posts:
-            self._last_seen_ts = posts[-1]["create_at"]
+            self._last_seen_ts = max(self._last_seen_ts, max(p.get("create_at", 0) for p in posts))
 
-    def wait_for_response(self, timeout: int = 300, poll_interval: int = 5) -> str | None:
-        """Poll for a human response. Returns message text or None on timeout."""
-        self.mark_current_position()
-
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            time.sleep(poll_interval)
-            new = self.read_new_human_messages()
-            for msg in new:
-                text = msg.get("message", "").strip()
-                if text:
-                    logger.info("Human response: %s", text[:100])
-                    return text
-
-        logger.info("Timed out waiting for response after %ds", timeout)
-        return None
-
-    # ------------------------------------------------------------------
-    # SSH helper
-    # ------------------------------------------------------------------
-
-    def _ssh(self, remote_cmd: list[str], timeout: int = 30, max_retries: int = 3) -> str:
-        """Run a command locally or via SSH with retry logic.
-
-        Args:
-            remote_cmd: Command to run (locally or on remote host)
-            timeout: Timeout for each attempt
-            max_retries: Maximum number of retry attempts
-
-        Raises:
-            RuntimeError: If all retries fail
-        """
-        # If use_ssh is False, run locally (no shell quoting needed)
-        if not self.use_ssh:
-            # Strip shell quoting: $'...' becomes just ... and '...' becomes ...
-            def strip_shell_quotes(arg: str) -> str:
-                if arg.startswith("$'") and arg.endswith("'"):
-                    return arg[2:-1]  # Remove $' and '
-                if arg.startswith("'") and arg.endswith("'"):
-                    return arg[1:-1]  # Remove ' and '
-                return arg
-
-            clean_cmd = [strip_shell_quotes(arg) for arg in remote_cmd]
-            logger.info("Running locally: %s", clean_cmd)
-            result = subprocess.run(
-                clean_cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            logger.info("Result: returncode=%d, stdout=%s, stderr=%s", result.returncode, result.stdout[:200], result.stderr[:200])
-            if result.returncode != 0:
-                logger.error("Local command failed: stdout=%s, stderr=%s", result.stdout, result.stderr)
-                raise RuntimeError(f"Local command failed: {result.stderr}")
-            return result.stdout.strip()
-
-        last_error: Exception | None = None
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                return self._ssh_once(remote_cmd, timeout)
-            except Exception as e:
-                last_error = e
-                if attempt < max_retries:
-                    # Exponential backoff: 2s, 8s, 32s
-                    backoff = 2 ** (attempt + 0)
-                    logger.warning(
-                        "SSH attempt %d/%d failed: %s. Retrying in %ds...",
-                        attempt, max_retries, e, backoff,
-                    )
-                    time.sleep(backoff)
-                else:
-                    logger.error("SSH failed after %d attempts: %s", max_retries, e)
-
-        # All retries failed
-        raise RuntimeError(f"SSH failed after {max_retries} attempts: {last_error}")
-
-    def _ssh_once(self, remote_cmd: list[str], timeout: int = 30) -> str:
-        """Run a single SSH command (no retry)."""
-        # Add -o StrictHostKeyChecking=no to skip host key verification
-        cmd = ["ssh", "-o", "StrictHostKeyChecking=no", self.ssh_host, " ".join(remote_cmd)]
-        logger.debug("SSH: %s", " ".join(remote_cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            # Filter out the SSH banner
-            lines = [line for line in stderr.splitlines() if not line.startswith("*") and "UNAUTHORIZED" not in line and "monitored" not in line and "Disconnect" not in line]
-            clean_err = "\n".join(lines).strip()
-            if clean_err:
-                logger.error("SSH command error: %s", clean_err)
-                raise RuntimeError(f"Remote command failed: {clean_err}")
-        # Filter SSH banner from stdout too
-        stdout = result.stdout
-        lines = stdout.splitlines()
-        filtered = []
-        for line in lines:
-            if line.startswith("***") or "UNAUTHORIZED" in line or "monitored" in line or "Disconnect" in line:
-                continue
-            filtered.append(line)
-        return "\n".join(filtered).strip()
-
-    @staticmethod
-    def _shell_quote(s: str) -> str:
-        """Quote a string for safe passing through SSH + shell."""
-        escaped = s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
-        return f"$'{escaped}'"

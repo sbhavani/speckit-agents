@@ -404,6 +404,7 @@ def run_claude_stream(
         logger.debug("Starting subprocess: %s", cmd)
         proc = subprocess.Popen(
             cmd,
+            stdin=subprocess.DEVNULL,  # Prevent blocking on stdin
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -743,7 +744,8 @@ class Orchestrator:
 
         # Save to Redis if available, otherwise use file
         if self._redis_state:
-            self._redis_state.save(self.project_path, data)
+            channel_id = self.msg.bridge.channel_id if hasattr(self.msg.bridge, 'channel_id') else ""
+            self._redis_state.save(self.project_path, data, channel_id)
             logger.info("State saved to Redis: phase=%s", self.state.phase.name)
         else:
             path = self._state_file_path()
@@ -754,7 +756,8 @@ class Orchestrator:
         """Load state from Redis or file. Returns None if missing or corrupt."""
         # Try Redis first if available
         if self._redis_state:
-            data = self._redis_state.load(self.project_path)
+            channel_id = self.msg.bridge.channel_id if hasattr(self.msg.bridge, 'channel_id') else ""
+            data = self._redis_state.load(self.project_path, channel_id)
             if data:
                 if data.get("version") != 1:
                     logger.warning("Unknown state version: %s", data.get("version"))
@@ -781,7 +784,8 @@ class Orchestrator:
         """Delete state on successful completion."""
         # Clear Redis if available
         if self._redis_state:
-            self._redis_state.delete(self.project_path)
+            channel_id = self.msg.bridge.channel_id if hasattr(self.msg.bridge, 'channel_id') else ""
+            self._redis_state.delete(self.project_path, channel_id)
             logger.info("State cleared from Redis")
         # Also clear file for clean state
         path = self._state_file_path()
@@ -866,8 +870,11 @@ class Orchestrator:
 
             # If worker handoff complete, skip remaining dev phases
             # The worker will pick up from the stream and run them
-            logger.info(f"Phase {phase.name}: worker_handoff={self.state.worker_handoff}")
-            if self.state.worker_handoff and phase == Phase.REVIEW:
+            # But if running in WORKER_MODE, continue locally instead of skipping
+            import os
+            is_worker_mode = os.environ.get("WORKER_MODE")
+            logger.info(f"Phase {phase.name}: worker_handoff={self.state.worker_handoff}, WORKER_MODE={is_worker_mode}")
+            if self.state.worker_handoff and phase == Phase.REVIEW and not is_worker_mode:
                 logger.info("Worker handoff complete - orchestrator skipping dev phases")
                 self.msg.send(
                     "✅ Feature published to work queue. Workers will handle implementation.",
@@ -970,6 +977,10 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         logger.info("PM suggested: %s", self.state.feature.get("feature"))
 
+        # Store PM suggestion in Redis immediately so it's available for later lookup
+        # This is called BEFORE REVIEW which might overwrite the feature
+        self._store_pm_suggestion()
+
     def _phase_review(self) -> bool:
         self.state.phase = Phase.REVIEW
         logger.info("Phase: REVIEW")
@@ -988,7 +999,7 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         )
 
         auto = self.cfg.get("workflow", {}).get("auto_approve", False)
-        if auto:
+        if auto or self._auto_approve:
             logger.info("Auto-approve enabled, proceeding")
             self.msg.send("Auto-approved (config: auto_approve=true)", sender="Orchestrator")
             # Publish to stream for workers
@@ -1027,6 +1038,9 @@ Return ONLY a JSON object (no markdown fences, no extra text):
             self.state.feature["description"] = response
             self.state.feature["feature"] = response[:60]
 
+        # Store PM suggestion in Redis so responder can retrieve on approval
+        self._store_pm_suggestion()
+
         # Publish feature to Redis stream for workers to pick up
         self._publish_feature_to_stream()
 
@@ -1036,9 +1050,51 @@ Return ONLY a JSON object (no markdown fences, no extra text):
 
         return True
 
+    def _store_pm_suggestion(self) -> None:
+        """Store PM suggestion in Redis for retrieval on approval."""
+        import redis as redis_lib
+
+        redis_config = self.cfg.get("redis_streams", {})
+        if not redis_config:
+            return
+
+        # Only store if feature looks valid (not empty, not a command)
+        feature = self.state.feature.get("feature", "")
+        if not feature or feature.startswith("/") or feature.startswith("@"):
+            logger.warning(f"Not storing invalid PM suggestion: {feature}")
+            return
+
+        redis_url = redis_config.get("url", "redis://localhost:6379")
+        try:
+            r = redis_lib.from_url(redis_url, decode_responses=True)
+            # Use thread_root_id if available, otherwise use channel_id
+            thread_id = self.msg.root_id or ""
+            # Get channel_id from the bridge, not from config (config might be empty)
+            channel_id = self.msg.bridge.channel_id if hasattr(self.msg.bridge, 'channel_id') else ""
+
+            # Store feature with channel_id and thread_id as part of key
+            import json
+            key = f"agent-team:pm-suggestion:{channel_id}:{thread_id}"
+            data = json.dumps({
+                "feature": self.state.feature.get("feature", ""),
+                "description": self.state.feature.get("description", ""),
+                "rationale": self.state.feature.get("rationale", ""),
+                "priority": self.state.feature.get("priority", ""),
+            })
+            r.setex(key, 3600, data)  # 1 hour expiry
+            logger.info(f"Stored PM suggestion in Redis: {key}")
+        except Exception as e:
+            logger.warning(f"Failed to store PM suggestion in Redis: {e}")
+
     def _publish_feature_to_stream(self) -> None:
         """Publish approved feature to Redis stream for worker pickup."""
+        import os
         import redis
+
+        # Skip publishing when running from worker to avoid infinite loop
+        if os.environ.get("WORKER_MODE"):
+            logger.info("Running in WORKER_MODE, skipping stream publish")
+            return
 
         redis_config = self.cfg.get("redis_streams", {})
         if not redis_config:
@@ -1545,12 +1601,6 @@ Return ONLY a JSON object (no markdown fences, no extra text):
                     fpath.unlink()
                     logger.info("Removed stale file: %s", fpath)
 
-        self.msg.send(
-            "🔨 **Implement** — Starting implementation... You can ask me product questions anytime "
-            "during this phase and the PM will answer.",
-            sender="Dev Agent",
-        )
-
         # Get feature description
         feature_desc = self.state.feature.get("description", self.state.feature.get("feature", ""))
 
@@ -1562,10 +1612,17 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         if parallel_enabled:
             sequential_tasks, parallel_batches = self._parse_tasks_for_parallel()
 
-        # Determine if we should use parallel execution
+        # Determine if we should use parallel execution or commit-based
         use_parallel = parallel_enabled and (sequential_tasks or parallel_batches)
 
-        if use_parallel:
+        if use_parallel and sequential_tasks:
+            # Use new PR-based commit workflow
+            # Combine sequential + parallel into flat list for now
+            all_tasks = sequential_tasks
+            for batch in parallel_batches:
+                all_tasks.extend(batch)
+            self._execute_tasks_with_commits(all_tasks)
+        elif use_parallel:
             self._execute_parallel_implementation(sequential_tasks, parallel_batches, feature_desc)
         else:
             # Original single-command implementation
@@ -1984,6 +2041,228 @@ Otherwise, complete all tasks completely."""
         )
         self.state.dev_session = result.get("session_id", self.state.dev_session)
 
+    # ------------------------------------------------------------------
+    # PR-based task workflow
+    # ------------------------------------------------------------------
+
+    def _create_pr_early(self, tasks: list[dict]) -> str:
+        """Create PR early with task checklist, return PR URL."""
+        import subprocess
+
+        branch_name = self.state.branch_name or "main"
+
+        # Build initial PR body with task checklist
+        feature_name = self.state.feature.get("feature", "Feature")
+        pr_body = f"""## {feature_name}
+
+**Status:** In Progress
+
+### Tasks
+
+"""
+        for task in tasks:
+            task_id = task.get("id", "?")
+            desc = task.get("description", "")
+            pr_body += f"- [ ] **{task_id}:** {desc}\n"
+
+        pr_body += f"""
+
+---
+*Generated by speckit-agents*"""
+
+        # Create branch name
+        safe_name = feature_name.lower().replace(" ", "-")[:50]
+        import time
+        branch = f"speckit-{safe_name}-{int(time.time())}"
+        self.state.branch_name = branch
+
+        try:
+            # Create branch
+            subprocess.run(
+                ["git", "checkout", "-b", branch],
+                cwd=self.project_path,
+                check=True,
+            )
+            # Push branch
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch],
+                cwd=self.project_path,
+                check=True,
+            )
+            # Create PR
+            result = subprocess.run(
+                ["gh", "pr", "create",
+                 "--title", f"{feature_name} ({branch})",
+                 "--body", pr_body,
+                 "--base", "main"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                pr_url = result.stdout.strip()
+                self.state.pr_url = pr_url
+                logger.info("Created PR early: %s", pr_url)
+                return pr_url
+            else:
+                logger.warning("Failed to create PR: %s", result.stderr)
+                return ""
+        except Exception as e:
+            logger.warning("Failed to create PR early: %e", e)
+            return ""
+
+    def _update_pr_progress(self, completed_task_ids: set[str], total_tasks: list[dict]) -> None:
+        """Update PR description with completed tasks."""
+        import subprocess
+
+        if not self.state.pr_url:
+            return
+
+        # Extract PR number from URL
+        pr_url = self.state.pr_url
+        if "/" not in pr_url:
+            return
+
+        pr_number = pr_url.split("/")[-1]
+
+        # Build updated body
+        feature_name = self.state.feature.get("feature", "Feature")
+        completed_count = len(completed_task_ids)
+
+        pr_body = f"""## {feature_name}
+
+**Status:** In Progress ({completed_count}/{len(total_tasks)} tasks completed)
+
+### Tasks
+
+"""
+        for task in total_tasks:
+            task_id = task.get("id", "?")
+            desc = task.get("description", "")
+            checked = "x" if task_id in completed_task_ids else " "
+            pr_body += f"- [{checked}] **{task_id}:** {desc}\n"
+
+        pr_body += f"""
+
+---
+*Generated by speckit-agents*"""
+
+        try:
+            subprocess.run(
+                ["gh", "pr", "edit", pr_number, "--body", pr_body],
+                cwd=self.project_path,
+                check=True,
+            )
+            logger.info("Updated PR progress: %d/%d", completed_count, len(total_tasks))
+        except Exception as e:
+            logger.warning("Failed to update PR: %e", e)
+
+    def _commit_task(self, task_id: str, description: str) -> bool:
+        """Commit changes for a single task."""
+        import subprocess
+
+        try:
+            # Add all changes
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=self.project_path,
+                check=True,
+            )
+            # Check if there are changes to commit
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+            )
+            if not result.stdout.strip():
+                logger.info("No changes to commit for %s", task_id)
+                return True
+
+            # Commit with descriptive message
+            commit_msg = f"{task_id}: {description}"
+            subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=self.project_path,
+                check=True,
+            )
+            # Push
+            subprocess.run(
+                ["git", "push"],
+                cwd=self.project_path,
+                check=True,
+            )
+            logger.info("Committed: %s", commit_msg)
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.warning("Failed to commit %s: %s", task_id, e)
+            return False
+
+    def _execute_tasks_with_commits(self, tasks: list[dict]) -> None:
+        """Execute tasks one by one, committing each as completed."""
+        import time
+
+        completed_tasks: set[str] = set()
+        total_tasks = tasks
+
+        # Create PR early with all tasks unchecked
+        pr_url = self._create_pr_early(tasks)
+        if pr_url:
+            self.msg.send(
+                f"🔨 **Implement** — PR created: {pr_url}\nImplementing {len(tasks)} tasks...",
+                sender="Dev Agent",
+            )
+        else:
+            self.msg.send(
+                f"🔨 **Implement** — Starting implementation of {len(tasks)} tasks...",
+                sender="Dev Agent",
+            )
+
+        for i, task in enumerate(tasks):
+            task_id = task.get("id", f"T{i+1:03d}")
+            description = task.get("description", task.get("title", ""))
+
+            # Run implementation for just this task
+            prompt = f"""Implement the following task:
+
+**{task_id}:** {description}
+
+1. Make the necessary code changes
+2. Write or update tests if needed
+3. Ensure the changes are complete
+
+Return "DONE" when finished, or describe any issues."""
+
+            result = run_claude(
+                prompt=prompt,
+                cwd=self.project_path,
+                session_id=None,  # Fresh session for each task
+                allowed_tools=DEV_TOOLS,
+                timeout=1800,  # 30 min per task
+            )
+
+            # Commit the changes
+            if self._commit_task(task_id, description):
+                completed_tasks.add(task_id)
+
+            # Update PR progress
+            self._update_pr_progress(completed_tasks, total_tasks)
+
+            # Brief pause between tasks
+            time.sleep(2)
+
+        # Mark PR as ready if created
+        if self.state.pr_url:
+            try:
+                import subprocess
+                pr_number = self.state.pr_url.split("/")[-1]
+                subprocess.run(
+                    ["gh", "pr", "ready", pr_number],
+                    cwd=self.project_path,
+                )
+            except Exception as e:
+                logger.warning("Failed to mark PR ready: %s", e)
+
     def _phase_create_pr(self) -> None:
         self.state.phase = Phase.CREATE_PR
         logger.info("Phase: CREATE_PR")
@@ -2093,7 +2372,7 @@ Be specific about:
         return f"{m}m {s}s" if s else f"{m}m"
 
     def _display_phase_status(self, phase_name: str) -> None:
-        """Display current phase status with elapsed time."""
+        """Display current phase status with elapsed time (console only, not Mattermost)."""
         if self._run_start_time is None or self._phase_start_time is None:
             return
 
@@ -2105,8 +2384,8 @@ Be specific about:
             f"Phase duration: {self._fmt_duration(phase_elapsed)} | "
             f"Total: {self._fmt_duration(total_elapsed)}"
         )
+        # Log to console only - never post phase status to Mattermost
         logger.info(status_msg)
-        self.msg.send(status_msg, sender="Orchestrator")
 
     def _post_summary(self, error: str | None = None) -> None:
         """Format and send a workflow summary to Mattermost."""
@@ -2340,19 +2619,13 @@ def main() -> None:
         messenger = Messenger(bridge=None, dry_run=True)
     else:
         mm = config["mattermost"]
-        ssh_host = config["openclaw"]["ssh_host"]
-        # Use SSH only for non-local hosts
-        use_ssh = ssh_host not in ("localhost", "127.0.0.1", "")
         bridge = MattermostBridge(
-            ssh_host=ssh_host,
             channel_id=channel_id,
             mattermost_url=mm.get("url", "http://localhost:8065"),
             dev_bot_token=mm["dev_bot_token"],
             dev_bot_user_id=mm.get("dev_bot_user_id", ""),
             pm_bot_token=mm.get("pm_bot_token", ""),
             pm_bot_user_id=mm.get("pm_bot_user_id", ""),
-            openclaw_account=config["openclaw"].get("openclaw_account"),
-            use_ssh=use_ssh,
         )
         messenger = Messenger(bridge=bridge)
 

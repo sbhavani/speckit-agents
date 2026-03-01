@@ -18,8 +18,10 @@ import yaml
 from mattermost_bridge import MattermostBridge
 from utils import deep_merge
 
+# Check for LOG_LEVEL env var
+log_level = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -37,27 +39,24 @@ class Responder:
 
         # Extract Mattermost config
         mattermost = config.get("mattermost", {})
-        openclaw = config.get("openclaw", {})
+        llm_config = config.get("llm", {})
 
         self.bridge = MattermostBridge(
-            ssh_host=openclaw.get("ssh_host", ""),  # Not used when use_ssh=False
             channel_id=mattermost.get("channel_id", ""),
             mattermost_url=mattermost.get("url", "http://localhost:8065"),
             dev_bot_token=mattermost.get("dev_bot_token", ""),
             dev_bot_user_id=mattermost.get("dev_bot_user_id", ""),
             pm_bot_token=mattermost.get("pm_bot_token", ""),
             pm_bot_user_id=mattermost.get("pm_bot_user_id", ""),
-            openclaw_account=openclaw.get("openclaw_account"),
-            use_ssh=False,  # Run locally since we're on the same host
         )
 
         self.last_check = int(time.time() * 1000)  # milliseconds
         self.processed_messages: set[str] = set()  # Track processed message IDs
 
-        # Store minimax API config for responding to PM questions
-        self.minimax_api_key = openclaw.get("anthropic_api_key", "")
-        self.minimax_base_url = openclaw.get("anthropic_base_url", "https://api.minimax.io/anthropic")
-        self.minimax_model = openclaw.get("anthropic_model", "MiniMax-M2.1")
+        # Store LLM API config for responding to PM questions
+        self.minimax_api_key = config.get("openclaw", {}).get("anthropic_api_key", "") or llm_config.get("api_key", "")
+        self.minimax_base_url = llm_config.get("base_url", "https://api.minimax.io/anthropic")
+        self.minimax_model = llm_config.get("model", "MiniMax-M2.1")
 
         # Initialize Redis client
         redis_config = config.get("redis_streams", {})
@@ -97,6 +96,7 @@ class Responder:
 
     def _check_for_commands(self) -> None:
         """Check all channels for new messages with commands or @mentions."""
+        logger.debug(f"Checking {len(self.channels)} channels for commands...")
         for channel in self.channels:
             channel_id = channel.get("id")
             if not channel_id:
@@ -122,12 +122,17 @@ class Responder:
 
                 # Skip bot messages
                 if p.get("user_id") in self.bridge.bot_user_ids:
+                    logger.debug(f"Skipping bot message: {p.get('user_id')}")
                     continue
                 # Skip system messages
                 if p.get("type"):
+                    logger.debug(f"Skipping system message: {p.get('type')}")
                     continue
 
+                logger.info(f"Found message: {p.get('message', '')[:50]}")
+
                 text = p.get("message", "").strip()
+                logger.debug(f"Processing message: {text[:50]}, lower: {text.lower()[:50]}")
 
                 # Check if this is a question (ends with ? or contains question words)
                 # This should be handled before /suggest check
@@ -137,15 +142,33 @@ class Responder:
                 text_lower = text.lower()
                 is_question = is_question or any(phrase in text_lower for phrase in question_phrases)
 
+                # Check for "approve" or "reject" command (in response to PM suggestion)
+                if text.lower().strip() in ("approve", "approved", "yes", "y"):
+                    # Get root_id to find the PM suggestion thread
+                    root_id = p.get("root_id", "")
+                    self._handle_approve(channel_id, root_id=root_id)
+                    continue
+                if text.lower().strip() in ("reject", "rejected", "no", "n"):
+                    self._handle_reject(channel_id)
+                    continue
+
                 # Check for /resume command
                 if "/resume" in text.lower():
                     self._handle_resume(text, channel_id)
                     continue
 
-                # Check for /suggest command (anywhere in message, but not questions)
-                if "/suggest" in text.lower() and not is_question:
-                    self._handle_suggest(text, channel_id)
-                    continue
+                # Check for /speckit.suggest command (anywhere in message, but not questions)
+                has_suggest = "/speckit.suggest" in text.lower() or "/suggest" in text.lower()
+                logger.info(f"Check /suggest: has_suggest={has_suggest}, is_question={is_question}, text={text[:30]}")
+                if has_suggest:
+                    logger.info(f"Found /suggest: is_question={is_question}, text={text[:30]}")
+                    if not is_question:
+                        logger.info(f"Detected /suggest command in: {text[:50]}")
+                        try:
+                            self._handle_suggest(text, channel_id)
+                        except Exception as e:
+                            logger.exception(f"Error handling suggest: {e}")
+                        continue
 
                 # Check for @product-manager or @dev-agent mention
                 if "@product-manager" in text.lower() or "@dev-agent" in text.lower():
@@ -195,6 +218,119 @@ class Responder:
 
         # Publish resume request to Redis stream
         self._publish_feature_request(channel_id=channel_id, resume=True)
+
+    def _handle_approve(self, channel_id: str, root_id: str = "") -> None:
+        """Handle approval - run orchestrator with --resume --approve."""
+        logger.info(f"Approval detected in channel {channel_id}, root_id={root_id}")
+
+        # Try to find the PM's suggestion from Redis using the thread root_id
+        feature = self._find_pm_suggestion(channel_id, thread_id=root_id)
+        if feature:
+            logger.info(f"Found PM suggestion in Redis: {feature.get('feature', '')[:50]}...")
+        else:
+            logger.warning("No PM suggestion found in Redis, will try channel messages")
+            # Fallback: look in channel messages
+            feature_text = self._find_pm_suggestion_from_channel(channel_id)
+            if feature_text:
+                feature = {"feature": feature_text}
+                logger.info(f"Found PM suggestion from channel: {feature_text[:50]}...")
+
+        # Publish to Redis with resume + approve flags and the feature
+        self._publish_feature_request(
+            channel_id=channel_id,
+            resume=True,
+            approve=True,
+            feature=feature.get("feature") if isinstance(feature, dict) else feature,
+        )
+
+    def _find_pm_suggestion(self, channel_id: str, thread_id: str = None) -> dict | None:
+        """Find the PM's suggestion from Redis."""
+        if not self.redis:
+            return None
+
+        try:
+            import json
+
+            # First try to find by the specific thread_id if provided
+            if thread_id:
+                key = f"agent-team:pm-suggestion:{channel_id}:{thread_id}"
+                data = self.redis.get(key)
+                if data:
+                    result = json.loads(data)
+                    # Verify this is a real suggestion, not just "/suggest"
+                    if result.get("feature") and result.get("feature") != "/suggest":
+                        return result
+
+            # If no thread_id or not found, scan for keys and find the most recent one
+            # that has a valid suggestion (not empty or "/suggest")
+            latest_key = None
+            latest_time = 0
+            for key in self.redis.scan_iter(match=f"agent-team:pm-suggestion:{channel_id}:*"):
+                data = self.redis.get(key)
+                if data:
+                    result = json.loads(data)
+                    # Check if this is a valid suggestion
+                    feature = result.get("feature", "")
+                    if feature and feature != "/suggest" and not feature.startswith("@"):
+                        # This looks like a real feature suggestion
+                        # Use TTL to determine recency - shorter TTL = more recent
+                        ttl = self.redis.ttl(key)
+                        if ttl > latest_time:
+                            latest_time = ttl
+                            latest_key = result
+
+            if latest_key:
+                return latest_key
+
+            return None
+        except Exception as e:
+            logger.warning(f"Error finding PM suggestion in Redis: {e}")
+            return None
+
+    def _find_pm_suggestion_from_channel(self, channel_id: str) -> str | None:
+        """Fallback: Find the PM's suggestion from recent messages in the channel."""
+        try:
+            # Get recent messages from the channel
+            posts = self.bridge.read_posts_from_channel(channel_id, limit=10)
+            if not posts:
+                return None
+
+            # Look for PM Agent's message with "Feature Suggestion"
+            # PM Agent is a bot, so we look for bot messages containing "Feature Suggestion"
+            for post in posts:
+                message = post.get("message", "")
+                # PM Agent posts with "Feature Suggestion" - look for that
+                if "Feature Suggestion" in message:
+                    # Extract the feature name - it's in **bold** text after "Feature Suggestion"
+                    import re
+                    # Match **feature name** (priority) pattern
+                    match = re.search(r'\*\*([^*]+)\*\*', message)
+                    if match:
+                        feature_name = match.group(1).strip()
+                        # Make sure this is the feature name, not something else
+                        # The format is "**FeatureName (Priority: P1)**"
+                        if "priority" in message.lower():
+                            return feature_name
+                    # Also try to find lines that start with "feature:" or "Feature:"
+                    feature_match = re.search(r'[Ff]eature:\s*([^\n]+)', message)
+                    if feature_match:
+                        return feature_match.group(1).strip()
+
+            return None
+        except Exception as e:
+            logger.warning(f"Error finding PM suggestion: {e}")
+            return None
+
+    def _handle_reject(self, channel_id: str) -> None:
+        """Handle rejection - do nothing or acknowledge."""
+        logger.info(f"Rejection detected in channel {channel_id}")
+
+        # Post acknowledgment
+        self.bridge.send(
+            "Feature rejected. Starting fresh workflow...",
+            sender="Responder",
+            channel_id=channel_id,
+        )
 
     def _handle_mention(self, text: str, channel_id: str, is_question: bool = False) -> None:
         """Handle @product-manager or @dev-agent mention."""
@@ -294,9 +430,9 @@ class Responder:
         prompt += f"User question: {message}\n\nRespond directly as the Product Manager would. Keep it friendly and concise."
 
         # Send to OpenClaw via SSH
-        return self._send_to_openclaw(prompt)
+        return self._send_to_llm(prompt)
 
-    def _send_to_openclaw(self, prompt: str) -> str:
+    def _send_to_llm(self, prompt: str) -> str:
         """Send prompt to Claude via Minimax API."""
         if not self.minimax_api_key:
             logger.error("No minimax API key configured")
@@ -365,7 +501,7 @@ class Responder:
         except Exception as e:
             logger.error(f"Failed to spawn orchestrator: {e}")
 
-    def _publish_feature_request(self, feature: Optional[str] = None, channel_id: Optional[str] = None, resume: bool = False) -> None:
+    def _publish_feature_request(self, feature: Optional[str] = None, channel_id: Optional[str] = None, resume: bool = False, approve: bool = False) -> None:
         """Publish feature request to Redis stream for worker processing."""
         if not self.redis:
             logger.warning("Redis not available, falling back to subprocess")
@@ -388,6 +524,8 @@ class Responder:
             "feature": feature or "",
             "command": "resume" if resume else "suggest",
         }
+        if approve:
+            payload["approve"] = "true"
 
         try:
             # Add to Redis stream
