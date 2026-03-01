@@ -94,7 +94,6 @@ The system uses a distributed architecture where the orchestrator coordinates wo
 | Mattermost Bridge | `mattermost_bridge.py` | Dual-bot Mattermost API client |
 | Redis State | `state_redis.py` | Redis-backed state persistence |
 | Tool Augmentor | `tool_augment.py` | Pre/post phase discovery and validation hooks |
-| Augment Analyzer | `analyze_augment.py` | JSONL log analysis for augmentation metrics |
 | Redis Streams Lib | `src/redis_streams/` | Consumer, producer, checkpoint, monitoring |
 
 ### Orchestrator Responsibilities
@@ -185,7 +184,7 @@ When orchestrator publishes to stream:
 
 - [P3-US4] ✅ Phase durations tracked and displayed in summary
 - [P3-US5] ✅ Tool augmentation logs pre/post phase state (`tool_augment.py`)
-- [P3-US6] ✅ JSONL logs for post-mortem analysis (`analyze_augment.py`)
+- [P3-US6] ✅ JSONL logs for post-mortem analysis
 
 **Acceptance Criteria:**
 - Summary shows time per phase
