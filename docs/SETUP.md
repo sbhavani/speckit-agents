@@ -168,6 +168,72 @@ uv run python orchestrator.py --doctor
 uv run python orchestrator.py --verbose
 ```
 
+## Running with Tmux (Recommended for Monitoring)
+
+For visual monitoring of all components, use the tmux-based scripts:
+
+```bash
+# Install tmux if needed
+brew install tmux
+
+# Quick start - 2 workers (recommended)
+./run-tmux.sh 2
+
+# Or use 3-pane layout (responder + worker pool + manual debug pane)
+./run-tmux-3pane.sh 2
+```
+
+### Tmux Pane Layouts
+
+**2-Pane (run-tmux.sh):**
+```
+┌─────────────────────────┐
+│     Responder           │  ← Listens for @product-manager commands
+├─────────────────────────┤
+│   Worker Pool          │  ← Processes features from queue
+└─────────────────────────┘
+```
+
+**3-Pane (run-tmux-3pane.sh):**
+```
+┌─────────────────────────┐
+│     Responder           │  ← Listens for commands
+├─────────────────────────┤
+│   Worker Pool          │  ← 2+ workers
+├─────────────────────────┤
+│     Manual              │  ← Reserved for debugging
+└─────────────────────────┘
+```
+
+### Tmux Keybindings
+
+| Keybinding | Action |
+|------------|--------|
+| `Ctrl+B` then `D` | Detach from session |
+| `Ctrl+B` then `0-2` | Switch to pane 0/1/2 |
+| `Ctrl+B` then `↑↓←→` | Navigate between panes |
+| `Ctrl+B` then `Z` | Zoom/unzoom current pane |
+| `Ctrl+B` then `|` | Split horizontally |
+| `Ctrl+B` then `"` | Split vertically |
+| `Ctrl+B` then `X` | Kill current pane |
+| `Ctrl+B` then `?` | Show all keybindings |
+
+### Session Management
+
+```bash
+# List running sessions
+tmux ls
+
+# Attach to existing session
+tmux attach -t speckit
+
+# Kill specific session
+tmux kill-session -t speckit
+
+# Kill all sessions
+tmux kill-server
+```
+
 ## Troubleshooting
 
 ### "Bot not found" error
