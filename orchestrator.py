@@ -2480,6 +2480,8 @@ def main() -> None:
                         help="Resume and auto-approve the plan (skip review)")
     parser.add_argument("--project", type=str, default=None,
                         help="Project name from config (for multi-project setups)")
+    parser.add_argument("--all-projects", action="store_true",
+                        help="Loop through all configured projects")
     parser.add_argument("--channel", type=str, default=None,
                         help="Override Mattermost channel ID")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
@@ -2605,101 +2607,157 @@ def main() -> None:
             print("\nSetup has errors - please fix above")
         return
 
-    # Resolve project config (supports single project or multi-project mode)
-    try:
-        project_path, prd_path, project_channel_id = resolve_project_config(config, args.project)
-    except ValueError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-
-    # Use --channel override, project channel_id, or fallback to global config
-    channel_id = args.channel or project_channel_id or config.get("mattermost", {}).get("channel_id")
-
-    if args.dry_run:
-        messenger = Messenger(bridge=None, dry_run=True)
-    else:
-        mm = config["mattermost"]
-        bridge = MattermostBridge(
-            channel_id=channel_id,
-            mattermost_url=mm.get("url", "http://localhost:8065"),
-            dev_bot_token=mm["dev_bot_token"],
-            dev_bot_user_id=mm.get("dev_bot_user_id", ""),
-            pm_bot_token=mm.get("pm_bot_token", ""),
-            pm_bot_user_id=mm.get("pm_bot_user_id", ""),
-        )
-        messenger = Messenger(bridge=bridge)
-
-    orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path, project_name=args.project)
-
     # Resolve tool augmentation: --no-tools > --tools > config > default (disabled)
+    # This is defined here so it's available for both single project and --all-projects modes
     if args.no_tools:
         tools_enabled = False
     elif args.tools:
         tools_enabled = True
     else:
         tools_enabled = None  # defer to config
-    orchestrator._init_augmentor(force_enabled=tools_enabled)
 
-    if args.resume:
-        saved = orchestrator._load_state()
-        if saved is None:
-            print("Error: No saved state found. Run without --resume first.")
+    # Handle --all-projects separately (loops through all projects)
+    if args.all_projects:
+        # Just run the all-projects logic and exit
+        pass
+    else:
+        # Resolve project config (supports single project or multi-project mode)
+        try:
+            project_path, prd_path, project_channel_id = resolve_project_config(config, args.project)
+        except ValueError as e:
+            print(f"Error: {e}")
             sys.exit(1)
-        # Restore state from file
-        orchestrator.state.phase = Phase[saved["phase"]]
-        orchestrator.state.feature = saved.get("feature", {})
-        orchestrator.state.pm_session = saved.get("pm_session")
-        orchestrator.state.dev_session = saved.get("dev_session")
-        orchestrator.state.pr_url = saved.get("pr_url")
-        orchestrator.state.branch_name = saved.get("branch_name")
-        orchestrator.state.worker_handoff = saved.get("worker_handoff", False)
-        orchestrator._workflow_type = saved.get("workflow_type", "normal")
-        orchestrator._started_at = saved.get("started_at")
-        # Restore paths from saved state
-        if saved.get("original_path"):
-            orchestrator.original_path = saved["original_path"]
-        if saved.get("worktree_path"):
-            orchestrator.worktree_path = saved["worktree_path"]
-            orchestrator.project_path = saved["worktree_path"]
-        # Restore thread root ID so messages continue in the same thread
-        if saved.get("thread_root_id"):
-            orchestrator.msg._root_id = saved["thread_root_id"]
-            logger.info("Restored thread: %s", saved["thread_root_id"])
-        orchestrator._resuming = True
-        # If --approve is set, skip to implementation
-        if args.approve:
-            orchestrator._auto_approve = True
-            orchestrator.msg.send(
-                f"Resuming from **{saved['phase']}** phase (auto-approve enabled)",
+
+        # Use --channel override, project channel_id, or fallback to global config
+        channel_id = args.channel or project_channel_id or config.get("mattermost", {}).get("channel_id")
+
+        if args.dry_run:
+            messenger = Messenger(bridge=None, dry_run=True)
+        else:
+            mm = config["mattermost"]
+            bridge = MattermostBridge(
+                channel_id=channel_id,
+                mattermost_url=mm.get("url", "http://localhost:8065"),
+                dev_bot_token=mm["dev_bot_token"],
+                dev_bot_user_id=mm.get("dev_bot_user_id", ""),
+                pm_bot_token=mm.get("pm_bot_token", ""),
+                pm_bot_user_id=mm.get("pm_bot_user_id", ""),
+            )
+            messenger = Messenger(bridge=bridge)
+
+        orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path, project_name=args.project)
+        orchestrator._init_augmentor(force_enabled=tools_enabled)
+
+        if args.resume:
+            saved = orchestrator._load_state()
+            if saved is None:
+                print("Error: No saved state found. Run without --resume first.")
+                sys.exit(1)
+            # Restore state from file
+            orchestrator.state.phase = Phase[saved["phase"]]
+            orchestrator.state.feature = saved.get("feature", {})
+            orchestrator.state.pm_session = saved.get("pm_session")
+            orchestrator.state.dev_session = saved.get("dev_session")
+            orchestrator.state.pr_url = saved.get("pr_url")
+            orchestrator.state.branch_name = saved.get("branch_name")
+            orchestrator.state.worker_handoff = saved.get("worker_handoff", False)
+            orchestrator._workflow_type = saved.get("workflow_type", "normal")
+            orchestrator._started_at = saved.get("started_at")
+            # Restore paths from saved state
+            if saved.get("original_path"):
+                orchestrator.original_path = saved["original_path"]
+            if saved.get("worktree_path"):
+                orchestrator.worktree_path = saved["worktree_path"]
+                orchestrator.project_path = saved["worktree_path"]
+            # Restore thread root ID so messages continue in the same thread
+            if saved.get("thread_root_id"):
+                orchestrator.msg._root_id = saved["thread_root_id"]
+                logger.info("Restored thread: %s", saved["thread_root_id"])
+            orchestrator._resuming = True
+            # If --approve is set, skip to implementation
+            if args.approve:
+                orchestrator._auto_approve = True
+                orchestrator.msg.send(
+                    f"Resuming from **{saved['phase']}** phase (auto-approve enabled)",
+                    sender="Orchestrator",
+                )
+            else:
+                orchestrator.msg.send(
+                    f"Resuming from **{saved['phase']}** phase",
+                    sender="Orchestrator",
+                )
+            orchestrator.run(loop=False)
+        elif args.feature:
+            # Skip PM — inject the feature directly
+            # Use simple mode if --simple flag is set, otherwise feature mode
+            if args.simple:
+                orchestrator._workflow_type = "simple"
+            else:
+                orchestrator._workflow_type = "feature"
+            orchestrator.state.feature = {
+                "feature": args.feature[:60],
+                "description": args.feature,
+                "rationale": "Manually specified via --feature flag",
+                "priority": "P1",
+            }
+            if args.approve:
+                orchestrator._auto_approve = True
+            # Start a thread for this feature
+            orchestrator.msg.start_thread(
+                f"Feature specified via CLI: **{args.feature[:60]}**",
                 sender="Orchestrator",
             )
+            orchestrator.run(loop=False)
         else:
-            orchestrator.msg.send(
-                f"Resuming from **{saved['phase']}** phase",
-                sender="Orchestrator",
-            )
-        orchestrator.run(loop=False)
-    elif args.feature:
-        # Skip PM — inject the feature directly
-        # Use simple mode if --simple flag is set, otherwise feature mode
-        if args.simple:
-            orchestrator._workflow_type = "simple"
-        else:
-            orchestrator._workflow_type = "feature"
-        orchestrator.state.feature = {
-            "feature": args.feature[:60],
-            "description": args.feature,
-            "rationale": "Manually specified via --feature flag",
-            "priority": "P1",
-        }
-        if args.approve:
-            orchestrator._auto_approve = True
-        # Start a thread for this feature
-        orchestrator.msg.start_thread(
-            f"Feature specified via CLI: **{args.feature[:60]}**",
-            sender="Orchestrator",
-        )
-        orchestrator.run(loop=False)
+            loop = args.loop or config.get("workflow", {}).get("loop", False)
+            orchestrator.run(loop=loop)
+
+    # Handle --all-projects: loop through all configured projects
+    if args.all_projects:
+        # Loop through all configured projects
+        projects = config.get("projects", {})
+        if not projects:
+            print("Error: No projects configured")
+            sys.exit(1)
+
+        print(f"Running through all {len(projects)} projects: {list(projects.keys())}")
+
+        for project_name in projects:
+            print(f"\n{'='*50}")
+            print(f"Starting project: {project_name}")
+            print(f"{'='*50}\n")
+
+            try:
+                project_path, prd_path, project_channel_id = resolve_project_config(config, project_name)
+            except ValueError as e:
+                print(f"Error with project {project_name}: {e}")
+                continue
+
+            channel_id = args.channel or project_channel_id or config.get("mattermost", {}).get("channel_id")
+
+            if args.dry_run:
+                messenger = Messenger(bridge=None, dry_run=True)
+            else:
+                mm = config["mattermost"]
+                bridge = MattermostBridge(
+                    channel_id=channel_id,
+                    mattermost_url=mm.get("url", "http://localhost:8065"),
+                    dev_bot_token=mm["dev_bot_token"],
+                    dev_bot_user_id=mm.get("dev_bot_user_id", ""),
+                    pm_bot_token=mm.get("pm_bot_token", ""),
+                    pm_bot_user_id=mm.get("pm_bot_user_id", ""),
+                )
+                messenger = Messenger(bridge=bridge)
+
+            proj_orchestrator = Orchestrator(config, messenger, project_path=project_path, prd_path=prd_path, project_name=project_name)
+            proj_orchestrator._init_augmentor(force_enabled=tools_enabled)
+
+            # Run this project - loop=True to keep suggesting features for this project
+            # After human approves at REVIEW, worker handles implementation, and we move to next project
+            proj_orchestrator.run(loop=True)
+
+            # Clear state for next project
+            proj_orchestrator._clear_state()
     else:
         loop = args.loop or config.get("workflow", {}).get("loop", False)
         orchestrator.run(loop=loop)
