@@ -120,10 +120,18 @@ class Responder:
                 # Mark as processed immediately
                 self.processed_messages.add(msg_id)
 
-                # Skip bot messages
+                # Skip bot messages (by user_id if configured, or by content patterns)
                 if p.get("user_id") in self.bridge.bot_user_ids:
                     logger.debug(f"Skipping bot message: {p.get('user_id')}")
                     continue
+
+                # Also skip messages that look like bot messages (Feature Suggestion, etc.)
+                text = p.get("message", "")
+                bot_patterns = ["Feature Suggestion", "**Feature Suggestion**", "📋", "📐", "📝", "PM Agent", "Orchestrator", "Product Manager"]
+                if any(pattern in text for pattern in bot_patterns):
+                    logger.debug(f"Skipping bot message (content): {text[:50]}")
+                    continue
+
                 # Skip system messages
                 if p.get("type"):
                     logger.debug(f"Skipping system message: {p.get('type')}")
