@@ -39,8 +39,13 @@ cp config.yaml config.local.yaml
 # 3. Validate setup
 uv run python orchestrator.py --doctor
 
-# 4. Run a feature
-uv run python orchestrator.py --feature "Add user authentication"
+# 4. Run (responder + workers)
+./run.sh
+
+# 5. In Mattermost, post:
+# @product-manager /suggest   # PM suggests a feature
+# @product-manager approve   # Approve feature for implementation
+# @product-manager reject   # Reject feature suggestion
 ```
 
 ## How It Works
@@ -90,6 +95,9 @@ uv run python orchestrator.py --loop
 # Target specific project
 uv run python orchestrator.py --project finance-agent
 
+# Target all configured projects (responds in each project's channel)
+uv run python orchestrator.py --all-projects
+
 # Start responder (listens for /suggest and @mentions)
 uv run python responder.py
 
@@ -109,6 +117,7 @@ uv run python worker_pool.py --workers 3
 | `--approve` | Resume and auto-approve (skip review) |
 | `--loop` | Run multiple features |
 | `--project X` | Target project from config |
+| `--all-projects` | Run through all configured projects |
 | `--channel X` | Override Mattermost channel ID |
 | `--doctor` | Validate setup |
 | `--version` | Print version and exit |

@@ -17,8 +17,8 @@ All P0–P3 features are implemented. See status markers below.
 - [P0-US1] ✅ PM Agent reads PRD and suggests highest-priority unimplemented feature
 - [P0-US2] ✅ Human approves/rejects feature suggestion in Mattermost
 - [P0-US3] ✅ Dev Agent runs `/speckit.specify` to create SPEC.md
-- [P0-US4] ✅ Dev Agent runs `/speckit.plan` to create plan.md
-- [P0-US5] ✅ Dev Agent runs `/speckit.tasks` to create tasks.md
+- [P0-US4] ✅ Dev Agent runs `/speckit.plan` to create PLAN.md
+- [P0-US5] ✅ Dev Agent runs `/speckit.tasks` to create TASKS.md
 - [P0-US6] ✅ Human reviews plan before implementation (configurable timeout)
 - [P0-US7] ✅ Dev Agent runs `/speckit.implement` to implement all tasks
 - [P0-US8] ✅ Dev Agent creates PR via `gh pr create`
@@ -114,8 +114,10 @@ Workers listen on the Redis stream and pick up approved features:
 
 ### Responder
 `responder.py` runs as a long-lived process that monitors Mattermost for:
-- `/suggest` commands — triggers the orchestrator to suggest and implement the next feature
-- `@product-manager` mentions — routes questions to the PM Agent (via Minimax API)
+- `@product-manager /suggest` — triggers PM to suggest next feature
+- `@product-manager approve` — approves suggested feature for implementation
+- `@product-manager reject` — rejects suggested feature
+- `@product-manager` questions — routes questions to the PM Agent (via Minimax API)
 
 It publishes approved features to the Redis stream for workers to consume.
 
@@ -132,6 +134,10 @@ redis_streams:
 
 ### Running with Workers
 ```bash
+# Quick start: run.sh spawns responder + worker pool
+./run.sh 2
+
+# Or run components separately:
 # Start orchestrator (coordinates, publishes to stream)
 uv run python orchestrator.py --loop --project agent-team
 
