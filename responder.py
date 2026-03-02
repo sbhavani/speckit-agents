@@ -150,16 +150,16 @@ class Responder:
                 text_lower = text.lower()
                 is_question = is_question or any(phrase in text_lower for phrase in question_phrases)
 
-                # NOTE: Auto-approval detection is disabled
-                # Only trigger new workflows via explicit @product-manager /suggest or /suggest command
-                # Users must explicitly ask for new features - not auto-triggered from "approve" messages
-                # if text.lower().strip() in ("approve", "approved", "yes", "y"):
-                #     root_id = p.get("root_id", "")
-                #     self._handle_approve(channel_id, root_id=root_id)
-                #     continue
-                # if text.lower().strip() in ("reject", "rejected", "no", "n"):
-                #     self._handle_reject(channel_id)
-                #     continue
+                # Check for @product-manager approve/reject commands
+                # Require @product-manager prefix to avoid accidental triggers
+                if "@product-manager" in text.lower():
+                    if "approve" in text.lower() or "yes" in text.lower():
+                        root_id = p.get("root_id", "")
+                        self._handle_approve(channel_id, root_id=root_id)
+                        continue
+                    if "reject" in text.lower() or "no" in text.lower():
+                        self._handle_reject(channel_id)
+                        continue
 
                 # Check for /resume command
                 if "/resume" in text.lower():
