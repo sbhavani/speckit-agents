@@ -1030,13 +1030,17 @@ Return ONLY a JSON object (no markdown fences, no extra text):
         APPROVE = {"approve", "yes", "ok", "lgtm", "go",
                    "\U0001f44d", "+1", ":+1:", ":thumbsup:"}
         if lower not in APPROVE:
-            # Treat as alternative feature description
-            self.msg.send(
-                f"Using your input as the feature description: {response}",
-                sender="Orchestrator",
-            )
-            self.state.feature["description"] = response
-            self.state.feature["feature"] = response[:60]
+            # Ignore messages that look like commands or mentions - they're not feature descriptions
+            if response.startswith("/") or response.startswith("@") or "product-manager" in response.lower():
+                logger.info(f"Ignoring non-feature response: {response[:50]}...")
+            else:
+                # Treat as alternative feature description
+                self.msg.send(
+                    f"Using your input as the feature description: {response}",
+                    sender="Orchestrator",
+                )
+                self.state.feature["description"] = response
+                self.state.feature["feature"] = response[:60]
 
         # Store PM suggestion in Redis so responder can retrieve on approval
         self._store_pm_suggestion()
