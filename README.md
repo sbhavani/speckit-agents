@@ -130,8 +130,6 @@ uv run python worker_pool.py --workers 3
 
 ## Architecture
 
-![Overview](docs/overview.png)
-
 ![Workflow](workflow.svg)
 
 ## Configuration
