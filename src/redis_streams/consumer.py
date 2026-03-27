@@ -3,12 +3,13 @@
 import logging
 import threading
 import time
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, TYPE_CHECKING
 
 import redis
 from redis.exceptions import ResponseError
 
 from redis_streams.connection import RedisConnection
+from redis_streams.checkpoint import CheckpointStore
 from redis_streams.exceptions import (
     GroupNotFoundError,
     StreamNotFoundError,
@@ -153,6 +154,8 @@ class StreamConsumer:
         block_ms: int = 5000,
         count: int = 10,
         auto_ack: bool = False,
+        checkpoint_store: Optional[CheckpointStore] = None,
+        checkpoint_enabled: bool = True,
     ):
         """Initialize StreamConsumer.
 
@@ -164,6 +167,9 @@ class StreamConsumer:
             block_ms: Blocking timeout in milliseconds
             count: Max messages to fetch at once
             auto_ack: Automatically acknowledge messages after callback
+            checkpoint_store: Optional CheckpointStore instance for checkpoint resume.
+                             If None and checkpoint_enabled is True, creates default store.
+            checkpoint_enabled: Whether to enable checkpoint save/load (default True)
         """
         self._connection = RedisConnection(redis_url)
         self.stream = stream
@@ -172,6 +178,18 @@ class StreamConsumer:
         self.block_ms = block_ms
         self.count = count
         self.auto_ack = auto_ack
+        self.checkpoint_enabled = checkpoint_enabled
+
+        # Handle checkpoint store
+        self._checkpoint_store_owns_connection = False
+        if checkpoint_store is not None:
+            self._checkpoint_store = checkpoint_store
+        elif checkpoint_enabled:
+            # Create default checkpoint store
+            self._checkpoint_store = CheckpointStore(redis_url)
+            self._checkpoint_store_owns_connection = True
+        else:
+            self._checkpoint_store = None
 
         self._running = False
         self._stop_event = threading.Event()
@@ -186,6 +204,86 @@ class StreamConsumer:
         manager = ConsumerGroupManager(self._connection.url)
         manager.create_group(self.stream, self.group, start_id="$")
         manager.close()
+
+    def _load_checkpoint(self) -> Optional[str]:
+        """Load checkpoint for this consumer.
+
+        Returns:
+            Checkpoint message ID, or None if no checkpoint exists.
+        """
+        if not self.checkpoint_enabled or self._checkpoint_store is None:
+            return None
+
+        try:
+            checkpoint = self._checkpoint_store.load(
+                self.stream, self.group, self.consumer
+            )
+            if checkpoint:
+                logger.info(
+                    f"Loaded checkpoint {checkpoint} for {self.stream}/"
+                    f"{self.group}/{self.consumer}"
+                )
+            return checkpoint
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint: {e}")
+            return None
+
+    def _save_checkpoint(self, message_id: str) -> None:
+        """Save checkpoint after message acknowledgment.
+
+        Args:
+            message_id: The message ID to save as checkpoint.
+        """
+        if not self.checkpoint_enabled or self._checkpoint_store is None:
+            return
+
+        try:
+            self._checkpoint_store.save(
+                self.stream, self.group, self.consumer, message_id
+            )
+            logger.debug(
+                f"Saved checkpoint {message_id} for {self.stream}/"
+                f"{self.group}/{self.consumer}"
+            )
+        except Exception as e:
+            # Fire-and-forget: log error but don't fail the operation
+            logger.warning(f"Failed to save checkpoint: {e}")
+
+    def delete_checkpoint(self) -> None:
+        """Delete checkpoint for this consumer.
+
+        Useful for manual reset or forcing reprocessing from the beginning.
+        """
+        if not self.checkpoint_enabled or self._checkpoint_store is None:
+            return
+
+        try:
+            self._checkpoint_store.delete(
+                self.stream, self.group, self.consumer
+            )
+            logger.info(
+                f"Deleted checkpoint for {self.stream}/"
+                f"{self.group}/{self.consumer}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to delete checkpoint: {e}")
+
+    def get_checkpoint(self) -> Optional[str]:
+        """Get current checkpoint position for this consumer.
+
+        Returns:
+            Checkpoint message ID, or None if no checkpoint exists.
+        """
+        if not self.checkpoint_enabled or self._checkpoint_store is None:
+            return None
+
+        try:
+            return self._checkpoint_store.load(
+                self.stream, self.group, self.consumer
+            )
+        except Exception as e:
+            logger.warning(f"Failed to get checkpoint: {e}")
+            return None
 
     def subscribe(
         self,
@@ -208,9 +306,13 @@ class StreamConsumer:
         self._running = True
         self._stop_event.clear()
 
+        # Load checkpoint for resume
+        checkpoint_id = self._load_checkpoint()
+        stream_position = checkpoint_id if checkpoint_id else ">"
+
         logger.info(
             f"Starting consumer {self.consumer} in group {self.group} "
-            f"on stream {self.stream}"
+            f"on stream {self.stream} from position {stream_position}"
         )
 
         while self._running:
@@ -218,7 +320,7 @@ class StreamConsumer:
                 messages = self.client.xreadgroup(
                     groupname=self.group,
                     consumername=self.consumer,
-                    streams={self.stream: ">"},
+                    streams={self.stream: stream_position},
                     count=self.count,
                     block=self.block_ms,
                 )
@@ -279,6 +381,8 @@ class StreamConsumer:
         try:
             result = self.client.xack(self.stream, self.group, message_id)
             logger.debug(f"Acknowledged message {message_id}")
+            # Save checkpoint after successful acknowledgment
+            self._save_checkpoint(message_id)
             return result
         except ResponseError as e:
             raise RedisStreamsError(f"Failed to acknowledge message: {e}") from e
@@ -347,6 +451,9 @@ class StreamConsumer:
         """Gracefully stop consuming and close connection."""
         self._running = False
         self._stop_event.set()
+        # Close checkpoint store if we own it
+        if self._checkpoint_store_owns_connection and self._checkpoint_store is not None:
+            self._checkpoint_store.close()
         self._connection.close()
         logger.info(f"Consumer {self.consumer} closed")
 

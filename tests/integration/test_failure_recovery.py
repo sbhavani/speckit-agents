@@ -9,6 +9,7 @@ import pytest
 
 from redis_streams.producer import StreamProducer
 from redis_streams.consumer import StreamConsumer, ConsumerGroupManager
+from redis_streams.checkpoint import CheckpointStore
 from redis_streams.monitoring import StreamMonitor, LagMonitor
 
 
@@ -33,7 +34,6 @@ def cleanup():
     manager.close()
 
 
-@pytest.mark.skip(reason="Checkpoint resume not implemented in this version")
 def test_offline_consumer_catches_up(cleanup):
     """Test offline consumer reconnects and catches up from checkpoint."""
 
@@ -55,6 +55,9 @@ def test_offline_consumer_catches_up(cleanup):
 
     time.sleep(0.3)
 
+    # Create checkpoint store for resume functionality
+    checkpoint_store = CheckpointStore(TEST_REDIS_URL)
+
     # Consumer starts and processes first 5, then "dies" (closes)
     consumer = StreamConsumer(
         redis_url=TEST_REDIS_URL,
@@ -63,6 +66,7 @@ def test_offline_consumer_catches_up(cleanup):
         consumer="recovery_consumer",
         block_ms=1000,
         auto_ack=False,
+        checkpoint_store=checkpoint_store,
     )
 
     processed_first = []
@@ -91,12 +95,15 @@ def test_offline_consumer_catches_up(cleanup):
     t1.join(timeout=1.0)
 
     # Check pending - should have 5 unacknowledged
+    # Create new checkpoint store for resumed consumer
+    checkpoint_store2 = CheckpointStore(TEST_REDIS_URL)
     consumer2 = StreamConsumer(
         redis_url=TEST_REDIS_URL,
         stream=TEST_STREAM,
         group="recovery_group",
         consumer="recovery_consumer",
         block_ms=1000,
+        checkpoint_store=checkpoint_store2,
     )
 
     pending = consumer2.get_pending()

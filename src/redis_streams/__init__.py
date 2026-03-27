@@ -11,6 +11,7 @@
 
 from redis_streams.producer import StreamProducer, StreamManager
 from redis_streams.consumer import StreamConsumer, ConsumerGroupManager
+from redis_streams.checkpoint import CheckpointStore, InMemoryCheckpointStore
 from redis_streams.models import EventMessage, PendingMessage
 from redis_streams.exceptions import (
     RedisStreamsError,
@@ -27,6 +28,8 @@ __all__ = [
     "StreamManager",
     "StreamConsumer",
     "ConsumerGroupManager",
+    "CheckpointStore",
+    "InMemoryCheckpointStore",
     "EventMessage",
     "PendingMessage",
     "RedisStreamsError",
