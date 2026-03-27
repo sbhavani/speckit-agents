@@ -132,6 +132,8 @@ uv run python worker_pool.py --workers 3
 
 ![Overview](docs/overview.png)
 
+![Workflow](workflow.svg)
+
 ## Configuration
 
 ```yaml
