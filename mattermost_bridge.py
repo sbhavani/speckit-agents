@@ -14,6 +14,11 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Phase status emoji markers for visual progress tracking
+EMOJI_SUCCESS = "✅"
+EMOJI_FAILURE = "❌"
+EMOJI_IN_PROGRESS = "🔄"
+
 
 class MattermostBridge:
     """Send and receive Mattermost messages via REST API.
