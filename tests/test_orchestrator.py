@@ -11,6 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from orchestrator import (
+    EMOJI_FAILURE,
+    EMOJI_SUCCESS,
     PHASE_SEQUENCE_FEATURE,
     PHASE_SEQUENCE_NORMAL,
     Messenger,
@@ -242,6 +244,73 @@ class TestFmtDuration:
         assert Orchestrator._fmt_duration(2.4) == "2s"
         assert Orchestrator._fmt_duration(2.6) == "3s"
 
+    def test_hours_format(self):
+        assert Orchestrator._fmt_duration(3600) == "1h"
+        assert Orchestrator._fmt_duration(3661) == "1h 1m 1s"
+        assert Orchestrator._fmt_duration(7200) == "2h"
+        assert Orchestrator._fmt_duration(7325) == "2h 2m 5s"
+        assert Orchestrator._fmt_duration(36600) == "10h 10m"
+
+
+# ---------------------------------------------------------------------------
+# Phase status display
+# ---------------------------------------------------------------------------
+
+class TestDisplayPhaseStatus:
+    def _make_orchestrator(self, tmp_path):
+        config = {
+            "project": {"path": str(tmp_path), "prd_path": "docs/PRD.md"},
+            "workflow": {},
+        }
+        msg = MagicMock(spec=Messenger)
+        msg.dry_run = True
+        return Orchestrator(config, msg)
+
+    @patch("orchestrator.time")
+    def test_phase_status_includes_in_progress_emoji(self, mock_time, tmp_path):
+        """Test that _display_phase_status shows 🔄 emoji prefix."""
+        from orchestrator import EMOJI_IN_PROGRESS
+
+        orch = self._make_orchestrator(tmp_path)
+        orch._run_start_time = 100.0
+        orch._phase_start_time = 150.0
+        mock_time.time.return_value = 200.0  # 100s total, 50s for phase
+
+        orch._display_phase_status("DEV_SPECIFY")
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert text.startswith(EMOJI_IN_PROGRESS)
+        assert "Phase: DEV_SPECIFY" in text
+        assert "Duration: 50s" in text
+        assert "Total: 1m 40s" in text
+
+    @patch("orchestrator.time")
+    def test_phase_status_format_includes_all_parts(self, mock_time, tmp_path):
+        """Test that phase status message has correct format."""
+        from orchestrator import EMOJI_IN_PROGRESS
+
+        orch = self._make_orchestrator(tmp_path)
+        orch._run_start_time = 0.0
+        orch._phase_start_time = 60.0
+        mock_time.time.return_value = 125.0  # 2m 5s total, 1m 5s for phase
+
+        orch._display_phase_status("PM_SUGGEST")
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert f"{EMOJI_IN_PROGRESS} Phase: PM_SUGGEST | Duration: 1m 5s | Total: 2m 5s" == text
+
+    def test_phase_status_returns_early_if_no_timings(self, tmp_path):
+        """Test that _display_phase_status returns early if start times not set."""
+        orch = self._make_orchestrator(tmp_path)
+        orch._run_start_time = None
+        orch._phase_start_time = None
+
+        orch._display_phase_status("INIT")
+
+        orch.msg.send.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Phase timing tracking
@@ -345,6 +414,23 @@ class TestPostSummary:
         assert "https://github.com/example/repo/pull/42" in text
 
     @patch("orchestrator.time")
+    def test_success_summary_emoji(self, mock_time, tmp_path):
+        """Test that success summary includes ✅ emoji in the status."""
+        mock_time.time.return_value = 522.0  # 8m 42s from epoch 0
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Add tests"}
+        orch.state.phase = Phase.DONE
+        orch.state.pr_url = "https://github.com/example/repo/pull/42"
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 2.0), ("PM_SUGGEST", 90.0)]
+
+        orch._post_summary()
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert EMOJI_SUCCESS in text
+
+    @patch("orchestrator.time")
     def test_failure_summary(self, mock_time, tmp_path):
         mock_time.time.return_value = 372.0  # 6m 12s from epoch 0
         orch = self._make_orchestrator(tmp_path)
@@ -361,6 +447,22 @@ class TestPostSummary:
         assert "6m 12s" in text
         assert "RuntimeError: claude -p failed" in text
         assert "--resume" in text
+
+    @patch("orchestrator.time")
+    def test_failure_summary_emoji(self, mock_time, tmp_path):
+        """Test that failure summary includes ❌ emoji in the status."""
+        mock_time.time.return_value = 372.0
+        orch = self._make_orchestrator(tmp_path)
+        orch.state.feature = {"feature": "Add tests"}
+        orch.state.phase = Phase.DEV_IMPLEMENT
+        orch._run_start_time = 0.0
+        orch._phase_timings = [("INIT", 2.0)]
+
+        orch._post_summary(error="RuntimeError: claude -p failed")
+
+        call_args = orch.msg.send.call_args
+        text = call_args[0][0]
+        assert EMOJI_FAILURE in text
 
     @patch("orchestrator.time")
     def test_summary_with_no_timings(self, mock_time, tmp_path):
