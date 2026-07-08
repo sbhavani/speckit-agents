@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="description" content="Spec Kit Agents: a multi-agent, spec-driven development workflow that augments GitHub's Spec Kit with phase-scoped discovery and validation context-grounding hooks. Across 128 runs covering 32 features on five repositories, the Full-Augmented configuration improves composite quality by +0.15 over the Full baseline (p < 0.05) and reaches 58.2% Pass@1 on SWE-bench Lite.">
+  <meta property="og:title" content="Spec Kit Agents — Context-Grounded Agentic Workflows (arXiv 2604.05278)">
+  <meta property="og:description" content="Multi-agent SDD pipeline with phase-level discovery + validation hooks. 58.2% Pass@1 on SWE-bench Lite.">
+  <meta property="og:url" content="https://speckit-agents.github.io/">
+  <meta property="og:image" content="static/images/spec_og_banner.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:title" content="Spec Kit Agents — Context-Grounded Agentic Workflows">
+  <meta name="twitter:description" content="Multi-agent SDD pipeline with phase-scoped context-grounding hooks. arXiv 2604.05278.">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <meta name="keywords" content="Spec Kit Agents, multi-agent systems, software engineering, LLMs, agentic workflows, SWE-bench, code generation, context grounding, spec-driven development">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Spec Kit Agents — Context-Grounded Agentic Workflows (arXiv 2604.05278)</title>
+  <link rel="icon" type="image/svg+xml" href="static/images/spec_favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+
+  <style>
+    /* ====== NVIDIA brand palette (official) ====== */
+    :root {
+      --nv-green:      #76B900;
+      --nv-green-dim:  #5A8F00;
+      --nv-teal:       #008564;
+      --nv-teal-bright:#00C896;
+      --nv-teal-deep:  #005240;
+      --nv-purple:     #5D1682;
+      --nv-magenta:    #890C58;
+      --nv-yellow:     #FAC200;
+      --nv-gray-dark:  #5E5E5E;
+      --nv-gray-light: #CDCDCD;
+      --nv-orange:     #FFA500;
+    }
+
+    /* ====== LIGHT theme tokens ====== */
+    :root {
+      --color-bg:               #ffffff;
+      --color-bg-alt:           #f1f7f4;       /* soft teal-tinted alt */
+      --color-bg-soft:          #fafafa;
+      --color-surface:          #ffffff;
+      --color-surface-hover:    #f1f7f4;
+      --color-text:             #1a1a1a;
+      --color-text-muted:       #555;
+      --color-text-dim:         #888;
+      --color-border:           #e6e6e6;
+      --color-border-strong:    rgba(0, 0, 0, 0.12);
+      --color-shadow:           rgba(0, 0, 0, 0.08);
+
+      --color-link:             var(--nv-teal);
+      --color-link-hover:       var(--nv-teal-deep);
+      --color-primary:          var(--nv-teal);
+      --color-primary-2:        var(--nv-teal-deep);
+      --color-primary-pale:     #e6f3ee;
+      --color-on-primary:       #ffffff;
+
+      --color-accent-warm:      var(--nv-yellow);
+      --color-accent-orange:    var(--nv-orange);
+
+      --color-code-bg:          #f0f5f1;
+      --color-equation-bg:      #f1f7f4;
+      --color-equation-border:  var(--nv-teal);
+
+      --color-table-header-bg:  var(--nv-teal);
+      --color-table-header-bg-2: var(--nv-teal-deep);
+      --color-table-row-hover:  #f1f7f4;
+
+      --color-card-bg-from:     #ffffff;
+      --color-card-bg-to:       #f1f7f4;
+
+      --color-nav-bg:           rgba(255, 255, 255, 0.92);
+      --color-nav-text:         #555;
+      --color-nav-divider:      rgba(0, 0, 0, 0.1);
+      --color-nav-hover-bg:     rgba(0, 133, 100, 0.08);
+      --color-nav-active-bg:    rgba(0, 133, 100, 0.12);
+
+      --color-highlight-best:   #d6ece4;
+      --color-highlight-second: #ebf6f2;
+      --color-group-row-bg:     #e6f3ee;
+      --color-group-row-text:   var(--nv-teal-deep);
+
+      --color-stage-card-bg:    #ffffff;
+      --color-stage-card-border: #e6e6e6;
+
+      --color-figure-caption:   #555;
+      --color-venue-badge-bg:   var(--nv-teal);
+      --color-venue-badge-text: #ffffff;
+
+      --font-sans:    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    body {
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font-sans);
+      font-feature-settings: "cv11", "ss01", "ss03";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    a { color: var(--color-link); }
+    a:hover { color: var(--color-link-hover); }
+    h1, h2, h3, h4, h5, h6 { color: var(--color-text); font-family: var(--font-display); letter-spacing: -0.015em; }
+    .title, .subtitle { color: var(--color-text); font-family: var(--font-display); letter-spacing: -0.015em; }
+
+    /* ----- Top nav ----- */
+    .top-nav {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      z-index: 999;
+      background: var(--color-nav-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--color-border-strong);
+      box-shadow: 0 2px 8px var(--color-shadow);
+      padding: 0.6rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: stretch;
+    }
+    .top-nav a {
+      flex: 1;
+      color: var(--color-nav-text);
+      font-weight: 500;
+      font-size: 1.05rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0;
+      transition: color 0.2s, background 0.2s;
+      white-space: nowrap;
+      border-right: 1px solid var(--color-nav-divider);
+    }
+    .top-nav a:last-child { border-right: none; }
+    .top-nav a:hover { color: var(--color-link); background: var(--color-nav-hover-bg); }
+    .top-nav a.active { color: var(--color-link); font-weight: 700; background: var(--color-nav-active-bg); }
+    body { padding-top: 2.8rem; }
+
+    @media screen and (max-width: 768px) {
+      .top-nav a { font-size: 0.78rem; gap: 0.2rem; }
+    }
+
+    .publication-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--color-text);
+    }
+    .publication-authors {
+      line-height: 1.55;
+      font-size: 1.05rem;
+    }
+    .publication-authors a {
+      color: var(--color-link);
+      font-weight: 500;
+    }
+    .author-block { display: inline-block; margin: 0 0.1rem; }
+
+    .button.is-dark {
+      background-color: var(--color-primary);
+      border-color: transparent;
+      color: var(--color-on-primary);
+      font-weight: 600;
+      font-family: var(--font-sans);
+      letter-spacing: 0.01em;
+    }
+    .button.is-dark:hover {
+      background-color: var(--color-primary-2);
+      border-color: transparent;
+      color: var(--color-on-primary);
+    }
+    .link-block a.external-link.button {
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+    }
+    .link-block a.external-link.button:hover {
+      background: var(--color-primary-2);
+      color: var(--color-on-primary);
+    }
+
+    .badge-outline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.9rem;
+      border: 1.5px solid var(--nv-teal);
+      color: var(--nv-teal);
+      background: #ffffff;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      font-family: var(--font-sans);
+    }
+    .badge-outline .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--nv-teal); display: inline-block; }
+
+    /* ----- Image modal ----- */
+    .image-modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0; top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.85);
+      cursor: pointer;
+    }
+    .image-modal-content {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 92%;
+      max-height: 92%;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    .image-modal-close {
+      position: absolute;
+      top: 20px; right: 35px;
+      color: #fff;
+      font-size: 40px; font-weight: bold;
+      cursor: pointer;
+      z-index: 1001;
+      transition: color 0.3s;
+    }
+    .image-modal-close:hover { color: var(--nv-teal-bright); }
+    .clickable-image { cursor: zoom-in; transition: opacity 0.3s; }
+    .clickable-image:hover { opacity: 0.92; }
+    .image-modal-caption {
+      position: absolute;
+      bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      text-align: center;
+      font-size: 16px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 20px;
+      border-radius: 4px;
+      max-width: 80%;
+    }
+
+    /* ----- Result table styling ----- */
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      font-family: var(--font-sans);
+      font-feature-settings: "tnum";
+      margin: 1rem 0;
+    }
+    .results-table th, .results-table td {
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid var(--color-border);
+      text-align: center;
+    }
+    .results-table thead th {
+      background: var(--color-table-header-bg);
+      color: var(--color-on-primary) !important;
+      font-weight: 700;
+      font-size: 1rem;
+      border-bottom: 2px solid var(--color-table-header-bg);
+      letter-spacing: 0.3px;
+    }
+    .results-table thead th[colspan] {
+      background: var(--color-table-header-bg-2);
+      color: var(--color-on-primary) !important;
+    }
+    .results-table tbody tr:hover { background: var(--color-table-row-hover); }
+    .results-table caption {
+      caption-side: top;
+      text-align: left;
+      font-size: 0.9rem;
+      color: var(--color-text-muted);
+      padding-bottom: 0.6rem;
+      font-weight: 500;
+    }
+    .results-table .row-label { text-align: left; font-weight: 500; color: var(--color-text); }
+    .results-table .best { background: var(--color-highlight-best); font-weight: 700; color: var(--color-text); }
+    .results-table .second { background: var(--color-highlight-second); color: var(--color-text); }
+    .results-table .group-row td {
+      background: var(--color-group-row-bg);
+      font-style: italic;
+      color: var(--color-group-row-text);
+      font-weight: 600;
+    }
+    .results-table .delta-pos { color: var(--nv-teal); font-weight: 700; }
+
+    /* ----- Headline stat cards ----- */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .stat-card {
+      background: linear-gradient(135deg, var(--color-card-bg-from) 0%, var(--color-card-bg-to) 100%);
+      border-left: 4px solid var(--color-primary);
+      border-radius: 8px;
+      padding: 1.2rem 1rem;
+      text-align: center;
+    }
+    .stat-card .stat-value {
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: var(--color-primary);
+      line-height: 1;
+    }
+    .stat-card .stat-label {
+      font-size: 0.85rem;
+      color: var(--color-text-muted);
+      margin-top: 0.3rem;
+    }
+    @media (max-width: 768px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ----- Two-panel stage cards ----- */
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .stage-card {
+      background: var(--color-stage-card-bg);
+      border: 1px solid var(--color-stage-card-border);
+      border-left: 4px solid var(--color-primary);
+      border-radius: 6px;
+      padding: 1.2rem;
+    }
+    .stage-card h4 {
+      color: var(--color-primary);
+      font-weight: 700;
+      margin: 0 0 0.4rem 0;
+      font-family: var(--font-display);
+      letter-spacing: -0.01em;
+    }
+    .stage-card p { font-size: 0.92rem; color: var(--color-text); margin: 0.2rem 0 0 0; }
+    @media (max-width: 768px) {
+      .stage-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ----- Equation block ----- */
+    .eq-block {
+      background: var(--color-equation-bg);
+      border-left: 4px solid var(--color-equation-border);
+      padding: 0.8rem 1.2rem;
+      margin: 0.8rem 0;
+      border-radius: 0 4px 4px 0;
+      font-family: var(--font-mono);
+      font-size: 0.92rem;
+      letter-spacing: -0.005em;
+      overflow-x: auto;
+      color: var(--color-text);
+    }
+    code {
+      background: var(--color-code-bg);
+      color: var(--color-primary-2);
+      padding: 0 0.25rem;
+      border-radius: 3px;
+      font-size: 0.9em;
+      font-family: var(--font-mono);
+    }
+    pre {
+      background: var(--color-code-bg);
+      color: var(--color-text);
+      padding: 1rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      border-left: 4px solid var(--color-primary);
+      font-family: var(--font-mono);
+    }
+    pre code { background: transparent; color: inherit; padding: 0; }
+
+    /* Bulma overrides */
+    .hero.is-light { background-color: var(--color-bg-alt) !important; }
+    .hero .title, .hero .subtitle { color: var(--color-text); font-family: var(--font-display); letter-spacing: -0.02em; }
+    .hero { background-color: var(--color-bg) !important; }
+    body, .content, .content p, .content li, .content td,
+    .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+      color: var(--color-text);
+    }
+    .content strong, .content b { color: var(--color-text); font-weight: 700; }
+    .content em { color: var(--color-text); font-style: italic; }
+    .content a { color: var(--color-link); }
+    .content a:hover { color: var(--color-link-hover); }
+    .content h3.title {
+      margin-top: 1.4rem;
+      font-weight: 600;
+      color: var(--color-primary);
+      letter-spacing: -0.01em;
+    }
+    .content figure { margin: 1.5rem 0; }
+    .content figure figcaption { color: var(--color-figure-caption); }
+    .footer {
+      background-color: var(--color-bg-alt) !important;
+      color: var(--color-text-muted) !important;
+      padding: 2.5rem 1.5rem !important;
+      border-top: 1px solid var(--color-border);
+    }
+    .footer a { color: var(--color-link); }
+    .footer a:hover { color: var(--color-link-hover); }
+    .footer .content { color: var(--color-text-muted); }
+    .footer .content p { color: var(--color-text-muted); }
+  </style>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script src="static/js/bulma-carousel.min.js"></script>
+  <script src="static/js/bulma-slider.min.js"></script>
+  <script src="static/js/index.js"></script>
+</head>
+
+<body>
+
+  <!-- ============== TOP NAV ============== -->
+  <nav class="top-nav">
+    <a href="#top"><i class="fas fa-home"></i> Home</a>
+    <a href="#tldr">TL;DR</a>
+    <a href="#overview">Overview</a>
+    <a href="#method">Method</a>
+    <a href="#results">Results</a>
+    <a href="#ablations">Ablations</a>
+    <a href="#bibtex">BibTeX</a>
+  </nav>
+
+  <!-- ============== HERO (logo removed; title-only) ============== -->
+  <section class="hero" id="top">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+
+            <h1 class="title is-2 publication-title" style="margin-top: 1.2rem;">
+              Spec Kit Agents:<br>
+              Context-Grounded Agentic Workflows
+            </h1>
+
+            <div class="is-size-5 publication-authors" style="margin-top: 1.2rem;">
+              <span class="author-block"><a href="#" target="_blank">Pardis Taghavi</a>,</span>
+              <span class="author-block"><a href="#" target="_blank">Santosh Bhavani</a></span>
+            </div>
+
+            <div class="is-size-6 publication-authors" style="margin-top: 0.4rem;">
+              <span class="author-block" style="color: var(--color-text-muted);">Independent Research</span>
+              <br>
+              <br>
+              <span class="badge-outline"><span class="dot"></span>arXiv 2604.05278</span>
+              &nbsp;
+              <span class="badge-outline"><span class="dot"></span>MiniMax-M2.5 backbone</span>
+            </div>
+
+            <div class="column has-text-centered" style="margin-top: 1.6rem;">
+              <div class="publication-links">
+
+                <span class="link-block">
+                  <a href="assets/Taghavi_Bhavani_SpecKitAgents_arXiv2604.pdf" target="_blank"
+                     class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon"><i class="fas fa-file-pdf"></i></span>
+                    <span>Paper</span>
+                  </a>
+                </span>
+
+                <span class="link-block">
+                  <a href="https://arxiv.org/abs/2604.05278" target="_blank"
+                     class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon"><i class="ai ai-arxiv"></i></span>
+                    <span>arXiv</span>
+                  </a>
+                </span>
+
+                <span class="link-block">
+                  <a href="#bibtex"
+                     class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon"><i class="fas fa-quote-right"></i></span>
+                    <span>BibTeX</span>
+                  </a>
+                </span>
+
+                <br>
+
+                <span class="link-block">
+                  <a href="mailto:contact@speckit-agents.example"
+                     class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon"><i class="fas fa-envelope"></i></span>
+                    <span>Contact</span>
+                  </a>
+                </span>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== HEADLINE STATS ============== -->
+  <section class="section hero is-light" style="background: var(--color-bg-alt) !important;">
+    <div class="container is-max-desktop">
+      <h2 class="title is-3 has-text-centered" style="color: var(--color-primary);">Headline Results</h2>
+      <p class="subtitle is-6 has-text-centered" style="color: var(--color-text-muted);">
+        Across <strong style="color: var(--color-text);">128 runs</strong> over <strong style="color: var(--color-text);">32 features</strong> on five OSS repositories, the Full-Augmented configuration is the strongest overall.
+      </p>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value">+0.15</div>
+          <div class="stat-label">composite quality gain vs. Full baseline<br><em style="color: var(--color-text-dim);">+3.0% on 1–5 LLM-judge score</em></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">p &lt; 0.05</div>
+          <div class="stat-label">Wilcoxon signed-rank<br><em style="color: var(--color-text-dim);">paired, n&nbsp;=&nbsp;16</em></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">58.2%</div>
+          <div class="stat-label">Pass@1 on SWE-bench Lite<br><em style="color: var(--color-text-dim);">with augmentation hooks</em></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">99.7–100%</div>
+          <div class="stat-label">repo-level test compatibility<br><em style="color: var(--color-text-dim);">no regressions to existing tests</em></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== TL;DR ============== -->
+  <section class="section hero" id="tldr">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">TL;DR</h2>
+          <div class="content has-text-justified" style="font-size: 1.05rem;">
+            <p>
+              <strong>Spec Kit Agents</strong> is a multi-agent, spec-driven development workflow that augments
+              GitHub's Spec Kit with two <strong>phase-scoped context-grounding hooks</strong>: a
+              read-only <em>discovery</em> prober before each phase, and a validator that runs
+              <em>post-phase</em> repo checks. The two halves of an end-to-end feature task run through a state-machine
+              orchestrator that hands intermediate artifacts (<code>SPEC.md</code>,
+              <code>PLAN.md</code>, <code>TASKS.md</code>) to a separate developer agent.
+            </p>
+            <p>
+              Hooks ground each stage in concrete repository evidence &mdash; existing logging formats,
+              installed dependencies, file paths referenced in <code>PLAN.md</code> &mdash; instead of
+              falling back on generic priors. The combined configuration
+              (<strong>Full-Augmented</strong>) improves judged quality by <strong>+0.15</strong> over the
+              unhooked Full pipeline (<em>p</em>&nbsp;&lt;&nbsp;0.05, Wilcoxon signed-rank) and reaches
+              <strong>58.2% Pass@1</strong> on SWE-bench Lite, beating prior SOTA (SWE-Agent, 56.7%).
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== TEASER ============== -->
+  <section class="hero teaser">
+    <div class="container is-max-desktop">
+      <div class="hero-body has-text-centered">
+        <figure class="image" style="width: 100%;">
+          <img class="clickable-image" src="assets/figures/fig1_workflow.png"
+               alt="Spec Kit Agents workflow"
+               data-caption="Spec Kit Agents workflow: discovery hooks (pre-phase grounding) and validation hooks (post-phase checks) surrounding the staged Spec Kit workflow driven by a PM/Developer agent pair.">
+        </figure>
+        <h2 class="subtitle has-text-centered" style="margin-top: 1rem; color: var(--color-text-muted);">
+          <strong style="color: var(--color-text);">Figure 1.</strong> Spec Kit Full Workflow &mdash;
+          <span style="color: var(--color-primary);">SPEC.md</span> &rarr;
+          <span style="color: var(--color-primary);">PLAN.md</span> &rarr;
+          <span style="color: var(--color-primary);">TASKS.md</span> &rarr;
+          <span style="color: var(--color-primary);">Pull Request</span> &mdash; framed by pre-phase discovery
+          and post-phase validation hooks, orchestrated by a state machine.
+        </h2>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== OVERVIEW ============== -->
+  <section class="section hero is-light" id="overview" style="background: var(--color-bg-alt) !important;">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">Overview</h2>
+          <div class="content has-text-justified">
+            <p>
+              Spec-driven development (SDD) externalizes intermediate artifacts
+              &mdash; a spec, an implementation plan, an executable task checklist
+              &mdash; so that the agent's intent is auditable rather than implicit.
+              GitHub's <strong>Spec Kit</strong> operationalizes this as a staged workflow
+              (<em>Specify &rarr; Plan &rarr; Tasks &rarr; Implement</em>).
+            </p>
+            <p>
+              In practice, this structure does not eliminate a failure mode we refer
+              to as <em>context blindness</em>: the agent's intermediate artifacts can be
+              internally coherent <em>and</em> incompatible with the repository as it
+              exists &mdash; hallucinated APIs, missing file paths, unsupported dependencies.
+              These errors compound: when discovered late, the agent backtracks,
+              revises earlier artifacts, or introduces additional inconsistencies.
+            </p>
+            <p>
+              Spec Kit Agents injects <strong>explicit, phase-scoped context-grounding</strong>
+              into the same workflow: a read-only prober gathers repository evidence
+              <em>before</em> each phase, and a validator runs repo checks
+              <em>after</em> each phase. The hooks operate on explicit artifacts
+              (<code>SPEC.md</code>, <code>PLAN.md</code>, <code>TASKS.md</code>) rather
+              than being embedded inside the developer's main prompt.
+            </p>
+
+            <div class="stage-grid">
+              <div class="stage-card">
+                <h4>The hook layer</h4>
+                <p>Pre-phase <em>discovery</em> hooks run read-only probing (grep, git, glob,
+                pytest invocations) to surface conventions, APIs, and module structure.
+                Post-phase <em>validation</em> hooks run structural and referential checks
+                against the artifact just produced.</p>
+              </div>
+              <div class="stage-card">
+                <h4>The orchestrator</h4>
+                <p>A state machine routes work between the PM Agent (analysis + version-control
+                inspection, read-only) and the Developer Agent (edits + executions). Human
+                checkpoints gate plan approval; everything else runs autonomously end-to-end.</p>
+              </div>
+            </div>
+
+            <p>
+              We evaluate four configurations spanning a continuum of structure:
+              <strong>Baseline</strong> (no intermediate artifacts), <strong>Augmented</strong>
+              (Baseline + hooks), <strong>Full</strong> (Spec Kit workflow only), and
+              <strong>Full-Augmented</strong> (Full + hooks). All four are evaluated on the same
+              32 feature tasks across five OSS repositories; quality is judged independently
+              by Claude Opus 4.6 on a 1&ndash;5 composite of <em>completeness</em>,
+              <em>correctness</em>, <em>style</em>, and <em>maintainability</em>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== METHOD: CONTEXT-GROUNDING HOOKS ============== -->
+  <section class="section hero" id="method">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">Method: Phase-Scoped Context-Grounding</h2>
+          <div class="content has-text-justified">
+            <p>
+              The core contribution is a <strong>context-grounding hook layer</strong> that wraps
+              the staged Spec Kit workflow at workflow boundaries. Hooks are first-class
+              agents that operate on <em>explicit artifacts</em>
+              (<code>SPEC.md</code>, <code>PLAN.md</code>, <code>TASKS.md</code>, plus pre-implementation
+              cross-references) rather than being absorbed into the developer's prompt.
+            </p>
+
+            <h3 class="title is-5" style="color: var(--color-primary); margin-top: 1.4rem;">Discovery hooks (pre-phase grounding)</h3>
+            <p>
+              Before each phase, a <strong>read-only prober</strong> gathers evidence about the
+              codebase using repository inspection tools (<code>grep</code>, <code>git</code>,
+              <code>glob</code>). The goal is to surface project-specific conventions, existing APIs,
+              and relevant modules so that subsequent generation is conditioned on concrete,
+              localized context rather than generic priors. For example, for persistence-related
+              features, discovery can identify existing logging formats or storage abstractions
+              and steer the agent away from introducing unsupported dependencies.
+            </p>
+
+            <h3 class="title is-5" style="color: var(--color-primary); margin-top: 1.4rem;">Validation hooks (post-phase checks)</h3>
+            <p>
+              After each phase, a <strong>validator</strong> checks the generated artifact for
+              internal consistency and repository compatibility. For earlier artifacts,
+              validation focuses on structural and referential constraints &mdash;
+              <em>do the file paths referenced in <code>PLAN.md</code> exist?</em>
+              <em>are the required libraries present?</em>
+              <em>is the task list feasible and properly ordered?</em>
+              After implementation, validation executes repository checks (unit tests,
+              linters) to detect regressions. This design front-loads error detection by
+              catching hallucinated paths, missing dependencies, or infeasible plans
+              <strong>before</strong> downstream code generation compounds them.
+            </p>
+
+            <h3 class="title is-5" style="color: var(--color-primary); margin-top: 1.4rem;">Tool access control</h3>
+            <p>
+              Hooks validate each phase by probing the codebase <em>before and after</em> reasoning steps,
+              ensuring specifications are grounded in existing project conventions and plans
+              are verified against installed dependencies. The PM agent is restricted to
+              repository analysis and version-control inspection; the developer agent is permitted
+              to edit files and run repository commands required to implement features.
+              Discovery hooks are read-only, while validation hooks extend discovery permissions
+              with execution privileges for project checks (<code>pytest</code>, <code>ruff</code>,
+              and JavaScript test runners) when applicable.
+            </p>
+
+            <p style="margin-top: 1.2rem;">
+              <strong>Separation of generation from evaluation.</strong> Spec Kit Agents
+              executes the agentic workflow (PM and developer agents) through
+              <strong>Claude Code CLI</strong> (MiniMax-M2.5 backbone) routed to an
+              Anthropic-compatible endpoint. Quality is evaluated independently using
+              <strong>Claude Opus 4.6</strong> on a 1&ndash;5 composite of completeness, correctness,
+              style, and maintainability; the composite score is the mean of these dimensions.
+              This separation reduces self-evaluation bias by isolating scoring from the
+              agent's prompts and tool access.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== EXPERIMENTAL SETUP ============== -->
+  <section class="section hero is-light" style="background: var(--color-bg-alt) !important;">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">Experimental Setup</h2>
+          <div class="content has-text-justified">
+            <p>
+              We evaluate Spec Kit Agents on <strong>32 feature tasks across five open-source repositories</strong>:
+              FastAPI and Airflow (Python); Dexter and Strapi (TypeScript); Plausible Analytics
+              (Elixir with supporting JavaScript). The task set spans multiple change types including
+              API additions, configuration changes, new modules, refactors, and test updates.
+              Each task is run under all four configurations.
+            </p>
+            <ul style="margin-top: 1rem;">
+              <li><strong>Baseline / Augmented:</strong> 40-minute end-to-end budget; the developer agent skips intermediate artifacts (Augmented adds hooks).</li>
+              <li><strong>Full / Full-Augmented:</strong> 90-minute end-to-end budget; the full Spec Kit workflow produces artifacts before implementation (Full-Augmented adds hooks).</li>
+            </ul>
+            <p>
+              Quality is judged by an independent <strong>Claude Opus 4.6</strong> rating on a
+              1&ndash;5 scale across <em>completeness</em>, <em>correctness</em>, <em>style</em>,
+              and <em>maintainability</em>. The composite score is their mean. We additionally
+              conduct a blinded human preference study on a subset of tasks to ground the
+              LLM-based evaluation. For statistical comparisons, we treat each feature task as
+              a paired subject across conditions and use the <strong>Wilcoxon signed-rank test</strong>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== MAIN RESULTS ============== -->
+  <section class="section hero" id="results">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">Main Results</h2>
+          <div class="content has-text-justified">
+            <p>
+              Within the 90-minute workflow family, <strong>Full-Augmented</strong> achieves the
+              strongest overall quality (3.66 vs. 3.51 for Full, <strong>+0.15</strong> relative).
+              On the paired subset of completed tasks this difference is statistically significant
+              (Wilcoxon signed-rank, <em>p</em>&nbsp;&lt;&nbsp;0.05). Gains appear across repositories,
+              with the strongest improvements on FastAPI and Plausible. Repository-level test
+              compatibility remains at 99.7&ndash;100% across all configurations &mdash; the
+              quality gains do not come at the expense of breaking existing project behavior.
+            </p>
+
+            <table class="results-table">
+              <caption>
+                <strong>Table 1.</strong> Composite quality scores (1&ndash;5) per repository, with shaded cells indicating the best result within each workflow family.
+              </caption>
+              <thead>
+                <tr>
+                  <th style="text-align:left;">Condition</th>
+                  <th>Overall</th>
+                  <th>FastAPI</th>
+                  <th>Airflow</th>
+                  <th>Dexter</th>
+                  <th>Plausible</th>
+                  <th>Strapi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="group-row"><td colspan="7">40-min family (no intermediate artifacts)</td></tr>
+                <tr>
+                  <td class="row-label">Baseline</td>
+                  <td>3.46</td>
+                  <td>3.21</td>
+                  <td class="best">3.75</td>
+                  <td>3.65</td>
+                  <td>3.30</td>
+                  <td class="best">3.25</td>
+                </tr>
+                <tr>
+                  <td class="row-label">Augmented</td>
+                  <td class="best">3.50</td>
+                  <td class="best">3.58</td>
+                  <td>3.56</td>
+                  <td class="best">3.31</td>
+                  <td class="best">3.45</td>
+                  <td class="best">3.55</td>
+                </tr>
+
+                <tr class="group-row"><td colspan="7">90-min family (Spec Kit workflow)</td></tr>
+                <tr>
+                  <td class="row-label">Full</td>
+                  <td>3.51</td>
+                  <td>3.10</td>
+                  <td>3.35</td>
+                  <td class="best">3.90</td>
+                  <td>3.48</td>
+                  <td>3.61</td>
+                </tr>
+                <tr>
+                  <td class="row-label"><strong>Full-Augmented</strong></td>
+                  <td class="best">3.66</td>
+                  <td class="best">3.52</td>
+                  <td class="best">3.44</td>
+                  <td class="best">4.00</td>
+                  <td class="best">3.64</td>
+                  <td class="best">3.69</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p style="margin-top: 1.2rem;">
+              A blinded human preference study on 60 paired pull-request comparisons shows the
+              same direction: evaluators preferred Full-Augmented in <strong>19</strong> of
+              60 votes, with <strong>33</strong> ties and <strong>8</strong> votes for Full
+              (Table 2). The high tie rate is expected &mdash; both configurations produce working
+              PRs &mdash; but the skewed vote distribution corroborates the LLM-judge results.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== ABLATIONS ============== -->
+  <section class="section hero is-light" id="ablations" style="background: var(--color-bg-alt) !important;">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">Ablations &amp; SWE-bench Lite</h2>
+          <div class="content has-text-justified">
+
+            <h3 class="title is-5" style="color: var(--color-primary);">Phase-level hook components</h3>
+            <p>
+              To isolate the contribution of each hook, we evaluate partial configurations
+              relative to the <strong>Full</strong> baseline (3.51). Both partial variants
+              improve over Full, with <strong>Validation-only</strong> outperforming
+              <strong>Discovery-only</strong>; the combined design (Full-Augmented) achieves the
+              strongest result, indicating that the two components are complementary.
+            </p>
+            <table class="results-table">
+              <caption>
+                <strong>Table 3.</strong> Ablation of phase-level context-grounding components relative to the Full baseline (3.51).
+              </caption>
+              <thead>
+                <tr>
+                  <th style="text-align:left;">Condition</th>
+                  <th>Quality</th>
+                  <th>&Delta;% vs. Full</th>
+                  <th>Time</th>
+                  <th style="text-align:left;">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="row-label">Discovery-only</td><td>3.53</td><td class="delta-pos">+0.57%</td><td>25.5&nbsp;min</td><td style="text-align:left;">Pre-phase grounding only</td></tr>
+                <tr><td class="row-label">Validation-only</td><td>3.57</td><td class="delta-pos">+1.71%</td><td>31.2&nbsp;min</td><td style="text-align:left;">Post-phase checks only</td></tr>
+                <tr><td class="row-label"><strong>Full-Augmented</strong></td><td class="best">3.66</td><td class="delta-pos"><strong>+4.27%</strong></td><td>37.2&nbsp;min</td><td style="text-align:left;">Both hooks enabled</td></tr>
+              </tbody>
+            </table>
+
+            <h3 class="title is-5" style="color: var(--color-primary); margin-top: 1.6rem;">Latency vs. quality</h3>
+            <p>
+              Context-grounding hooks add only modest overhead in the 40-minute family (Baseline
+              and Augmented share a 40-min budget), but a larger cost in the 90-minute family
+              due to the longer workflow and repeated hook executions. We therefore view
+              latency as a <strong>quality-runtime trade-off</strong>.
+            </p>
+            <table class="results-table">
+              <caption>
+                <strong>Table 4.</strong> Within-family latency comparisons (completed runs only).
+              </caption>
+              <thead>
+                <tr>
+                  <th style="text-align:left;">Comparison</th>
+                  <th>A (min)</th>
+                  <th>B (min)</th>
+                  <th>&Delta; (min)</th>
+                  <th>n<sub>pairs</sub></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="row-label">Baseline vs. Augmented</td><td>14.4</td><td>15.5</td><td>+1.1</td><td>15</td></tr>
+                <tr><td class="row-label">Full vs. Full-Augmented</td><td>24.0</td><td>37.2</td><td>+13.2</td><td>16</td></tr>
+              </tbody>
+            </table>
+
+            <h3 class="title is-5" style="color: var(--color-primary); margin-top: 1.6rem;">SWE-bench Lite generalization</h3>
+            <p>
+              Beyond the custom repository tasks, we evaluate Spec Kit Agents on
+              <strong>SWE-bench Lite</strong>, a benchmark of 300 real-world software engineering
+              issues. Spec Kit Agents achieves a <strong>56.5%</strong> pass rate in the Baseline
+              configuration and <strong>58.2%</strong> with context-grounding hooks enabled
+              (<strong>+1.7%</strong> over baseline), placing it ahead of prior published systems
+              under their original setups.
+            </p>
+            <table class="results-table">
+              <caption>
+                <strong>Table 5.</strong> Comparative Pass@1 on SWE-bench Lite. Spec Kit Agents uses <strong>MiniMax-M2.5</strong>.
+              </caption>
+              <thead>
+                <tr>
+                  <th style="text-align:left;">Framework</th>
+                  <th>Primary LLM</th>
+                  <th>Pass@1</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="row-label">Aider</td><td>GPT-4o &amp; Claude 3</td><td>26.33</td></tr>
+                <tr><td class="row-label">Moatless Tools</td><td>Claude 3.5 Sonnet</td><td>38.00</td></tr>
+                <tr><td class="row-label">OpenHands</td><td>CodeAct v2.1</td><td>41.67</td></tr>
+                <tr><td class="row-label">DARS Agent</td><td>Claude 3.5 Sonnet+</td><td>47.00</td></tr>
+                <tr><td class="row-label">SWE-Agent</td><td>Claude 4 Sonnet</td><td>56.67</td></tr>
+                <tr><td class="row-label"><strong>Spec Kit Agents (Baseline)</strong></td><td>MiniMax-M2.5</td><td class="second">56.5</td></tr>
+                <tr><td class="row-label"><strong>Spec Kit Agents (Augmented)</strong></td><td>MiniMax-M2.5</td><td class="best"><strong>58.2</strong></td></tr>
+              </tbody>
+            </table>
+
+            <p style="margin-top: 0.8rem; color: var(--color-text-muted); font-size: 0.95em;">
+              All experiments use MiniMax-M2.5 as the base model; the orchestration framework
+              is <em>model-agnostic</em> and readily generalizes to other API-accessible models.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== CONCLUSION ============== -->
+  <section class="section hero">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3" style="color: var(--color-primary);">Conclusion</h2>
+          <div class="content has-text-justified">
+            <p>
+              We presented <strong>Spec Kit Agents</strong>, a multi-agent, spec-driven development
+              workflow that augments GitHub's Spec Kit with phase-scoped discovery and validation
+              <strong>context-grounding hooks</strong>. Across 128 runs covering 32 features,
+              the <strong>Full-Augmented</strong> configuration achieves the strongest overall
+              quality, indicating that explicit repository-grounded orchestration improves
+              reliability.
+            </p>
+            <p>
+              The gains are consistent and stem from stronger alignment between the
+              specification, the discovered repository context, and the final implementation.
+              This improvement comes with additional runtime overhead, making the approach most
+              appropriate for higher-risk or high-complexity tasks. Overall, the results support
+              <strong>explicit context-grounded orchestration</strong> as a practical design
+              principle for more dependable autonomous software engineering.
+            </p>
+            <p>
+              <strong>Future directions</strong> include extending the hook layer to additional
+              artifact types (e.g., test plans, deployment manifests), studying the effect of
+              hook placement granularity beyond the four Spec Kit phases, and evaluating the
+              approach on multi-file refactor tasks that span several of the current artifacts.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== BIBTEX ============== -->
+  <section class="section hero is-light" id="bibtex" style="background: var(--color-bg-alt) !important;">
+    <div class="container is-max-desktop content">
+      <h2 class="title is-3" style="color: var(--color-primary);">BibTeX</h2>
+      <pre><code id="bibtex-code">@misc{taghavi2026speckit,
+  title        = {Spec Kit Agents: Context-Grounded Agentic Workflows},
+  author       = {Taghavi, Pardis and Bhavani, Santosh},
+  year         = {2026},
+  eprint       = {2604.05278},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.SE},
+  url          = {https://arxiv.org/abs/2604.05278},
+  note         = {arXiv preprint}
+}</code></pre>
+      <button class="button is-dark" onclick="copyBibTex()">Copy BibTeX</button>
+
+      <h2 class="title is-3" style="color: var(--color-primary); margin-top: 2.5rem;">Acknowledgments</h2>
+      <p>
+        We thank the open-source maintainers of FastAPI, Apache Airflow, Dexter, Plausible
+        Analytics, and Strapi for serving as evaluation substrates, and the Spec Kit and
+        Claude Code teams for the underlying tooling that this work builds on.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============== FOOTER ============== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="columns is-centered">
+        <div class="column is-8">
+          <div class="content">
+            <p>
+              This page was built with the
+              <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a>
+              and design cues borrowed from
+              <a href="https://svg-project.github.io/v2/" target="_blank">Sparse VideoGen 2</a> &mdash; thank you.
+              <br>
+              This website is licensed under a
+              <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function copyBibTex() {
+      var copyText = document.getElementById("bibtex-code").innerText;
+      navigator.clipboard.writeText(copyText).then(function () {
+        alert("BibTeX copied to clipboard!");
+      }, function (err) {
+        alert("Failed to copy BibTeX: ", err);
+      });
+    }
+    (function () {
+      document.addEventListener('DOMContentLoaded', function () {
+        const images = Array.from(document.querySelectorAll('.clickable-image'));
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        const modalCaption = document.getElementById('modalCaption');
+        const closeBtn = document.querySelector('.image-modal-close');
+        let currentIndex = 0;
+        function showModal(img, index) {
+          currentIndex = index;
+          modal.style.display = 'block';
+          modalImg.src = img.src;
+          modalImg.alt = img.alt || '';
+          modalCaption.textContent = img.getAttribute('data-caption') || img.alt || '';
+          document.body.style.overflow = 'hidden';
+        }
+        function closeModal() {
+          modal.style.display = 'none';
+          document.body.style.overflow = 'auto';
+        }
+        function showNext() {
+          currentIndex = (currentIndex + 1) % images.length;
+          showModal(images[currentIndex], currentIndex);
+        }
+        function showPrev() {
+          currentIndex = (currentIndex - 1 + images.length) % images.length;
+          showModal(images[currentIndex], currentIndex);
+        }
+        images.forEach((img, i) => { img.addEventListener('click', () => showModal(img, i)); });
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+        document.addEventListener('keydown', (e) => {
+          if (modal.style.display !== 'block') return;
+          if (e.key === 'Escape') closeModal();
+          else if (e.key === 'ArrowRight') showNext();
+          else if (e.key === 'ArrowLeft') showPrev();
+        });
+
+        // Smooth scroll for in-page anchors
+        document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+          a.addEventListener('click', function (e) {
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+              e.preventDefault();
+              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          });
+        });
+
+        // Active section highlighting
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.top-nav a[href^="#"]');
+        function onScroll() {
+          let current = '';
+          sections.forEach(function (s) {
+            const rect = s.getBoundingClientRect();
+            if (rect.top <= 80 && rect.bottom > 80) current = '#' + s.id;
+          });
+          navLinks.forEach(function (a) {
+            a.classList.remove('active');
+            if (a.getAttribute('href') === current) a.classList.add('active');
+          });
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+      });
+    })();
+  </script>
+
+  <div id="imageModal" class="image-modal">
+    <span class="image-modal-close">&times;</span>
+    <img class="image-modal-content" id="modalImage" alt="Enlarged figure">
+    <div class="image-modal-caption" id="modalCaption"></div>
+  </div>
+
+</body>
+</html>
+

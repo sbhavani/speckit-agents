@@ -1,0 +1,84 @@
+/* Spec Kit Agents — base styles (theme tokens live in <style> in index.html) */
+
+:root {
+  --font-sans:    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6,
+.title, .subtitle {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+.publication-title {
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.publication-authors {
+  line-height: 1.55;
+  font-size: 1.05rem;
+}
+.publication-authors a {
+  color: var(--color-link);
+  font-weight: 500;
+}
+.author-block { display: inline-block; margin: 0 0.1rem; }
+
+.publication-links .link-block {
+  display: inline-block;
+  margin: 0.25rem 0.4rem;
+}
+
+.button.is-dark {
+  background-color: var(--color-primary);
+  border-color: transparent;
+  color: var(--color-on-primary);
+  font-weight: 600;
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+}
+.button.is-dark:hover {
+  background-color: var(--color-primary-2);
+  border-color: transparent;
+  color: var(--color-on-primary);
+}
+
+.hero.is-light { background-color: var(--color-bg-alt) !important; }
+
+.content h3.title {
+  margin-top: 1.4rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  letter-spacing: -0.01em;
+}
+
+.content figure { margin: 1.5rem 0; }
+.content figure img { border-radius: 4px; }
+
+table caption {
+  text-align: left;
+  padding: 0.4rem 0;
+  font-style: normal;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+}
+
+.results-table {
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum";
+}
